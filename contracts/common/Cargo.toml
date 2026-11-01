@@ -1,0 +1,16 @@
+[package]
+name = "parry-common"
+description = "Types and math shared by Parry's contracts: mandates, guardian envelopes, fixed-point math, Rhea and Pyth wire types, Hyperliquid and EVM signing payloads."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+near-sdk = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+proptest = "1"

@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = []
+members = [
+    "common",
+    "account",
+    "accounts",
+    "token",
+    "oracle",
+    "risk",
+]
 
 [workspace.package]
 version = "0.1.0"
