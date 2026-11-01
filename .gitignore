@@ -1,0 +1,42 @@
+# Internal notes, references, keys and agent memory: never committed
+/internal/
+CLAUDE.local.md
+
+# Dependencies and caches
+node_modules/
+.pnpm-store/
+.turbo/
+.cache/
+
+# Builds
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env and secrets: only examples are committed
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+
+# Rust
+contracts/target/
+enclave/target/
+
+# Tests and reports
+coverage/
+playwright-report/
+test-results/
+blob-report/
+lcov.info
+
+# OS and editors
+.DS_Store
+*.log
+.vscode/
+.idea/

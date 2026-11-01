@@ -1,0 +1,25 @@
+{
+  "name": "parry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parry keeps leveraged positions on NEAR, Hyperliquid and EVM chains from being liquidated, and runs a delta-neutral NEAR vault. A TEE guardian acts only within an on-chain mandate, after a verifiable AI review.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "packageManager": "pnpm@10.7.0",
+  "engines": {
+    "node": ">=22",
+    "bun": ">=1.3"
+  },
+  "scripts": {
+    "build:contracts": "contracts/scripts/build.sh",
+    "test:contracts": "cd contracts && cargo test --workspace --exclude parry-sandbox-tests",
+    "test:sandbox": "cd contracts && cargo test -p parry-sandbox-tests",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
