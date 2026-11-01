@@ -1,0 +1,13 @@
+{
+  "name": "@parry/brand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parry design tokens: palette, risk tier colors and type.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "type": "module",
+  "main": "tokens.json",
+  "exports": {
+    ".": "./tokens.json"
+  }
+}
