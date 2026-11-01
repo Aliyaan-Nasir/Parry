@@ -1,0 +1,9 @@
+{
+  "name": "@parry/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parry's risk model, health math, Tremor volatility index, cascade detector, hedge math and recovery strategies.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "type": "module"
+}

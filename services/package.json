@@ -1,0 +1,9 @@
+{
+  "name": "@parry/services",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parry's services: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts and top-up.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "type": "module"
+}

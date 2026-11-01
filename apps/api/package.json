@@ -1,0 +1,9 @@
+{
+  "name": "@parry/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Parry API: positions, risk, vault, guardian log, x402 risk checks and the hosted MCP endpoint.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "type": "module"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@parry/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read and act on Parry: positions, risk, vault, mandates and guardian decisions.",
+  "author": "Aliyaan Nasir",
+  "license": "MIT",
+  "type": "module"
+}
