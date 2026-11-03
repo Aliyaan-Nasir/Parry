@@ -1,9 +1,34 @@
 {
   "name": "@parry/core",
   "version": "0.1.0",
-  "private": true,
-  "description": "Parry's risk model, health math, Tremor volatility index, cascade detector, hedge math and recovery strategies.",
+  "description": "Parry's risk model (health, liquidation price, Tremor volatility index, liquidation probability and time, cascade pressure, 0 to 100 score), recovery planner, vault hedge math and proof-of-reserves Merkle tree.",
   "author": "Aliyaan Nasir",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.1",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0"
+  }
 }
