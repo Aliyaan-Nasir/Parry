@@ -1,0 +1,115 @@
+{
+  "note": "Hand-checked with exact erfc (Python math.erfc); see docs/risk-model.md for the formulas.",
+  "cases": [
+    {
+      "name": "calm, far from liquidation",
+      "price": 3.0,
+      "collateralNear": 100,
+      "debtUsd": 150,
+      "collateralRatio": 0.75,
+      "debtRatio": 0.95,
+      "sigmaHourly": 0.007479042255487043,
+      "trendHourly": 0.0,
+      "annualVol": 0.7,
+      "cascadePressure": 0.0,
+      "expected": {
+        "health": 1.425,
+        "liqPrice": 2.1052631578947367,
+        "distance": 0.29824561403508776,
+        "probability24h": 4.190695406692927e-22,
+        "probability4h": 6.132808790160776e-124,
+        "medianHours": null,
+        "score": 5,
+        "tier": "safe"
+      }
+    },
+    {
+      "name": "near liquidation, no trend",
+      "price": 2.2,
+      "collateralNear": 100,
+      "debtUsd": 150,
+      "collateralRatio": 0.75,
+      "debtRatio": 0.95,
+      "sigmaHourly": 0.007479042255487043,
+      "trendHourly": 0.0,
+      "annualVol": 0.7,
+      "cascadePressure": 0.0,
+      "expected": {
+        "health": 1.0450000000000002,
+        "liqPrice": 2.1052631578947367,
+        "distance": 0.04306220095693791,
+        "probability24h": 0.22961744845103738,
+        "probability4h": 0.0032538250671377243,
+        "medianHours": 76.13703072263215,
+        "score": 50,
+        "tier": "danger"
+      }
+    },
+    {
+      "name": "falling trend at 2.40",
+      "price": 2.4,
+      "collateralNear": 100,
+      "debtUsd": 150,
+      "collateralRatio": 0.75,
+      "debtRatio": 0.95,
+      "sigmaHourly": 0.007479042255487043,
+      "trendHourly": -0.004,
+      "annualVol": 0.7,
+      "cascadePressure": 0.0,
+      "expected": {
+        "health": 1.1400000000000001,
+        "liqPrice": 2.1052631578947367,
+        "distance": 0.1228070175438597,
+        "probability24h": 0.2093105590008847,
+        "probability4h": 1.3143795923828274e-14,
+        "medianHours": 31.11008550112659,
+        "score": 37,
+        "tier": "caution"
+      }
+    },
+    {
+      "name": "turbulent market, cascade pressure",
+      "price": 2.6,
+      "collateralNear": 100,
+      "debtUsd": 150,
+      "collateralRatio": 0.75,
+      "debtRatio": 0.95,
+      "sigmaHourly": 0.014958084510974086,
+      "trendHourly": -0.002,
+      "annualVol": 1.4,
+      "cascadePressure": 0.6,
+      "expected": {
+        "health": 1.235,
+        "liqPrice": 2.1052631578947367,
+        "distance": 0.19028340080971662,
+        "probability24h": 0.021891461815604155,
+        "probability4h": 1.0969321849934866e-11,
+        "medianHours": 83.91938595507423,
+        "score": 33,
+        "tier": "caution"
+      }
+    },
+    {
+      "name": "already liquidatable",
+      "price": 2.0,
+      "collateralNear": 100,
+      "debtUsd": 150,
+      "collateralRatio": 0.75,
+      "debtRatio": 0.95,
+      "sigmaHourly": 0.007479042255487043,
+      "trendHourly": 0.0,
+      "annualVol": 0.7,
+      "cascadePressure": 0.0,
+      "expected": {
+        "health": 0.9500000000000001,
+        "liqPrice": 2.1052631578947367,
+        "distance": 0,
+        "probability24h": 1.0,
+        "probability4h": 1.0,
+        "medianHours": 2.9778502051908996e-22,
+        "score": 75,
+        "tier": "critical"
+      }
+    }
+  ]
+}
