@@ -19,7 +19,7 @@ use parry_common::protocol::{AccountCore, Owner, Protocol};
 
 /// Storage of the account itself plus its registrations with lending, the exchange and tokens.
 pub const MIN_DEPOSIT: NearToken = NearToken::from_millinear(250);
-const GAS_BOOTSTRAP: Gas = Gas::from_tgas(80);
+const GAS_BOOTSTRAP: Gas = Gas::from_tgas(100);
 const GAS_CHECK: Gas = Gas::from_tgas(5);
 const GAS_AFTER: Gas = Gas::from_tgas(15);
 /// Liquid NEAR the factory keeps when refunding a failed creation at once.

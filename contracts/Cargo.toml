@@ -7,6 +7,9 @@ members = [
     "token",
     "oracle",
     "risk",
+    "tests",
+    "tests/publisher",
+    "tests/mock-signer",
 ]
 
 [workspace.package]

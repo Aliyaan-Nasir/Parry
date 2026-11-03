@@ -44,13 +44,16 @@ const REQUEST_DOMAIN: &[u8] = b"parry-account:v1:";
 const GAS_TOKEN_CALL: Gas = Gas::from_tgas(60);
 const GAS_LENDING_PRICED: Gas = Gas::from_tgas(120);
 const GAS_SIMPLE: Gas = Gas::from_tgas(15);
+/// Static gas of each storage registration; unused gas of the call is shared among them too.
+const GAS_REGISTER: Gas = Gas::from_tgas(6);
 const GAS_SIGN: Gas = Gas::from_tgas(60);
 const GAS_AFTER_SIGN: Gas = Gas::from_tgas(10);
 
 /// Storage the protocol contracts want from a new account.
 const LENDING_STORAGE: NearToken = NearToken::from_millinear(100);
 const DEX_STORAGE: NearToken = NearToken::from_millinear(50);
-const TOKEN_STORAGE: NearToken = NearToken::from_micronear(1_250);
+/// Registration-only storage deposits refund what the token does not need.
+const TOKEN_STORAGE: NearToken = NearToken::from_millinear(5);
 
 /// What the owner can do.
 #[near(serializers = [json])]
@@ -496,22 +499,24 @@ impl Account {
         let me = env::current_account_id();
         let p = &self.core.protocol;
         let deposit = |to: &AccountId, amount: NearToken, registration_only: bool| {
-            Promise::new(to.clone()).function_call(
+            Promise::new(to.clone()).function_call_weight(
                 "storage_deposit",
                 wire::storage_deposit(&me, registration_only),
                 amount,
-                GAS_SIMPLE,
+                GAS_REGISTER,
+                GasWeight(1),
             )
         };
         for t in &p.tokens {
             deposit(&t.token_id, TOKEN_STORAGE, true).detach();
         }
         deposit(&p.lending, LENDING_STORAGE, false).detach();
-        Some(deposit(&p.dex, DEX_STORAGE, false).then(Promise::new(p.dex.clone()).function_call(
+        Some(deposit(&p.dex, DEX_STORAGE, false).then(Promise::new(p.dex.clone()).function_call_weight(
             "register_tokens",
             wire::register_tokens(p.tokens.iter().map(|t| &t.token_id)),
             ONE_YOCTO,
-            GAS_SIMPLE,
+            GAS_REGISTER,
+            GasWeight(1),
         )))
     }
 
