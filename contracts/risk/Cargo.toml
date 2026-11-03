@@ -1,0 +1,27 @@
+[package]
+name = "parry-risk"
+description = "The risk board: accepts reports signed by the enclave key, keeps their bounded history and forwards vault reports to the vault."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+ed25519-dalek = "2.2"
+
+# Reproducible build: the pinned image builds the committed tree, and the wasm records the
+# source (NEP-330), so an explorer can verify the deployed code against it.
+[package.metadata.near.reproducible_build]
+image = "sourcescan/cargo-near:0.22.0-rust-1.98.1"
+image_digest = "sha256:90cf2abe31d75946d82f1c6eee70802332b4d499ac39c01a5c41f228000ecb8a"
+passed_env = []
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi"]
