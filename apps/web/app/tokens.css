@@ -1,0 +1,74 @@
+/*
+ * Parry design tokens: ink, bone and brass. Mirrors packages/brand/tokens.json
+ * (lib/tokens.test.ts keeps the two in step). Every text color passes WCAG AA on bg, surface and raised.
+ *
+ * Theme selection: <html data-theme="light" | "dark">, set before paint by the inline theme script.
+ * Without JavaScript the system color scheme decides.
+ */
+
+:root {
+  --parry-bg: #f3efe6;
+  --parry-surface: #fbf9f4;
+  --parry-raised: #ffffff;
+  --parry-line: #dcd6c8;
+  --parry-text: #141614;
+  --parry-muted: #5a5d55;
+  --parry-brass: #7e5a17;
+  --parry-brass-fill: #c99a45;
+  --parry-on-brass: #141614;
+  --parry-safe: #24663a;
+  --parry-caution: #875400;
+  --parry-danger: #ae3a0b;
+  --parry-critical: #a3161c;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --parry-bg: #0e100e;
+    --parry-surface: #161916;
+    --parry-raised: #1d211d;
+    --parry-line: #2c302b;
+    --parry-text: #eeeadf;
+    --parry-muted: #a3a69b;
+    --parry-brass: #d9b160;
+    --parry-brass-fill: #d9b160;
+    --parry-on-brass: #0e100e;
+    --parry-safe: #6cc287;
+    --parry-caution: #e5b54e;
+    --parry-danger: #f28c4e;
+    --parry-critical: #f47272;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --parry-bg: #0e100e;
+  --parry-surface: #161916;
+  --parry-raised: #1d211d;
+  --parry-line: #2c302b;
+  --parry-text: #eeeadf;
+  --parry-muted: #a3a69b;
+  --parry-brass: #d9b160;
+  --parry-brass-fill: #d9b160;
+  --parry-on-brass: #0e100e;
+  --parry-safe: #6cc287;
+  --parry-caution: #e5b54e;
+  --parry-danger: #f28c4e;
+  --parry-critical: #f47272;
+  color-scheme: dark;
+}
+
+/* Derived tokens: mixes of the base palette, so they follow the theme automatically. */
+:root {
+  --parry-line-strong: color-mix(in oklab, var(--parry-line) 55%, var(--parry-muted));
+  --parry-brass-fill-hover: color-mix(in oklab, var(--parry-brass-fill) 86%, var(--parry-text));
+  --parry-hover: color-mix(in oklab, var(--parry-text) 6%, transparent);
+  --parry-press: color-mix(in oklab, var(--parry-text) 10%, transparent);
+  --parry-scrim: color-mix(in oklab, #0e100e 55%, transparent);
+  --parry-safe-soft: color-mix(in oklab, var(--parry-safe) 10%, transparent);
+  --parry-caution-soft: color-mix(in oklab, var(--parry-caution) 10%, transparent);
+  --parry-danger-soft: color-mix(in oklab, var(--parry-danger) 10%, transparent);
+  --parry-critical-soft: color-mix(in oklab, var(--parry-critical) 10%, transparent);
+  --parry-brass-soft: color-mix(in oklab, var(--parry-brass) 10%, transparent);
+}
