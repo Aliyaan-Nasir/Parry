@@ -1,0 +1,358 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Dark utilities follow the data-theme attribute, not only the media query. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Only the Parry palette exists: no default colors, so nothing blue or purple can slip in. */
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-fade-in: fade-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.55;
+    }
+  }
+}
+
+@theme inline {
+  --color-bg: var(--parry-bg);
+  --color-surface: var(--parry-surface);
+  --color-raised: var(--parry-raised);
+  --color-line: var(--parry-line);
+  --color-line-strong: var(--parry-line-strong);
+  --color-fg: var(--parry-text);
+  --color-muted: var(--parry-muted);
+  --color-brass: var(--parry-brass);
+  --color-brass-fill: var(--parry-brass-fill);
+  --color-brass-fill-hover: var(--parry-brass-fill-hover);
+  --color-brass-soft: var(--parry-brass-soft);
+  --color-on-brass: var(--parry-on-brass);
+  --color-safe: var(--parry-safe);
+  --color-caution: var(--parry-caution);
+  --color-danger: var(--parry-danger);
+  --color-critical: var(--parry-critical);
+  --color-safe-soft: var(--parry-safe-soft);
+  --color-caution-soft: var(--parry-caution-soft);
+  --color-danger-soft: var(--parry-danger-soft);
+  --color-critical-soft: var(--parry-critical-soft);
+  --color-hover: var(--parry-hover);
+  --color-press: var(--parry-press);
+  --color-scrim: var(--parry-scrim);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+@layer base {
+  html {
+    background-color: var(--parry-bg);
+    color: var(--parry-text);
+    accent-color: var(--parry-brass-fill);
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+    scrollbar-color: var(--parry-line-strong) transparent;
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--parry-bg);
+    color: var(--parry-text);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01" off;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--parry-brass-fill);
+    color: var(--parry-on-brass);
+  }
+
+  /* One focus ring everywhere: brass, visible, never the browser default. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--parry-brass);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Figures: always the mono face with tabular digits. */
+  .font-mono,
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* Long-form text on the legal pages. */
+  .prose-parry {
+    color: var(--parry-text);
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+  .prose-parry h2 {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    line-height: 1.3;
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+  }
+  .prose-parry p,
+  .prose-parry ul {
+    margin-top: 0.875rem;
+    color: color-mix(in oklab, var(--parry-text) 88%, var(--parry-muted));
+  }
+  .prose-parry ul {
+    list-style: none;
+    padding-left: 0;
+  }
+  .prose-parry li {
+    position: relative;
+    padding-left: 1.25rem;
+    margin-top: 0.5rem;
+  }
+  .prose-parry li::before {
+    content: "";
+    position: absolute;
+    left: 0.125rem;
+    top: 0.8em;
+    width: 0.5rem;
+    height: 1px;
+    background: var(--parry-brass);
+  }
+  .prose-parry a {
+    color: var(--parry-brass);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .prose-parry a:hover {
+    text-decoration-thickness: 2px;
+  }
+  .prose-parry strong {
+    font-weight: 600;
+    color: var(--parry-text);
+  }
+  .prose-parry code {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: var(--parry-hover);
+  }
+}
+
+/* Lenis smooth scroll (landing page only). */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
+/* Native dialogs (Modal and Sheet). Base styles sit in a layer so utilities can size them. */
+@layer components {
+  dialog.parry-dialog {
+    color: var(--parry-text);
+    background: var(--parry-raised);
+    border: 1px solid var(--parry-line);
+    padding: 0;
+    max-width: none;
+    max-height: none;
+  }
+  dialog.parry-dialog::backdrop {
+    background: var(--parry-scrim);
+  }
+}
+/* Fade and slide in, skipped under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  dialog.parry-dialog,
+  dialog.parry-dialog::backdrop {
+    transition:
+      opacity 180ms ease,
+      translate 260ms var(--ease-out-quint),
+      overlay 260ms allow-discrete,
+      display 260ms allow-discrete;
+  }
+  dialog.parry-dialog:not([open]),
+  dialog.parry-dialog:not([open])::backdrop {
+    opacity: 0;
+  }
+  dialog.parry-dialog[open] {
+    opacity: 1;
+    translate: 0 0;
+  }
+  dialog.parry-dialog[data-variant="modal"]:not([open]) {
+    translate: 0 8px;
+  }
+  dialog.parry-dialog[data-variant="sheet"]:not([open]) {
+    translate: 0 24px;
+  }
+  @starting-style {
+    dialog.parry-dialog[open],
+    dialog.parry-dialog[open]::backdrop {
+      opacity: 0;
+    }
+    dialog.parry-dialog[data-variant="modal"][open] {
+      translate: 0 8px;
+    }
+    dialog.parry-dialog[data-variant="sheet"][open] {
+      translate: 0 24px;
+    }
+  }
+}
+
+html[data-scroll-locked] {
+  overflow: hidden;
+}
+
+/* The app shell's phone navigation bar; toasts sit above it. */
+html[data-bottom-bar] {
+  --parry-bottom-bar: 64px;
+}
+@media (min-width: 64rem) {
+  html[data-bottom-bar] {
+    --parry-bottom-bar: 0px;
+  }
+}
+
+/* Hero illustration: the moving parts wait for the animation unless motion is reduced. */
+.hero-deflection .hero-head {
+  fill: var(--parry-text);
+}
+.hero-deflection .hero-head[data-state="after"] {
+  fill: var(--parry-safe);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-deflection[data-anim="pending"] .hero-part {
+    opacity: 0;
+  }
+}
+
+/* Native range input styled as the Slider. */
+input[type="range"].parry-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"].parry-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+input[type="range"].parry-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--parry-brass-fill) 0 var(--fill, 0%),
+    var(--parry-line) var(--fill, 0%) 100%
+  );
+}
+input[type="range"].parry-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--parry-line);
+}
+input[type="range"].parry-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--parry-brass-fill);
+}
+input[type="range"].parry-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: var(--parry-raised);
+  border: 2px solid var(--parry-brass-fill);
+  box-shadow: 0 1px 2px color-mix(in oklab, #0e100e 18%, transparent);
+}
+input[type="range"].parry-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--parry-raised);
+  border: 2px solid var(--parry-brass-fill);
+}
+input[type="range"].parry-range:focus-visible {
+  outline: none;
+}
+input[type="range"].parry-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--parry-brass);
+  outline-offset: 3px;
+}
+input[type="range"].parry-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--parry-brass);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
