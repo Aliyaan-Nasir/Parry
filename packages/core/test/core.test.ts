@@ -286,6 +286,10 @@ describe("proof of reserves", () => {
     expect(verifyReserveProof(forged, reserveProof(leaves, leaves[0]!), root)).toBe(false);
   });
 
+  test("the enclave computes the same root (enclave/src/reserves.rs pins it too)", () => {
+    expect(reserveRoot(leaves)).toBe("72baafd93e5edf320aee2a823451fee2cd9fbc8e38279bec948b293b9e3b95a3");
+  });
+
   test("the root does not depend on leaf order", () => {
     expect(reserveRoot([...leaves].reverse())).toBe(reserveRoot(leaves));
   });
