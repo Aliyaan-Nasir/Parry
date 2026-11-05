@@ -10,6 +10,7 @@ members = [
     "tests",
     "tests/publisher",
     "tests/mock-signer",
+    "vault",
 ]
 
 [workspace.package]
