@@ -1,0 +1,51 @@
+[package]
+name = "parry-enclave"
+version = "0.1.0"
+edition = "2021"
+description = "Parry's guardian as an OutLayer WASI program: reads positions and mandates, scores risk, plans a rescue, gets it reviewed by a NEAR AI Cloud verifiable model, and signs the action with a key bound to this build."
+license = "MIT"
+authors = ["Aliyaan Nasir"]
+repository = "https://github.com/Aliyaan-Nasir/Parry"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "parry-enclave"
+path = "src/main.rs"
+
+[[bin]]
+name = "parry-enclave-local"
+path = "src/local.rs"
+required-features = ["local"]
+
+[features]
+local = ["dep:ureq", "dep:ed25519-dalek"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sha3 = "0.10"
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "arithmetic", "alloc"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+hex = "0.4"
+bs58 = "0.5"
+base64 = "0.22"
+ureq = { version = "2", optional = true, features = ["json"] }
+ed25519-dalek = { version = "2", optional = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+outlayer = { version = "0.2.1", features = ["signing-keys", "encryption-keys"] }
+wasi-http-client = "0.2"
+
+[dev-dependencies]
+ed25519-dalek = "2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,1 @@
+{"signing_keys": [{"path": "enclave", "type": "ed25519", "bind": "wasm"}], "encryption_keys": [{"path": "seal", "bind": "wasm"}]}

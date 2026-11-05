@@ -1,0 +1,7 @@
+# The enclave build's toolchain, pinned: the wasm's sha256 (which the enclave key is bound to)
+# depends on the exact rustc, so a rebuild reproduces the attested hash only with this version.
+[toolchain]
+channel = "1.98.1"
+targets = ["wasm32-wasip2"]
+components = ["clippy", "rustfmt"]
+profile = "minimal"
