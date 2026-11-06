@@ -1,0 +1,102 @@
+/**
+ * One switch for everything: PARRY_NETWORK=testnet|mainnet. Contract ids come from
+ * deployments/<network>.json; endpoints default per network and can be overridden by env.
+ */
+
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+export type Network = "testnet" | "mainnet";
+
+export const network: Network = process.env.PARRY_NETWORK === "mainnet" ? "mainnet" : "testnet";
+
+const ROOT = join(import.meta.dir, "..", "..", "..");
+
+export interface Deployment {
+  network: Network;
+  status?: string;
+  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string }>;
+  dexPool?: number;
+  enclave?: { publicKey: string; sealingPublicKey?: string; wasmSha256: string; wasmUrl?: string; project?: string };
+  services?: Record<string, string>;
+}
+
+const DEFAULT_CONTRACTS: Record<Network, Record<string, string>> = {
+  testnet: {
+    factory: "accounts.parry.testnet",
+    vault: "vault.parry.testnet",
+    risk: "risk.parry.testnet",
+    oracle: "oracle.parry.testnet",
+    lending: "lending.parry.testnet",
+    usdc: "usdc.parry.testnet",
+    wnear: "wrap.testnet",
+    linear: "linear-protocol.testnet",
+    dex: "ref-finance-101.testnet",
+    signer: "v1.signer-prod.testnet",
+    outlayer: "outlayer.testnet",
+  },
+  // #mainnet: Parry's own contracts are planned under parry.near; the rest are live.
+  mainnet: {
+    factory: "accounts.parry.near",
+    vault: "vault.parry.near",
+    risk: "risk.parry.near",
+    oracle: "pyth-oracle.near",
+    lending: "contract.main.burrow.near",
+    usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    wnear: "wrap.near",
+    linear: "linear-protocol.near",
+    dex: "v2.ref-finance.near",
+    signer: "v1.signer",
+    outlayer: "outlayer.near",
+  },
+};
+
+export function loadDeployment(): Deployment | null {
+  const file = process.env.PARRY_DEPLOYMENTS ?? join(ROOT, "deployments", `${network}.json`);
+  if (!existsSync(file)) return null;
+  return JSON.parse(readFileSync(file, "utf8")) as Deployment;
+}
+
+const deployment = loadDeployment();
+
+/** The account of a contract by its short name (factory, vault, risk, ...). */
+export function contract(name: string): string {
+  const env = process.env[`PARRY_${name.toUpperCase()}`];
+  return env ?? deployment?.contracts[name]?.account ?? DEFAULT_CONTRACTS[network][name] ?? "";
+}
+
+export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deployment?.dexPool ?? 0);
+
+export const enclaveInfo = () => deployment?.enclave ?? null;
+
+export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "testnet" ? "https://test.rpc.fastnear.com,https://rpc.testnet.near.org" : "https://free.rpc.fastnear.com,https://rpc.mainnet.near.org"))
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export const HYPERLIQUID_URL = process.env.HYPERLIQUID_URL ?? (network === "testnet" ? "https://api.hyperliquid-testnet.xyz" : "https://api.hyperliquid.xyz");
+export const HYPERLIQUID_NEAR_INDEX = network === "testnet" ? 54 : 74;
+export const EVM_RPC_URL = process.env.EVM_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
+export const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID ?? 11155111);
+export const HERMES_URL = process.env.HERMES_URL ?? "https://hermes.pyth.network";
+export const FASTNEAR_TX_URL = process.env.FASTNEAR_TX_URL ?? (network === "testnet" ? "https://tx.test.fastnear.com" : "https://tx.main.fastnear.com");
+export const NEAR_USD = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
+export const USDC_USD = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
+
+export const explorers = {
+  near: network === "testnet" ? "https://testnet.nearblocks.io" : "https://nearblocks.io",
+  hyperliquid: network === "testnet" ? "https://app.hyperliquid-testnet.xyz/explorer" : "https://app.hyperliquid.xyz/explorer",
+  intents: "https://explorer.near-intents.org",
+  evm: "https://sepolia.etherscan.io",
+};
+
+export function env(name: string, fallback?: string): string {
+  const v = process.env[name] ?? fallback;
+  if (v === undefined) throw new Error(`missing env ${name}`);
+  return v;
+}
+
+export const intEnv = (name: string, fallback: number): number => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && process.env[name] !== undefined && process.env[name] !== "" ? v : fallback;
+};
