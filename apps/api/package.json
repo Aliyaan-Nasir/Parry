@@ -5,5 +5,25 @@
   "description": "The Parry API: positions, risk, vault, guardian log, x402 risk checks and the hosted MCP endpoint.",
   "author": "Aliyaan Nasir",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@parry/core": "workspace:*",
+    "@parry/services": "workspace:*",
+    "hono": "4.13.17",
+    "near-kit": "0.20.2",
+    "@parry/sdk": "workspace:*",
+    "@parry/mcp": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.1",
+    "typescript": "5.9.3",
+    "postgres": "3.4.9"
+  }
 }
