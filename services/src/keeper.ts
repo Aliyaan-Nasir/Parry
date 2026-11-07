@@ -50,7 +50,7 @@ async function feed(): Promise<string> {
 async function vaultReport(sql: Sql): Promise<string> {
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   type Out = { report_json: string; signature: string; reserve_leaves: unknown[]; hedge_address: string };
-  const run = await runEnclave<Out>(keeper, "vault_report");
+  const run = await runEnclave<Out>("vault_report");
   const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 120 });
   const report = JSON.parse(run.output.report_json) as { run_id: number; score: number };
   await sql`INSERT INTO reports (kind, run_id, tx_hash, payload, extra) VALUES ('vault_report', ${report.run_id}, ${txHash(o)}, ${sql.json(report as never)},

@@ -1,0 +1,13 @@
+**/node_modules
+**/.next
+**/dist
+contracts/target
+enclave/target
+internal
+.env
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results
+.git

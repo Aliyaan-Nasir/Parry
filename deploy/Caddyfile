@@ -1,0 +1,10 @@
+# TLS for the API on the VM. The site itself is on Vercel; DNS points API_DOMAIN here.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:4000
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

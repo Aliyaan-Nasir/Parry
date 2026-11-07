@@ -121,7 +121,7 @@ export async function tick(sql: Sql) {
     WHERE last_run_at IS NULL OR last_run_at < now() - make_interval(secs => ${intEnv("GUARDIAN_COOLDOWN_S", 60)}) ORDER BY queued_at LIMIT 10`;
   if (due.length === 0) return;
   const accounts = due.map((d) => d.account);
-  const run = await runEnclave<GuardianOutput>(wallet, "guardian", accounts);
+  const run = await runEnclave<GuardianOutput>("guardian", accounts);
   for (const d of run.output.decisions) await carryOut(sql, d);
   for (const s of run.output.skipped) {
     if (s.reason === "no action needed") await sql`DELETE FROM guardian_queue WHERE account = ${s.account}`;

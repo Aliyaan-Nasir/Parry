@@ -135,7 +135,7 @@ export async function scoreAll(sql: Sql): Promise<number> {
 async function publish(sql: Sql) {
   const accounts = (await sql<{ account: string }[]>`SELECT DISTINCT account FROM positions WHERE venue = 'rhea' AND account IN (SELECT account FROM accounts) LIMIT 25`).map((r) => r.account);
   type Out = { report_json: string; signature: string; details: unknown[]; tremor: unknown; warnings: string[] };
-  const run = await runEnclave<Out>(reporter, "risk_update", accounts);
+  const run = await runEnclave<Out>("risk_update", accounts);
   if (!reporter) throw new Error("the monitor wallet is not configured");
   const o = await reporter.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 100 });
   const report = JSON.parse(run.output.report_json) as { run_id: number };

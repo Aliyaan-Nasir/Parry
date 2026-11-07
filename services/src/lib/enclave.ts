@@ -7,7 +7,7 @@
  */
 
 import { contract, enclaveInfo } from "./config";
-import { returnValue, type Sender, view } from "./near";
+import { returnValue, Sender, view } from "./near";
 
 export type EnclaveMode = "keys" | "risk_update" | "guardian" | "vault_report";
 
@@ -17,10 +17,25 @@ export interface EnclaveRun<T> {
   tx: string | null;
 }
 
-export async function runEnclave<T>(sender: Sender | null, mode: EnclaveMode, accounts: string[] = []): Promise<EnclaveRun<T>> {
+/**
+ * OutLayer derives the enclave's keys from the build and the account that calls for the run, so
+ * every service calls from the same account (`ENCLAVE_ACCOUNT_ID`), each with its own full-access
+ * key (`ENCLAVE_KEY_<SERVICE>`) so their nonces never collide.
+ */
+let enclaveSender: Sender | null = null;
+function caller(): Sender {
+  if (enclaveSender) return enclaveSender;
+  const accountId = process.env.ENCLAVE_ACCOUNT_ID;
+  const privateKey = process.env[`ENCLAVE_KEY_${(process.env.SERVICE ?? "").toUpperCase()}`] ?? process.env.ENCLAVE_PRIVATE_KEY;
+  if (!accountId || !privateKey) throw new Error("ENCLAVE_ACCOUNT_ID and this service's ENCLAVE_KEY_<SERVICE> must be set");
+  enclaveSender = new Sender({ accountId, privateKey });
+  return enclaveSender;
+}
+
+export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = []): Promise<EnclaveRun<T>> {
   const input = JSON.stringify({ mode, accounts });
   if ((process.env.ENCLAVE_MODE ?? "outlayer") === "local") return runLocal<T>(input);
-  if (!sender) throw new Error("the guardian wallet is not configured");
+  const sender = caller();
   const info = enclaveInfo();
   const url = process.env.ENCLAVE_WASM_URL ?? info?.wasmUrl;
   const hash = process.env.ENCLAVE_WASM_SHA256 ?? info?.wasmSha256;

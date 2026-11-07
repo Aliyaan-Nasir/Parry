@@ -1,0 +1,88 @@
+# The whole Parry stack against the public testnet deployment.
+#   docker compose up            read-only with no keys: the API, the monitor, the risk engine,
+#                                the indexer and the app (positions, risk, vault, guardian log)
+#   with .env.services           the wallets too: guardian, keeper, relayer, alerts, top-up
+# The same file runs on the VM; `--profile public` adds Caddy for TLS (deploy/Caddyfile).
+x-service: &service
+  build: { context: ., dockerfile: deploy/Dockerfile }
+  image: parry-services
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+    - path: .env.services
+      required: false
+  environment: &env
+    PARRY_NETWORK: ${PARRY_NETWORK:-testnet}
+    DATABASE_URL: postgres://parry:${POSTGRES_PASSWORD:-parry}@postgres:5432/parry
+    RELAYER_URL: http://relayer:4500
+    DB_POOL: "3"
+  depends_on:
+    postgres: { condition: service_healthy }
+  deploy:
+    resources:
+      limits: { memory: 192m }
+
+services:
+  postgres:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parry}
+      POSTGRES_DB: parry
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parry"]
+      interval: 5s
+      retries: 20
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  api:
+    <<: *service
+    environment: { <<: *env, SERVICE: api, PORT: "4000" }
+    ports: ["4000:4000"]
+  monitor:
+    <<: *service
+    environment: { <<: *env, SERVICE: monitor, PORT: "4100" }
+  risk:
+    <<: *service
+    environment: { <<: *env, SERVICE: risk, PORT: "4200" }
+  guardian:
+    <<: *service
+    environment: { <<: *env, SERVICE: guardian, PORT: "4300" }
+  keeper:
+    <<: *service
+    environment: { <<: *env, SERVICE: keeper, PORT: "4400" }
+  relayer:
+    <<: *service
+    environment: { <<: *env, SERVICE: relayer, PORT: "4500" }
+  indexer:
+    <<: *service
+    environment: { <<: *env, SERVICE: indexer, PORT: "4600" }
+  alerts:
+    <<: *service
+    environment: { <<: *env, SERVICE: alerts, PORT: "4700" }
+  topup:
+    <<: *service
+    environment: { <<: *env, SERVICE: topup, PORT: "4800" }
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile, args: { NEXT_PUBLIC_API_URL: "${PUBLIC_API_URL:-http://localhost:4000}", NEXT_PUBLIC_PARRY_NETWORK: "${PARRY_NETWORK:-testnet}" } }
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    profiles: [web]
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    profiles: [public]
+    ports: ["80:80", "443:443"]
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-api.localhost}
+    volumes: [./deploy/Caddyfile:/etc/caddy/Caddyfile:ro, caddy:/data]
+    depends_on: [api]
+
+volumes:
+  pgdata: {}
+  caddy: {}
