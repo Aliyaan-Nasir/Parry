@@ -107,6 +107,18 @@ async function call(from: string, to: string, method: string, args: object, depo
   return o;
 }
 
+const NEAR_USD_ID = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
+const USDC_USD_ID = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
+async function sourcePrices(): Promise<{ id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[]> {
+  // The prices mainnet Rhea lending uses, read with a free mainnet view call.
+  const out = [];
+  for (const id of [NEAR_USD_ID, USDC_USD_ID]) {
+    const r = (await (await fetch("https://free.rpc.fastnear.com", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "final", account_id: "aggregate-oracle.near", method_name: "get_price_unsafe", args_base64: Buffer.from(JSON.stringify({ price_identifier: id })).toString("base64") } }) })).json()) as { result: { result: number[] } };
+    out.push({ id, price: JSON.parse(Buffer.from(r.result.result).toString()) });
+  }
+  return out;
+}
+
 function step(name: string) {
   console.log(`\n== ${name}`);
 }
@@ -222,9 +234,9 @@ async function main() {
 
   step("oracle");
   await deploy("oracle", ids.oracle!, { method: "new", args: { owner_id: ROOT, feeders: [wallets.keeper, ROOT], network: NETWORK, max_shock_bps: 4000 } });
-  const hermes = (await (await fetch("https://hermes.pyth.network/v2/updates/price/latest?ids[]=c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750&ids[]=eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a&parsed=true")).json()) as { parsed: { id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[] };
-  await call(ROOT, ids.oracle!, "update_prices", { updates: hermes.parsed.map((p) => ({ price_id: p.id, price: p.price.price, conf: p.price.conf, expo: p.price.expo, publish_time: p.price.publish_time })) }).catch((e) => console.log(`prices: ${e.message}`));
-  const nearPrice = Number(hermes.parsed[0]!.price.price) * 10 ** hermes.parsed[0]!.price.expo;
+  const live = await sourcePrices();
+  await call(ROOT, ids.oracle!, "update_prices", { updates: live.map((p) => ({ price_id: p.id, price: p.price.price, conf: p.price.conf, expo: p.price.expo, publish_time: Math.floor(Date.now() / 1000) })) }).catch((e) => console.log(`prices: ${e.message}`));
+  const nearPrice = Number(live[0]!.price.price) * 10 ** live[0]!.price.expo;
   console.log(`NEAR ${nearPrice}`);
 
   step("lending (the exact mainnet wasm)");

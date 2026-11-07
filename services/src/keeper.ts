@@ -1,5 +1,5 @@
 /**
- * Keeper: keeps the testnet oracle fed from Pyth Hermes, has the enclave report the vault's
+ * Keeper: keeps the testnet oracle fed with the live prices mainnet lending uses, has the enclave report the vault's
  * hedge and reserves, rebalances the hedge (the vault builds and Chain Signatures signs the
  * order; this service submits it to Hyperliquid), processes the withdrawal queue, liquidates the
  * unprotected demo positions it watches, warns about expiring mandates, and checks that the
@@ -10,7 +10,7 @@ import { contract, intEnv, network, NEAR_USD, USDC_USD } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
-import { latest } from "./lib/hermes";
+import { latest, PRICE_SOURCE } from "./lib/prices";
 import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
 import { eventsOf, returnValue, rpc, senderFromEnv, txHash, view } from "./lib/near";
@@ -31,20 +31,23 @@ function track(name: string, f: () => Promise<string>) {
   };
 }
 
-/** Publishes Hermes' NEAR and USDC prices to Parry's testnet oracle (never on mainnet). */
+/** Mirrors mainnet's lending oracle prices for NEAR and USDC into Parry's testnet oracle (never on mainnet). */
 async function feed(): Promise<string> {
   if (network !== "testnet") return "mainnet uses the lending contract's own oracle";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   const prices = await latest([NEAR_USD, USDC_USD]);
-  const updates = prices.map((p) => ({ price_id: p.id.replace(/^0x/, ""), price: p.price, conf: p.conf, expo: p.expo, publish_time: p.publishTime }));
+  // The testnet oracle's publish time is when this feeder observed the price (the source's own
+  // timestamp can lag past the lending contract's 120 s freshness window between its updates).
+  const observed = Math.floor(Date.now() / 1000);
+  const updates = prices.map((p) => ({ price_id: p.id.replace(/^0x/, ""), price: p.price, conf: p.conf, expo: p.expo, publish_time: observed }));
   try {
     await keeper.call({ receiverId: contract("oracle"), methodName: "update_prices", args: { updates }, tgas: 30 });
   } catch (e) {
-    // Hermes had no newer price than the one already published: nothing to do.
+    // The source has not published a newer price yet: nothing to do.
     if (/not newer|publish_time/i.test(errorText(e))) return "already current";
     throw e;
   }
-  return `NEAR ${Number(prices[0]!.price) * 10 ** prices[0]!.expo}`;
+  return `NEAR ${Number(prices[0]!.price) * 10 ** prices[0]!.expo} from ${PRICE_SOURCE}`;
 }
 
 async function vaultReport(sql: Sql): Promise<string> {

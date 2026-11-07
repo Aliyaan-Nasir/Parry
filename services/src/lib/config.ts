@@ -78,7 +78,6 @@ export const HYPERLIQUID_URL = process.env.HYPERLIQUID_URL ?? (network === "test
 export const HYPERLIQUID_NEAR_INDEX = network === "testnet" ? 54 : 74;
 export const EVM_RPC_URL = process.env.EVM_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
 export const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID ?? 11155111);
-export const HERMES_URL = process.env.HERMES_URL ?? "https://hermes.pyth.network";
 export const FASTNEAR_TX_URL = process.env.FASTNEAR_TX_URL ?? (network === "testnet" ? "https://tx.test.fastnear.com" : "https://tx.main.fastnear.com");
 export const NEAR_USD = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
 export const USDC_USD = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";

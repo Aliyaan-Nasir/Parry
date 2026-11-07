@@ -18,6 +18,10 @@ use parry_common::{now_secs, promise_bytes, wire as common_wire, ONE_YOCTO};
 use crate::deposit::parse_result;
 use crate::nav;
 use crate::{wire, Event, Vault, VaultExt, GAS_VIEW};
+use near_contract_standards::fungible_token::FungibleTokenCore;
+
+/// One share (24 decimals): the smallest request that is not the account's whole balance.
+pub const MIN_WITHDRAW_SHARES: u128 = 1_000_000_000_000_000_000_000_000;
 
 /// NEP-141 `ft_transfer` on LiNEAR or test USDC.
 const GAS_FT_TRANSFER: Gas = Gas::from_tgas(15);
@@ -70,6 +74,14 @@ impl Vault {
         assert_one_yocto();
         require!(shares.0 > 0, "shares must be positive");
         let account = env::predecessor_account_id();
+        // Each queued request is stored at the vault's cost until it is paid: a request must
+        // escrow at least one share (about a dollar) unless it is the account's whole balance,
+        // so filling the queue with dust costs the requester far more than it costs the vault.
+        let balance = self.token.ft_balance_of(account.clone()).0;
+        require!(
+            shares.0 >= MIN_WITHDRAW_SHARES || shares.0 == balance,
+            "withdraw at least one share, or your whole balance"
+        );
         self.token.internal_transfer(
             &account,
             &env::current_account_id(),

@@ -1485,3 +1485,21 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn dust_withdrawal_requests_are_refused_unless_they_empty_the_account() {
+    let mut v = deploy();
+    let a = two_holders(&mut v);
+    assert!(a > crate::withdraw::MIN_WITHDRAW_SHARES);
+    set(ALICE, 1, NOW + 50);
+    assert!(panic_of(|| {
+        v.request_withdraw(U128(1));
+    })
+    .contains("at least one share"));
+    // One share is fine, and so is a whole balance smaller than a share.
+    v.request_withdraw(U128(crate::withdraw::MIN_WITHDRAW_SHARES));
+    v.ft_transfer(id(BOB), U128(a - crate::withdraw::MIN_WITHDRAW_SHARES - 5), None);
+    assert_eq!(v.ft_balance_of(id(ALICE)).0, 5);
+    v.request_withdraw(U128(5));
+    assert_eq!(v.vault_state().queue_length, 2);
+}
