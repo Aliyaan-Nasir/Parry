@@ -1,0 +1,17 @@
+{
+  "note": "Written by packages/sdk/test/fixtures/write.ts; read by enclave/tests/review_vector.rs.",
+  "review": {
+    "model": "z-ai/glm-5.3-flash",
+    "chat_id": "chatcmpl-7",
+    "request_hash": "1d13fd87c8d1bd84c5fb23712af383717a7d539d2e4ad2def972862fd5d34b40",
+    "response_hash": "c0d3fc3a71dcc249691b0f71aec3f79b60895125468b535b29e2bcee023d1cfa",
+    "signed_text": "z-ai/glm-5.3-flash:1d13fd87c8d1bd84c5fb23712af383717a7d539d2e4ad2def972862fd5d34b40:c0d3fc3a71dcc249691b0f71aec3f79b60895125468b535b29e2bcee023d1cfa",
+    "signature": "0x684bf064a4776d613329bee7b3430f348da2430472af6eb74f0c445be8661064528c47b89806cb3b2cc86bab36db9a188a50a5822e408f634a21bae6b568046c1b",
+    "signing_address": "0xda9ff9469ea474a125e3f0a8674d48ae9a642e48",
+    "signature_kind": "provider_tee",
+    "verdict": "approve",
+    "reasoning": "Health 0.82 is \"critical\"; repay 60 USDC \\ reserve.\nNext:\tok \u0001 café 漢 😀   end/"
+  },
+  "json": "{\"model\":\"z-ai/glm-5.3-flash\",\"chat_id\":\"chatcmpl-7\",\"request_hash\":\"1d13fd87c8d1bd84c5fb23712af383717a7d539d2e4ad2def972862fd5d34b40\",\"response_hash\":\"c0d3fc3a71dcc249691b0f71aec3f79b60895125468b535b29e2bcee023d1cfa\",\"signed_text\":\"z-ai/glm-5.3-flash:1d13fd87c8d1bd84c5fb23712af383717a7d539d2e4ad2def972862fd5d34b40:c0d3fc3a71dcc249691b0f71aec3f79b60895125468b535b29e2bcee023d1cfa\",\"signature\":\"0x684bf064a4776d613329bee7b3430f348da2430472af6eb74f0c445be8661064528c47b89806cb3b2cc86bab36db9a188a50a5822e408f634a21bae6b568046c1b\",\"signing_address\":\"0xda9ff9469ea474a125e3f0a8674d48ae9a642e48\",\"signature_kind\":\"provider_tee\",\"verdict\":\"approve\",\"reasoning\":\"Health 0.82 is \\\"critical\\\"; repay 60 USDC \\\\ reserve.\\nNext:\\tok \\u0001 café 漢 😀   end/\"}",
+  "hash": "6d0f537a86d5d43231a239f35353e4fdcec9cd013884489239f36b89a05ba43a"
+}

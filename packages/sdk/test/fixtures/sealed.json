@@ -1,0 +1,18 @@
+{
+  "note": "Written by packages/sdk/test/fixtures/write.ts; read by enclave/tests/seal_vector.rs.",
+  "enclave_secret": "bf599d3d980c10bfdcd514f1fe495309bce96517425bcc7a473a6a50019362fb",
+  "enclave_public_key": "9776a3b74f5403ff395761398f4645bd0e778f1a4ac8af6c58c6d2a8f0ba6007",
+  "ephemeral_secret": "3b07938dfe49b83635e3ce840dbbff244bfafedb7bf43b9267ab750c8eee021f",
+  "nonce": "7ea397a2d24b381b7d66ad0f",
+  "account": "0u3f9a1c2b7d.testnet",
+  "policy": {
+    "trigger_score": 55,
+    "trigger_health": 1.15,
+    "target_health": 2,
+    "strategy": "keep-exposure",
+    "hl_reduce_fraction": 0.000001,
+    "evm_trigger_health": 1.3
+  },
+  "plaintext": "{\"trigger_score\":55,\"trigger_health\":1.15,\"target_health\":2.0,\"strategy\":\"keep-exposure\",\"hl_reduce_fraction\":1e-6,\"evm_trigger_health\":1.3}",
+  "sealed": "AvpTGGCeaF+jkuR8rC8ouNA7xvpXAxvHBnp+QgRU7mR+o5ei0ks4G31mrQ93vPJegUeQp7km28bru2UY8Ug22uOxkcIatkXWCX9s8/y8rWknxagaMfJIx7bRHc4IfR42AwwUQDnGvKamLwYQBhFt9O3ul65piDMwaxcdKMdsJXb5JzlNt6N5nhXIKmkDAMfH08fsCl66KvavmHYasUVow/Amq3+E4sVQ6ylSBHEiWQKdKVlyeDdLEHZdhK25REQ4kT9zOHN6cLc="
+}
