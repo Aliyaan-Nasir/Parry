@@ -22,7 +22,8 @@
     "typecheck:scripts": "tsc --noEmit -p scripts",
     "verify": "bun scripts/verify.ts",
     "dev": "bun scripts/dev.ts",
-    "sandbox": "bun scripts/sandbox.ts"
+    "sandbox": "bun scripts/sandbox.ts",
+    "security": "bun scripts/security.ts"
   },
   "devDependencies": {
     "typescript": "5.9.3",

@@ -1,0 +1,77 @@
+# Security
+
+## Reporting a vulnerability
+
+Please report vulnerabilities privately by opening a security advisory on the GitHub repository (Security tab, "Report a vulnerability").
+Do not open a public issue for anything that could put funds or accounts at risk.
+Include the contract or component, the method, the steps to reproduce and the impact you expect.
+We acknowledge reports within three days and keep you updated until a fix is deployed.
+Parry runs on NEAR testnet today; nothing in it holds real value yet, but every report is treated as if it did.
+
+## Trust model
+
+- **Owner** of a protected account (a passkey checked on chain, or a NEAR account calling with one yoctoNEAR): full control, including any call, transfer, signature, the mandate, pausing the guardian and upgrading the code.
+- **Guardian enclave key** (an ed25519 key held by the TEE program the owner names in the mandate): may only run the mandate's powers (repay, add collateral, deleverage, reduce or hedge a perp position, repay a loan on another chain) inside its caps, and no guardian action can send funds to another account.
+- The account prices a deleverage sale with the protocol's price oracle, not with the enclave's own marks, caps the fees of every transaction it signs for another chain, and only signs immediate-or-cancel perp orders inside the owner's size cap.
+- **Relayer**: pays gas and relays signed requests and envelopes; it cannot change them, an action relayed with less gas than its whole promise chain needs is refused, and withholding a request only delays it.
+- **Keeper**: calls the vault's open methods (`rebalance`, `process_withdrawals`) and feeds the testnet price oracle; the vault grants it no power of its own, but as an oracle feeder it is trusted for testnet prices.
+- **Risk board owner**: rotates the enclave key and chooses the vault the board reports to, so it controls the vault's report input (hedge equity and risk score); vault depositors trust it, and the vault owner, who can repoint the vault's report intake.
+- **Oracle feeders**: trusted for the testnet prices they publish; on testnet anyone can also apply a bounded, expiring market shock, which is why the oracle refuses to initialise for any network but testnet.
+- **Factory owner**: may change the code and protocol new accounts are born with until the first account exists, and can sweep NEAR the factory holds beyond the refunds it owes.
+
+## How the contracts were audited
+
+The contracts in `contracts/` (`account` with `common`, `accounts`, `vault`, `risk`, `oracle`, `token`) were reviewed line by line against a NEAR contract audit checklist.
+This is an internal review, not a third-party audit.
+The review covered reentrancy across asynchronous promises, unhandled promise results, callback authorization, unsafe math and rounding, access control, storage staking and griefing, front-running, upgrade and state-migration risks, gas exhaustion in callbacks, JSON and borsh parsing, and event correctness.
+Each fixed finding has a unit test named `audit_*` that fails without the fix and passes with it, and the sandbox suite (`contracts/tests`) runs the real lending and exchange code against the fixed contracts.
+`pnpm security` runs the automated checks: Clippy with warnings as errors on the contracts and the enclave, `cargo audit` and `cargo deny check` on the contracts, and `pnpm audit --prod` on the packages.
+Accepted advisories are listed in `contracts/deny.toml` and `contracts/.cargo/audit.toml`, each with its reason, and below.
+
+## Findings
+
+Severities: critical (funds can be taken by anyone), high (funds or protection can be lost without a key compromise), medium (funds can be lost with a compromised key or in a reachable configuration), low (limited impact or unlikely conditions), info (hardening and documentation).
+
+| ID | Severity | Where | Finding | Status |
+| --- | --- | --- | --- | --- |
+| P-01 | High | `account/src/guardian.rs`: `guardian_execute`, the deleverage callbacks, `retry_deleverage` | Anyone may relay a signed envelope with the gas they choose, and each deleverage callback runs on the gas the previous step left, so a deleverage relayed with too little gas stopped in a later callback after the collateral had left the lending contract, leaving the position weaker and the guardian blocked; the same held for perp signature requests and for the public `retry_deleverage`. | Fixed: the account refuses a deleverage, a perp order or a retry without the gas its whole chain needs. Tests `audit_deleverage_needs_gas_for_its_whole_chain`, `audit_perp_order_needs_gas_for_its_signature`, `audit_retry_needs_gas_for_the_rest_of_the_chain`. |
+| P-02 | Medium | `account/src/guardian.rs`: `on_delev_marks` | The deleverage slippage bound was priced with the risk board's marks, which the same enclave key signs, so one compromised key could set both the sale and the price it was checked against and sell collateral, up to the daily cap, into a pool it controls. | Fixed: the swap is priced with the protocol's price oracle, the one the lending contract liquidates with. Test `audit_deleverage_is_priced_by_the_oracle_not_by_the_enclave_marks`. |
+| P-03 | Medium | `account/src/guardian.rs`: `on_delev_marks` | A staked token priced through a rate view was valued as the plain token in the slippage bound, so a deleverage could sell it about a fifth below its value; the testnet configuration lists no such token yet. | Fixed: the swap price includes the token's rate. Test `audit_deleverage_prices_a_staked_token_with_its_rate`. |
+| P-04 | Medium | `account/src/guardian.rs`: `guardian_execute` | A guardian perp order could rest on the book at any price inside the band around the enclave's own mark, where anyone could fill it. | Fixed: guardian orders must be immediate-or-cancel, so they fill against the best prices on the book. The band still refers to the enclave's mark. Test `audit_guardian_perp_orders_are_immediate_or_cancel`. |
+| P-05 | Medium | `account/src/guardian.rs`, `common/src/evm.rs` | The fee fields of the transactions the account signs for another chain were the guardian's free choice, and the priority fee goes to the block producer, so a signer could pay the person's gas balance away. | Fixed: the priority fee is capped at 20 gwei and at the max fee, and the gas limit at 600000. Test `audit_signed_transaction_fees_are_capped`. |
+| P-06 | Medium | `vault/src/deposit.rs`: `price_deposit` | Deposits valued the staked NEAR at a fresh oracle price but the hedge at a report up to 15 minutes old, so a depositor who waited for a move inside the 2% oracle bound bought shares below their value, at the holders' expense. | Fixed: the hedge is valued at the deposit's price (and the NAV view at the last known price). Test `audit_deposit_values_the_hedge_at_the_deposit_price`. |
+| P-07 | Low | `account/src/guardian.rs`: `on_restored` | A rollback reported `deleverage_rolled_back` even when the lending contract refused the collateral back, which then waited in the account outside the position. | Fixed: the deleverage stays pending as `stuck_resupply` until `retry_deleverage` re-supplies it. Test `audit_refused_resupply_stays_pending_until_retried`. |
+| P-08 | Low | `account/src/guardian.rs`: `finish_delev` | A deleverage whose repay leg was refused (collateral sold, nothing repaid) could be reported as completed. | Fixed: it is reported as unsafe and pauses the guardian. Test `audit_deleverage_that_repaid_nothing_is_not_completed`. |
+| P-09 | Low | `accounts/src/lib.rs`: `sweep` | The factory owner could sweep NEAR recorded as refunds owed to payers of failed creations. | Fixed: the factory tracks what it owes and `sweep` leaves it. Test `audit_sweep_cannot_take_refunds_owed_to_payers`. |
+| P-10 | Low | `risk/src/lib.rs`: `apply_risk_update` | Positions were bounded per account but not across accounts, so the board's storage (and the NEAR it locks) had no ceiling. | Fixed: at most 5000 accounts keep positions, the first stored is evicted. Test `audit_tracked_accounts_are_bounded`. |
+| P-11 | Low | `vault/src/withdraw.rs`: `settle` | Withdrawals settle with the report's hedge equity and mark, which can be up to 15 minutes old, so a leaver who processes their own withdrawal right after a favourable move is paid the stale value. | Accepted: the window is the keeper's delay after each report, which processes the queue at once; settling at a fresh oracle price is the follow-up. |
+| P-12 | Low | `vault/src/hedge.rs`: `rebalance` | A signed hedge order stays valid at the perp venue for its nonce window, so if the keeper never submits it and a later report leads to another order, both could execute and over-hedge until the next rebalance. | Accepted: the fix is an expiry inside the signed action, which changes the signed digest and the submitting service together. |
+| P-13 | Low | `account/src/lib.rs`: `Upgrade`, `load_runtime` | There is no state migration: code whose runtime layout differs would fail to load state in `owner_execute`, locking a passkey owner out (a NEAR-account owner can still upgrade back). | Accepted: every future version must keep the runtime layout readable (append-only, or a version tag first); upgrades are the owner's choice. |
+| P-14 | Low | `oracle/src/lib.rs`: `shock`; `vault/src/deposit.rs` | On testnet anyone can move the price the vault prices deposits with, inside the vault's 2% bound, and price a deposit up to about 2% in their favour. | Accepted: testnet only, with test tokens; the mainnet vault prices with an external price feed. |
+| P-15 | Low | `oracle/src/lib.rs`: `new` | The testnet-only guard is the `network` argument; a contract cannot read the chain it runs on. | Accepted: deployment control; the deploy script initialises it on testnet only. |
+| P-16 | Low | `account/src/guardian.rs`: `retry_deleverage` | A stuck restore retries the full amount, which would never succeed if the exchange had taken only part of a deposit. | Accepted: the exchange takes a deposit whole or not at all, and the owner can settle by hand and `clear_pending`. |
+| P-17 | Low | `vault/src`: report freshness | Deposits, rebalances and withdrawals need a report at most 15 minutes old, so if the enclave stops reporting, withdrawals wait. | Accepted: a trust assumption on the operator, stated in the trust model. |
+| P-18 | Low | every contract wasm | `wee_alloc` (RUSTSEC-2022-0054) is unmaintained. | Accepted: it is near-sdk's allocator option, chosen for code size (the default allocator adds about 6.5 KB to the account code, which is published per byte); every NEAR function call runs in a fresh instance, so leaks and fragmentation cannot build up across calls. |
+| P-19 | Info | `account/src/guardian.rs` | A callback that panics (for example on absurd oracle data) leaves the deleverage pending and the guardian blocked until the owner clears it. | Accepted: the owner override (`clear_pending`) settles it. |
+| P-20 | Info | `account/src/passkey.rs` | Passkey assertions do not check the relying-party hash or the origin. | Accepted: authenticators scope each credential to its relying party, and the challenge binds the account, the network and the nonce. |
+| P-21 | Info | `common/src/mandate.rs` | The perp guard caps each order's size and the actions per day, not the total position or its leverage. | Accepted: the owner sets both caps; the contract cannot read the perp venue's account. |
+| P-22 | Info | `account/src/guardian.rs` | `guardian_acted` and the signing events are emitted before the outcome is known. | Accepted: indexers pair them with `guardian_settled` and `guardian_refused`. |
+| P-23 | Info | `account/src/lib.rs`: `bootstrap` | `bootstrap` records itself done before its storage registrations resolve, so a failed registration is not retried by it. | Accepted: the owner can register through a `call` action. |
+| P-24 | Info | `accounts/src/lib.rs` | `created` also counts top-ups, and accounts made with a direct state init are not counted, while it gates `configure`. | Accepted: addresses commit to the code and protocol, so changing them later only moves new owners to new addresses. |
+| P-25 | Info | `risk/src/report.rs` | Reports do not name the board, so a second board trusting the same enclave key would accept the same reports. | Accepted: one board per enclave key; vault reports name their vault. |
+| P-26 | Info | `oracle/src/lib.rs` | Any account can replace an active shock with its own, and feeder prices have no deviation bound. | Accepted: shocks are rate limited per caller and per feed, and feeders are trusted. |
+| P-27 | Info | `token/src/lib.rs` | The faucet has no global cap, so many accounts can mint any amount. | Accepted: a test token with no value; the vault takes it only from its owner. |
+| P-28 | Info | `vault/src/lib.rs`, `risk/src/lib.rs` | The vault owner (`set_risk`) and the risk board owner (`set_enclave`) can each feed the vault arbitrary reports. | Accepted: stated in the trust model. |
+| P-29 | Info | `account/src/guardian.rs`: `on_hl_mark` | The callback that signs a perp order does not re-check an owner pause made in the block between the envelope and the signature. | Accepted: a one-block window, and a revoked mandate is re-checked. |
+
+No critical findings were found.
+
+## Dependency advisories
+
+| Advisory | Crate | Where it is used | Status |
+| --- | --- | --- | --- |
+| RUSTSEC-2026-0387 (timing variability) | `crypto-bigint` 0.5.5 | Test builds only: near-sdk's unit-test VM and the account's P-256 test signer, never a contract wasm | Accepted: no fixed release fits the pinned `p256` 0.13 used by near-sdk 5.30; no secret passes through it in tests. |
+| RUSTSEC-2022-0054 (unmaintained) | `wee_alloc` 0.4.5 | Every contract wasm, through near-sdk's allocator feature | Accepted, see P-18. |
+| RUSTSEC-2024-0449 (unmaintained) | `unsafe-libyaml` 0.2.11 | The sandbox test harness only (`near-workspaces`) | Accepted: it parses local node configuration in tests. |
+
+`pnpm audit --prod` reports no known vulnerabilities in the packages.

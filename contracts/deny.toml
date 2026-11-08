@@ -1,0 +1,50 @@
+# cargo-deny policy for the contracts workspace: `cargo deny check` (run by `pnpm security`).
+# Every exception below is explained in SECURITY.md.
+
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+# Accepted advisories, each reviewed: none of them reaches a deployed contract's behaviour.
+ignore = [
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 timing variability: only in test builds (near-sdk's unit-test VM and the account's P-256 test signer), never in a contract wasm, and no secret passes through it there" },
+  { id = "RUSTSEC-2022-0054", reason = "wee_alloc is unmaintained: near-sdk's optional allocator, kept for code size; every NEAR function call runs in a fresh instance, so leaks and fragmentation cannot build up across calls" },
+  { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained: only in the sandbox test harness (near-workspaces), which parses local node config" },
+]
+
+[licenses]
+# The licenses the dependency tree actually uses (`cargo deny list -l license`).
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The workspace's own crates are not published.
+ignore = true
+
+[bans]
+# near-sdk and the sandbox harness pull several majors of common crates; duplicates cost build
+# time only, never contract behaviour.
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -76,5 +76,6 @@ bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --s
 - Ref's `withdraw` resolves to the amount, or 0 when the transfer failed and it re-credited the deposit.
 - OutLayer derives the enclave keys from the build and the calling account: every service calls it from `enclave.parry.testnet`.
 - Publishing the account code as global code burns about 36 NEAR; `scripts/deploy.ts` never republishes the same hash.
+- The account refuses an envelope relayed with less gas than its whole chain needs: a deleverage takes at least 650 + 30 per priced token Tgas (the guardian sends 900), a perp order 140, `retry_deleverage` 260 + 30 per token.
 - Contract refusals in callbacks are `guardian_refused` events, not failed transactions: read the receipts' logs.
 - The testnet MPC network verifies Base, not Ethereum, transactions, so the EVM rescue runs on Base Sepolia (84532); `scripts/evm-position.ts` opens a loan there from an account's derived address.

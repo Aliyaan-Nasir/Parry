@@ -1,0 +1,7 @@
+# cargo-audit policy for the contracts workspace (`cargo audit`, run by `pnpm security`).
+# Unmaintained-crate warnings stay visible; only this reviewed vulnerability is ignored.
+
+[advisories]
+# crypto-bigint 0.5 timing variability: only in test builds (near-sdk's unit-test VM and the
+# account's P-256 test signer), never in a contract wasm. See SECURITY.md.
+ignore = ["RUSTSEC-2026-0387"]

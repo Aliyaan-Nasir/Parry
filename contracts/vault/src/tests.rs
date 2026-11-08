@@ -1503,3 +1503,37 @@ fn dust_withdrawal_requests_are_refused_unless_they_empty_the_account() {
     v.request_withdraw(U128(5));
     assert_eq!(v.vault_state().queue_length, 2);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Audit regressions
+// ---------------------------------------------------------------------------------------------
+
+/// A deposit is priced at a fresh oracle price, but the hedge equity comes from a report up to
+/// 15 minutes old. After NEAR fell, the short has gained more than the report shows: priced
+/// against the stale equity, a deposit would buy shares below their value and take that gain
+/// from the holders. The hedge is valued at the deposit's price instead.
+#[test]
+fn audit_deposit_values_the_hedge_at_the_deposit_price() {
+    let mut v = deploy();
+    register(&mut v, ALICE);
+    register(&mut v, BOB);
+    report(&mut v, 1, NOW, 20, Hl::default());
+    let a = deposit(&mut v, ALICE, 100 * NEAR);
+    // The report: a 90 NEAR short at a $3.00 mark, no equity yet.
+    report(&mut v, 2, NOW + 10, 20, Hl { size_e8: -90 * E8 as i128, ..Hl::default() });
+    // NEAR is at $2.95 when Bob deposits (1.7% from the mark, inside the 2% bound): the short is
+    // up 90 × 0.05 = $4.50 that the report does not show.
+    let b = deposit_at(&mut v, BOB, 100 * NEAR, NOW + 11, 295_000_000, RATE);
+    let linear = nav::near_to_linear(100 * NEAR, RATE);
+    let nav = nav::nav_e6(linear, RATE, 295_000_000, 4_500_000, Rounding::Up);
+    assert_eq!(nav, 299_500_000);
+    let value = nav::near_to_usd_e6(100 * NEAR, 295_000_000, Rounding::Down);
+    assert_eq!(b, nav::shares_for(value, a, nav).unwrap());
+    assert!(b < a, "Bob's $295 buys less than Alice's $300 of shares");
+    // The view values the hedge at the same price.
+    set(ALICE, 0, NOW + 12);
+    assert_eq!(
+        v.vault_state().nav_e6.0,
+        nav::nav_e6(2 * linear, RATE, 295_000_000, 4_500_000, Rounding::Down)
+    );
+}

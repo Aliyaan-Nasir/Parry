@@ -673,13 +673,14 @@ impl Vault {
         }
     }
 
-    /// NAV for views, at the last known rate and price, rounded down.
+    /// NAV for views, at the last known rate and price (the hedge valued at that price too),
+    /// rounded down.
     fn view_nav_e6(&self) -> u128 {
         nav::nav_e6(
             self.staked_linear,
             self.linear_rate_e24,
             self.near_price_e8,
-            self.hedge_equity_e6(),
+            self.hedge_equity_at(self.near_price_e8, Rounding::Down),
             Rounding::Down,
         )
     }

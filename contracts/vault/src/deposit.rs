@@ -283,7 +283,10 @@ impl Vault {
 
         // NAV rounded up and value rounded down: the depositor never gets a sliver of value
         // that belongs to the existing holders.
-        let nav = nav::nav_e6(self.staked_linear, rate, price_e8, self.hedge_equity_e6(), Rounding::Up);
+        // The hedge is valued at the same price as the deposit and the LiNEAR, not at the
+        // report's mark.
+        let equity = self.hedge_equity_at(price_e8, Rounding::Up);
+        let nav = nav::nav_e6(self.staked_linear, rate, price_e8, equity, Rounding::Up);
         let value = nav::near_to_usd_e6(amount, price_e8, Rounding::Down);
         let supply = self.token.total_supply;
         if supply > 0 && nav == 0 {

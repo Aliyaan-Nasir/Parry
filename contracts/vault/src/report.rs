@@ -9,7 +9,12 @@ use near_sdk::json_types::{I128, U128};
 use near_sdk::serde_json;
 use near_sdk::{env, near, require, AccountId};
 
+use crate::nav::to_i128;
 use crate::{Event, Vault, VaultExt};
+use parry_common::math::Rounding;
+
+/// Position size (1e8) × price (1e8) to USD e6.
+const PNL_SCALE: i128 = 10_000_000_000;
 
 /// The report JSON is a few hundred bytes; the bound keeps parsing gas predictable even if the
 /// board were misconfigured to forward something else.
@@ -154,6 +159,22 @@ impl Vault {
     /// The latest report if it is at most `REPORT_MAX_AGE_SECS` old at `now`.
     pub(crate) fn fresh_report(&self, now: u64) -> Option<&StoredReport> {
         self.report.as_ref().filter(|r| now.saturating_sub(r.at) <= crate::REPORT_MAX_AGE_SECS)
+    }
+
+    /// The depositors' hedge equity valued at `price_e8` rather than at the report's mark: the
+    /// reported equity plus the position's PnL from the mark to that price, size × (price −
+    /// mark) (1e8 × 1e8 / 1e10 = USD e6), rounded as asked. A report can be 15 minutes old, and
+    /// pricing a deposit against equity the market has already moved would let a depositor who
+    /// times a move take value from the holders (or overpay).
+    pub(crate) fn hedge_equity_at(&self, price_e8: u128, rounding: Rounding) -> i128 {
+        let equity = self.hedge_equity_e6();
+        let Some(r) = &self.report else { return equity };
+        let move_e16 = r.hedge.size_e8.0.saturating_mul(to_i128(price_e8) - to_i128(r.hedge.mark_e8.0));
+        let pnl = match rounding {
+            Rounding::Down => move_e16.div_euclid(PNL_SCALE),
+            Rounding::Up => -(move_e16.saturating_neg().div_euclid(PNL_SCALE)),
+        };
+        equity.saturating_add(pnl)
     }
 
     /// The depositors' hedge equity, USD e6: account value − operator margin − PnL already
