@@ -553,7 +553,10 @@ fn vault_report(io: &dyn Io) -> Result<Value> {
             asset: "USDC".into(),
             venue: "hyperliquid".into(),
             amount: format!("{}", (ch.account_value * 1e6).max(0.0) as u128),
-            usd_e6: format!("{}", ((ch.account_value - operator_margin) * 1e6).max(0.0) as u128),
+            usd_e6: format!(
+                "{}",
+                ((ch.account_value - operator_margin) * 1e6).max(0.0) as u128
+            ),
         },
         reserves::Leaf {
             asset: "NEAR-PERP".into(),
@@ -570,7 +573,8 @@ fn vault_report(io: &dyn Io) -> Result<Value> {
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(0.0)
         / 1e6;
-    let liabilities = (book_linear * rate * price + ch.account_value - operator_margin - settled).max(0.0);
+    let liabilities =
+        (book_linear * rate * price + ch.account_value - operator_margin - settled).max(0.0);
     let ratio = if liabilities > 0.0 {
         (total_usd / liabilities * 10_000.0).floor() as u32
     } else {

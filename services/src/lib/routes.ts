@@ -57,7 +57,7 @@ export async function intentsQuote(amountNear: number): Promise<RouteComparison[
 
 export async function rheaQuote(amountNear: number): Promise<RouteComparison["rhea"]> {
   const pool = dexPool();
-  if (!pool && pool !== 0) return null;
+  if (!Number.isInteger(pool) || pool < 0) return null;
   try {
     const out = await view<string>(contract("dex"), "get_return", {
       pool_id: pool,

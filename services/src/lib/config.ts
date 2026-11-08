@@ -65,7 +65,7 @@ export function contract(name: string): string {
   return env ?? deployment?.contracts[name]?.account ?? DEFAULT_CONTRACTS[network][name] ?? "";
 }
 
-export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deployment?.dexPool ?? 0);
+export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deployment?.dexPool ?? -1);
 
 export const enclaveInfo = () => deployment?.enclave ?? null;
 

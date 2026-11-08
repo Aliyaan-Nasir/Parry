@@ -51,6 +51,7 @@ async function feed(): Promise<string> {
 }
 
 async function vaultReport(sql: Sql): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   type Out = { report_json: string; signature: string; reserve_leaves: unknown[]; hedge_address: string };
   const run = await runEnclave<Out>("vault_report");
@@ -66,6 +67,7 @@ async function vaultReport(sql: Sql): Promise<string> {
 }
 
 async function rebalance(): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   const o = await keeper.call({ receiverId: contract("vault"), methodName: "rebalance", args: {}, tgas: 150 });
   const sig = returnValue<{ r: string; s: string; v: number } | null>(o);
@@ -78,6 +80,7 @@ async function rebalance(): Promise<string> {
 }
 
 async function withdrawals(): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   const state = await view<{ queue_length: number }>(contract("vault"), "vault_state");
   if (state.queue_length === 0) return "queue empty";

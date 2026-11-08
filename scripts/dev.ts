@@ -4,6 +4,7 @@
  *   pnpm dev              against the public testnet deployment (read-only without keys;
  *                         .env.services adds the wallets)
  *   pnpm dev --sandbox    against a local node started by `bun scripts/sandbox.ts`
+ *   --no-web              the API and services only
  *
  * Needs Postgres at DATABASE_URL (`docker compose up -d postgres` gives one on port 55432 when
  * POSTGRES_PORT=55432, or use your own).
@@ -41,7 +42,7 @@ const procs = [
   { name: "api", cmd: ["bun", "apps/api/src/index.ts"], port: 4000 },
   ...["monitor", "risk", "guardian", "keeper", "relayer", "indexer", "alerts", "topup"].map((s, i) => ({ name: s, cmd: ["bun", "services/src/main.ts", s], port: 4100 + i * 100 })),
   { name: "web", cmd: ["pnpm", "-F", "@parry/web", "dev"], port: 3000 },
-];
+].filter((p) => !(process.argv.includes("--no-web") && p.name === "web"));
 
 const colors = [33, 32, 36, 35, 34, 31, 37, 93, 92, 96];
 for (const [i, p] of procs.entries()) {

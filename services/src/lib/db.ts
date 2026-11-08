@@ -17,22 +17,21 @@ export function db(url = process.env.DATABASE_URL): Sql {
 }
 
 export async function migrate(sql: Sql): Promise<void> {
-  await sql`CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   const dir = join(import.meta.dir, "..", "..", "migrations");
   const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-  for (const f of files) {
-    const [done] = await sql`SELECT 1 FROM migrations WHERE name = ${f}`;
-    if (done) continue;
-    // Serialized across services that start together.
-    await sql.begin(async (tx) => {
-      await tx`SELECT pg_advisory_xact_lock(4242)`;
-      const [again] = await tx`SELECT 1 FROM migrations WHERE name = ${f}`;
-      if (again) return;
+  // Services start together: one transaction under one advisory lock creates the bookkeeping
+  // table and applies what is missing, so concurrent starts never race.
+  await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(4242)`;
+    await tx`CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
+    for (const f of files) {
+      const [done] = await tx`SELECT 1 FROM migrations WHERE name = ${f}`;
+      if (done) continue;
       await tx.unsafe(readFileSync(join(dir, f), "utf8"));
       await tx`INSERT INTO migrations (name) VALUES (${f})`;
       log.info("migration applied", { file: f });
-    });
-  }
+    }
+  });
 }
 
 /** Counts one use of `kind` by `who` today; false once `limit` is reached. */

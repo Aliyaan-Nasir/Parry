@@ -99,7 +99,18 @@ async function waitForNode() {
   throw new Error("the sandbox node did not start");
 }
 
+async function nodeAnswers(): Promise<boolean> {
+  try {
+    const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "status", params: [] }) });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
+  // A node left over from an earlier run would answer with other keys.
+  if (await nodeAnswers()) throw new Error(`a node already answers at ${RPC}: stop it first (pkill -f "near-sandbox --home")`);
   const bin = binary();
   rmSync(HOME, { recursive: true, force: true });
   mkdirSync(HOME, { recursive: true });

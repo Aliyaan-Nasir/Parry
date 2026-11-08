@@ -5,7 +5,7 @@
  * events become the protected-account list everything else reads.
  */
 
-import { contract, FASTNEAR_TX_URL, intEnv } from "./lib/config";
+import { contract, FASTNEAR_TX_URL, intEnv, RPC_URLS } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
@@ -84,7 +84,11 @@ async function onAccountCreated(sql: Sql, data: unknown, tx: string) {
     ON CONFLICT (account) DO UPDATE SET hl_address = COALESCE(accounts.hl_address, excluded.hl_address), evm_address = COALESCE(accounts.evm_address, excluded.evm_address)`;
 }
 
+/** FastNEAR indexes testnet and mainnet, not a local node. */
+export const indexable = () => !RPC_URLS.some((u) => /127\.0\.0\.1|localhost/.test(u));
+
 export async function indexAll(sql: Sql): Promise<number> {
+  if (!indexable()) return 0;
   const fixed = ["factory", "risk", "vault", "oracle"].map(contract).filter(Boolean);
   const accounts = (await sql<{ account: string }[]>`SELECT account FROM accounts`).map((r) => r.account);
   let n = 0;
@@ -105,7 +109,7 @@ export async function main() {
   every(intEnv("INDEXER_MS", 10_000), "index", async () => {
     const n = await indexAll(sql);
     last = Date.now();
-    await setStatus(sql, "indexer", true, `${n} new events`);
+    await setStatus(sql, "indexer", true, indexable() ? `${n} new events` : "not available on a local node (FastNEAR indexes testnet and mainnet)");
   });
   serveHealth("indexer", intEnv("PORT", 4600), async () => ({ ok: Date.now() - last < 120_000, detail: "indexing", lastPassAt: last ? new Date(last).toISOString() : null }));
 }

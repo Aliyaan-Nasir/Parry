@@ -55,11 +55,13 @@ export async function checkDelegate(sql: Sql, payload: string): Promise<{ sender
   return { sender: d.senderId, receiver };
 }
 
-async function delegate(sql: Sql, body: { payload: string }) {
+async function delegate(sql: Sql, body: { payload?: string; signedDelegateAction?: string }) {
   if (!relayer) throw new Error("the relayer wallet is not configured");
-  const { sender } = await checkDelegate(sql, body.payload);
+  const payload = body.payload ?? body.signedDelegateAction;
+  if (!payload) throw new Error("send the signed delegate action as base64 borsh");
+  const { sender } = await checkDelegate(sql, payload);
   if (!(await useQuota(sql, "delegate", sender, intEnv("RELAYER_DELEGATE_PER_DAY", 60)))) throw new Error("this account's daily relay budget is spent");
-  const o = await relayer.relayDelegate(body.payload);
+  const o = await relayer.relayDelegate(payload);
   return { txHash: txHash(o) };
 }
 

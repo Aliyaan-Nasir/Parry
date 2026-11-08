@@ -19,7 +19,10 @@
     "lint": "pnpm -r --if-present lint",
     "build": "pnpm -r --if-present build",
     "deploy:testnet": "bun scripts/deploy.ts",
-    "typecheck:scripts": "tsc --noEmit -p scripts"
+    "typecheck:scripts": "tsc --noEmit -p scripts",
+    "verify": "bun scripts/verify.ts",
+    "dev": "bun scripts/dev.ts",
+    "sandbox": "bun scripts/sandbox.ts"
   },
   "devDependencies": {
     "typescript": "5.9.3",
