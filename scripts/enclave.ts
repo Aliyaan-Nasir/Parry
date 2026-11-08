@@ -6,16 +6,18 @@
  *   bun scripts/enclave.ts keys      run the `keys` mode through OutLayer: the enclave's ed25519 key
  *                                    and X25519 sealing key, and a signed sealing-key report
  *
- * Needs `outlayer login testnet` with the enclave account's key, ENCLAVE_ACCOUNT_ID and one
+ * Needs `outlayer login <network>` with the enclave account's key, ENCLAVE_ACCOUNT_ID and one
  * ENCLAVE_KEY_* in the environment (from .env.services), and NEARAI_API_KEY for `publish`.
- * Results go to deployments/testnet.json under `enclave`.
+ * PARRY_NETWORK=mainnet builds the mainnet program (enclave/build.sh compiles mainnet's ids in).
+ * Results go to deployments/<network>.json under `enclave`.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const depFile = join(ROOT, "deployments", "testnet.json");
+const NETWORK = process.env.PARRY_NETWORK === "mainnet" ? "mainnet" : "testnet";
+const depFile = join(ROOT, "deployments", `${NETWORK}.json`);
 const dep = existsSync(depFile) ? JSON.parse(readFileSync(depFile, "utf8")) : { contracts: {} };
 const save = () => writeFileSync(depFile, `${JSON.stringify(dep, null, 2)}\n`);
 
@@ -36,7 +38,7 @@ async function publish() {
   if (!url) throw new Error(`no FastFS URL in:\n${uploaded}`);
   const key = process.env.NEARAI_API_KEY;
   if (!key) throw new Error("NEARAI_API_KEY is not set");
-  const caller = process.env.ENCLAVE_ACCOUNT_ID ?? "enclave.parry.testnet";
+  const caller = process.env.ENCLAVE_ACCOUNT_ID ?? `enclave.${dep.root ?? "parry.testnet"}`;
   sh(["outlayer", "secrets", "set", JSON.stringify({ NEARAI_API_KEY: key }), "--profile", "parry", "--wasm-hash", hash, "--access", `whitelist:${caller}`]);
   dep.enclave = { ...(dep.enclave ?? {}), wasmSha256: hash, wasmUrl: url, secretsProfile: "parry", secretsOwner: process.env.OUTLAYER_ACCOUNT ?? caller };
   save();

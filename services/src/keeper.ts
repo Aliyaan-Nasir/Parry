@@ -2,8 +2,9 @@
  * Keeper: keeps the testnet oracle fed with the live prices mainnet lending uses, has the enclave report the vault's
  * hedge and reserves, rebalances the hedge (the vault builds and Chain Signatures signs the
  * order; this service submits it to Hyperliquid), processes the withdrawal queue, liquidates the
- * unprotected demo positions it watches, warns about expiring mandates, and checks that the
- * indexer keeps up with the chain. It transacts on gas-key lanes, so these run in parallel.
+ * unprotected demo positions it watches, warns about expiring mandates, keeps the risk board's
+ * sealing key equal to the enclave's, and checks that the indexer keeps up with the chain. It
+ * transacts on gas-key lanes, so these run in parallel.
  */
 
 import { contract, intEnv, network, NEAR_USD, USDC_USD } from "./lib/config";
@@ -64,6 +65,21 @@ async function vaultReport(sql: Sql): Promise<string> {
   await sql`INSERT INTO vault_history (t, share_price, nav, score, hedged) VALUES (date_trunc('minute', now()), ${Number(state.share_price_e6) / 1e6}, ${Number(state.nav_e6) / 1e6},
     ${state.risk_score}, ${target > 0 ? Number(state.hedge.current_e8) / target : 0}) ON CONFLICT (t) DO NOTHING`;
   return `report ${txHash(o)}, score ${report.score}`;
+}
+
+/**
+ * Keeps the risk board's sealing key equal to the enclave's: owners seal their policies to the
+ * key the board publishes, and only the enclave's signed `sealing_key` report can set it.
+ */
+async function sealingKey(): Promise<string> {
+  if (!keeper) throw new Error("KEEPER wallet is not configured");
+  type Keys = { public_key: string; sealing_public_key: string; report_json: string; signature: string };
+  const run = await runEnclave<Keys>("keys");
+  const onBoard = await view<{ public_key: string } | null>(contract("risk"), "sealing_key").catch(() => null);
+  if (onBoard?.public_key === run.output.sealing_public_key) return `current (${run.output.sealing_public_key.slice(0, 12)})`;
+  const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 50 });
+  log.info("sealing key published", { tx: txHash(o), key: run.output.sealing_public_key });
+  return `published in ${txHash(o)}`;
 }
 
 async function rebalance(): Promise<string> {
@@ -150,6 +166,7 @@ export async function main() {
   const sql = db();
   await migrate(sql);
   every(intEnv("FEED_MS", 20_000), "feed", track("feed", feed));
+  every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", rebalance));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));

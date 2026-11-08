@@ -15,10 +15,25 @@ import { oraclePrices, readAave, readHyperliquid, readRhea } from "./lib/positio
 let lastOk = 0;
 let lastError = "";
 
+type MandateView = { expired: boolean; paused_until: number; mandate: { evm: { pool: string; address: string } | null } } | null;
+const mandates = new Map<string, { at: number; m: MandateView }>();
+
+/** An account's mandate, read at most once a minute. */
+async function mandateOf(account: string): Promise<MandateView> {
+  const hit = mandates.get(account);
+  if (hit && Date.now() - hit.at < 60_000) return hit.m;
+  const m = await view<MandateView>(account, "mandate", {});
+  mandates.set(account, { at: Date.now(), m });
+  return m;
+}
+
+/** A position is protected while its account has a live mandate: only those go to the guardian. */
+const guarded = (m: MandateView) => !!m && !m.expired && m.paused_until * 1000 <= Date.now();
+
 async function watched(sql: Sql): Promise<{ account: string; protected: boolean }[]> {
   const rows = await sql<{ account: string; p: boolean }[]>`
     SELECT account, true AS p FROM accounts UNION SELECT account, false AS p FROM liquidation_watch`;
-  return rows.map((r) => ({ account: r.account, protected: r.p }));
+  return Promise.all(rows.map(async (r) => ({ account: r.account, protected: r.p && guarded(await mandateOf(r.account).catch(() => null)) })));
 }
 
 async function upsert(sql: Sql, id: string, account: string, venue: string, label: string, raw: unknown, collateralUsd: number, debtUsd: number) {
@@ -67,7 +82,7 @@ async function tickAave(sql: Sql) {
   const accounts = await sql<{ account: string; evm_address: string | null }[]>`SELECT account, evm_address FROM accounts`;
   for (const a of accounts) {
     try {
-      const m = await view<{ mandate: { evm: { pool: string; address: string } | null } } | null>(a.account, "mandate", {});
+      const m = await mandateOf(a.account);
       const guard = m?.mandate.evm;
       if (!guard) continue;
       const r = await readAave(guard.pool, guard.address);

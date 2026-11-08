@@ -187,7 +187,8 @@ export async function tick(sql: Sql) {
   const run = await runEnclave<GuardianOutput>("guardian", accounts);
   for (const d of run.output.decisions) await carryOut(sql, d);
   for (const s of run.output.skipped) {
-    if (s.reason === "no action needed") await sql`DELETE FROM guardian_queue WHERE account = ${s.account}`;
+    // Nothing to do, or nothing the guardian may do: the risk engine queues it again if that changes.
+    if (s.reason === "no action needed" || /no mandate|expired|paused|another guardian key/.test(s.reason)) await sql`DELETE FROM guardian_queue WHERE account = ${s.account}`;
     else log.info("guardian skipped", { account: s.account, reason: s.reason });
   }
   await sql`UPDATE guardian_queue SET last_run_at = now() WHERE account = ANY(${accounts})`;

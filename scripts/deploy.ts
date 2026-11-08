@@ -1,14 +1,21 @@
 /**
- * Deploys Parry to testnet from reproducible builds, step by step and idempotently (a step that
- * is already done is skipped, so a rerun picks up where a failure stopped).
+ * Deploys Parry from reproducible builds, step by step and idempotently (a step that is already
+ * done is skipped, so a rerun picks up where a failure stopped).
  *
  *   bun scripts/deploy.ts [--wasm-dir contracts/target/near-reproducible/<commit>] [--enclave-key ed25519:...] [--enclave-wasm-sha256 <hex>]
+ *   bun scripts/deploy.ts --network mainnet [...]                     print the mainnet plan and its cost, send nothing
+ *   bun scripts/deploy.ts --network mainnet --confirm-mainnet [...]   deploy to mainnet (MAINNET.md; only with the owner's go-ahead)
  *
- * Keys: the root `parry.testnet` and every account this script creates keep their keys in the
- * NEAR CLI's legacy keychain (~/.near-credentials/testnet/<account>.json), never in the repo;
- * service wallet keys are also written to the gitignored `.env.services`.
- * Output: deployments/testnet.json (account, code hash, transaction and commit per contract).
- * #mainnet: mainnet deploys use MAINNET.md's steps and wait for the owner's go-ahead.
+ * Testnet deploys everything, including the test tokens, the oracle with the market shock, the
+ * lending contract (mainnet's exact wasm) and a seeded exchange pool. #mainnet deploys only
+ * Parry's own contracts (risk board, vault, the published account code and the factory) and
+ * wires them to mainnet's live lending, oracle, exchange, wNEAR, LiNEAR, USDC and MPC signer,
+ * as deployments/mainnet.json plans them.
+ *
+ * Keys: the root account and every account this script creates keep their keys in the NEAR
+ * CLI's legacy keychain (~/.near-credentials/<network>/<account>.json), never in the repo;
+ * service wallet keys are also written to the gitignored `.env.services` (`.env.services.mainnet`).
+ * Output: deployments/<network>.json (account, code hash, transaction and commit per contract).
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,9 +26,22 @@ import { generateKey, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
 
 const ROOT_DIR = join(import.meta.dir, "..");
-const NETWORK = "testnet";
-const RPC = process.env.NEAR_RPC_URL ?? "https://test.rpc.fastnear.com";
-const ROOT = process.env.PARRY_ROOT ?? "parry.testnet";
+const argv = process.argv;
+const NETWORK: "testnet" | "mainnet" = argv[argv.indexOf("--network") + 1] === "mainnet" && argv.includes("--network") ? "mainnet" : "testnet";
+const MAINNET = NETWORK === "mainnet";
+const CONFIRMED = argv.includes("--confirm-mainnet");
+/** #mainnet: the plan (root, live protocol ids, exchange pool, vault parameters). */
+const planned = MAINNET
+  ? (JSON.parse(readFileSync(join(ROOT_DIR, "deployments", "mainnet.json"), "utf8")) as {
+      root: string;
+      status: string;
+      external: Record<string, string>;
+      dexPool: number;
+      params: { hyperliquidNearIndex: number; hedgeRatioBps: number; maxLeverageX100: number; bandBps: number; depositCapNear: string; minDepositNear: string };
+    })
+  : null;
+const RPC = process.env.NEAR_RPC_URL ?? (MAINNET ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com");
+const ROOT = process.env.PARRY_ROOT ?? (planned ? planned.root : "parry.testnet");
 const BOOTSTRAP = process.env.PARRY_BOOTSTRAP ?? "d0dab28d069e68db06179a10ed526611b888b62179bf1cf510217de2127c8a11";
 const CRED_DIR = join(homedir(), ".near-credentials", NETWORK);
 const NEAR = 10n ** 24n;
@@ -35,8 +55,23 @@ const arg = (name: string) => {
 const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: ROOT_DIR }).stdout.toString().trim();
 const wasmDir = arg("wasm-dir") ?? join(ROOT_DIR, "contracts", "target", "near-reproducible", commit);
 const depFile = join(ROOT_DIR, "deployments", `${NETWORK}.json`);
-type Dep = { network: string; status: string; root: string; commit: string; contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string }>; dexPool?: number; enclave?: Record<string, string>; services?: Record<string, string>; updatedAt?: string };
-const dep: Dep = existsSync(depFile) ? JSON.parse(readFileSync(depFile, "utf8")) : { network: NETWORK, status: "deployed", root: ROOT, commit, contracts: {} };
+type Dep = {
+  network: string;
+  status: string;
+  root: string;
+  commit: string;
+  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string }>;
+  dexPool?: number;
+  enclave?: Record<string, string>;
+  services?: Record<string, string>;
+  external?: Record<string, string>;
+  params?: unknown;
+  updatedAt?: string;
+};
+const fresh: Dep = { network: NETWORK, status: "deployed", root: ROOT, commit, contracts: {} };
+const recorded: Dep | null = existsSync(depFile) ? JSON.parse(readFileSync(depFile, "utf8")) : null;
+// The mainnet file starts as the plan; the first confirmed run turns it into the record.
+const dep: Dep = recorded && recorded.status !== "planned" ? recorded : { ...fresh, ...(planned ? { external: planned.external, dexPool: planned.dexPool, params: planned.params } : {}) };
 
 function save() {
   mkdirSync(join(ROOT_DIR, "deployments"), { recursive: true });
@@ -167,9 +202,49 @@ async function deploy(name: string, id: string, init: { method: string; args: ob
   console.log(`deployed ${id} ${hash} (${hashOf(o)})`);
 }
 
+/** Contract accounts and their opening balances (code storage plus room for state). */
+const CONTRACT_ACCOUNTS: readonly (readonly [string, number])[] = MAINNET
+  ? [["risk", 4], ["vault", 4], ["accounts", 3]]
+  : [["usdc", 4], ["boost", 3], ["oracle", 4], ["risk", 6], ["lending", 13], ["vault", 6], ["accounts", 5]];
+/** Service wallets (the agent wallet backs the MCP write tools, which exist on testnet only). */
+const WALLETS: readonly (readonly [string, number])[] = MAINNET
+  ? [["treasury", 5], ["monitor", 2], ["guardian", 2], ["keeper", 3], ["relayer", 5], ["api", 0.5], ["enclave", 2]]
+  : [["treasury", 2], ["monitor", 3], ["guardian", 5], ["keeper", 6], ["relayer", 6], ["api", 1], ["agent", 3], ["enclave", 4]];
+/** Protocols Parry uses but does not own; on testnet the lending, oracle and USDC ids are filled in once deployed. */
+const X: Record<string, string> = planned
+  ? { ...planned.external }
+  : { wnear: "wrap.testnet", linear: "linear-protocol.testnet", dex: "ref-finance-101.testnet", signer: "v1.signer-prod.testnet" };
+
+/** The storage NEAR a contract's code locks (1 NEAR per 100 kB), and ten times that, burnt, for global code. */
+const storageNear = (bytes: number) => bytes / 100_000;
+
+/** #mainnet: what a confirmed run would create and spend, checked against the root's balance. */
+async function mainnetPlan(): Promise<void> {
+  const code = (name: string) => readFileSync(join(wasmDir, `parry_${name}.wasm`)).length;
+  const rows: [string, number][] = [];
+  for (const [name, bal] of CONTRACT_ACCOUNTS) rows.push([`${name}.${ROOT}: account with ${name === "accounts" ? "the factory" : `the ${name}`} (${(code(name === "accounts" ? "accounts" : name) / 1000).toFixed(0)} kB of code)`, bal]);
+  for (const [name, bal] of WALLETS) rows.push([`${name}.${ROOT}: service wallet`, bal]);
+  rows.push(["gas-key lanes for monitor, keeper and relayer (1.5 NEAR each)", 4.5]);
+  const accountCode = code("account");
+  rows.push([`publish the protected-account code by hash (${(accountCode / 1000).toFixed(0)} kB, burns 10x storage)`, storageNear(accountCode) * 10]);
+  rows.push(["transaction fees and storage registrations (LiNEAR, wNEAR, USDC)", 1]);
+  const total = rows.reduce((a, [, n]) => a + n, 0);
+  console.log(`#mainnet plan under ${ROOT} (dry run: nothing is sent without --confirm-mainnet)\n`);
+  for (const [what, n] of rows) console.log(`  ${n.toFixed(2).padStart(7)} NEAR  ${what}`);
+  console.log(`  ${total.toFixed(2).padStart(7)} NEAR  total from ${ROOT}\n`);
+  const root = await account(ROOT);
+  console.log(root ? `${ROOT} holds ${(Number(BigInt(root.amount) / 10n ** 21n) / 1000).toFixed(2)} NEAR` : `${ROOT} does not exist yet: register it with a mainnet wallet first`);
+  console.log(keyOf(ROOT) ? `a key for ${ROOT} is in ${CRED_DIR}` : `no key for ${ROOT} in ${CRED_DIR}`);
+  console.log(`wired to: ${Object.entries(X).map(([k, v]) => `${k} ${v}`).join(", ")}, exchange pool ${planned!.dexPool}`);
+}
+
 async function main() {
+  if (MAINNET && !CONFIRMED) return mainnetPlan();
   step("root account");
-  if (!(await account(ROOT))) {
+  if (MAINNET) {
+    if (!(await account(ROOT))) throw new Error(`${ROOT} does not exist: register it with a mainnet wallet first (MAINNET.md)`);
+    console.log(`exists  ${ROOT}`);
+  } else if (!(await account(ROOT))) {
     const boot = keyOf(BOOTSTRAP);
     if (!boot) throw new Error(`no key for the bootstrap account ${BOOTSTRAP}`);
     const bal = await account(BOOTSTRAP);
@@ -184,9 +259,9 @@ async function main() {
 
   step("contract and wallet accounts");
   const ids: Record<string, string> = {};
-  for (const [n, bal] of [["usdc", 4], ["boost", 3], ["oracle", 4], ["risk", 6], ["lending", 13], ["vault", 6], ["accounts", 5]] as const) ids[n] = await subaccount(n, bal);
+  for (const [n, bal] of CONTRACT_ACCOUNTS) ids[n] = await subaccount(n, bal);
   const wallets: Record<string, string> = {};
-  for (const [n, bal] of [["treasury", 2], ["monitor", 3], ["guardian", 5], ["keeper", 6], ["relayer", 6], ["api", 1], ["agent", 3], ["enclave", 4]] as const) wallets[n] = await subaccount(n, bal);
+  for (const [n, bal] of WALLETS) wallets[n] = await subaccount(n, bal);
   dep.services = wallets;
   save();
 
@@ -218,12 +293,29 @@ async function main() {
     const P = svc.toUpperCase();
     env.push(`${P}_ACCOUNT_ID=${id}`, `${P}_PRIVATE_KEY=${g.private_key}`, `${P}_PUBLIC_KEY=${g.public_key}`, `${P}_LANES=${g.lanes}`);
   }
-  for (const svc of ["guardian", "treasury", "agent"]) {
+  for (const svc of ["guardian", "treasury", "agent"].filter((w) => wallets[w])) {
     env.push(`${svc.toUpperCase()}_ACCOUNT_ID=${wallets[svc]}`, `${svc.toUpperCase()}_PRIVATE_KEY=${keyOf(wallets[svc]!)}`);
   }
-  writeFileSync(join(ROOT_DIR, ".env.services"), `${env.join("\n")}\n`, { mode: 0o600 });
-  console.log("wrote .env.services (gitignored)");
+  const envFile = MAINNET ? ".env.services.mainnet" : ".env.services";
+  writeFileSync(join(ROOT_DIR, envFile), `${env.join("\n")}\n`, { mode: 0o600 });
+  console.log(`wrote ${envFile} (gitignored)`);
 
+  if (!MAINNET) await testnetOnly(ids, wallets);
+  else {
+    // #mainnet: the vault holds LiNEAR, wNEAR and USDC, so it registers with each.
+    for (const t of [X.linear!, X.wnear!, X.usdc!]) {
+      const reg = await viewCall<unknown>(t, "storage_balance_of", { account_id: ids.vault }).catch(() => null);
+      if (!reg) await call(ROOT, t, "storage_deposit", { account_id: ids.vault, registration_only: true }, near(0.0125), 30);
+    }
+    dep.dexPool = planned!.dexPool;
+    save();
+  }
+  await shared(ids, wallets);
+  console.log(`\nDone. deployments/${NETWORK}.json is up to date.`);
+}
+
+/** Test tokens, the oracle, the lending contract and the exchange pool: testnet only. */
+async function testnetOnly(ids: Record<string, string>, wallets: Record<string, string>) {
   step("test tokens");
   await deploy("token", ids.usdc!, { method: "new", args: { owner_id: ROOT, name: "USD Coin (Parry test)", symbol: "USDC", decimals: 6, icon: null, faucet_amount: "1000000000", faucet_period_secs: 3600 } });
   dep.contracts.usdc = dep.contracts.token!;
@@ -293,7 +385,13 @@ async function main() {
     save();
     console.log(`pool ${pool}: ${poolNear} wNEAR / ${Number(usdcIn) / 1e6} USDC`);
   }
+  X.lending = ids.lending!;
+  X.oracle = ids.oracle!;
+  X.usdc = ids.usdc!;
+}
 
+/** The risk board, the vault, the published account code and the factory, on either network. */
+async function shared(ids: Record<string, string>, wallets: Record<string, string>) {
   step("risk board");
   const enclaveKey = arg("enclave-key") ?? dep.enclave?.publicKey;
   const enclaveHash = arg("enclave-wasm-sha256") ?? dep.enclave?.wasmSha256;
@@ -301,15 +399,22 @@ async function main() {
   dep.enclave = { ...(dep.enclave ?? {}), publicKey: enclaveKey, wasmSha256: enclaveHash };
   save();
   await deploy("risk", ids.risk!, { method: "new", args: { owner_id: ROOT, enclave_key: enclaveKey, wasm_sha256: enclaveHash, vault: ids.vault } });
+  // The enclave's signed sealing-key report (scripts/enclave.ts keys): owners seal policies to it.
+  const sealing = await viewCall<{ public_key: string } | null>(ids.risk!, "sealing_key").catch(() => null);
+  if (dep.enclave.sealingReport && sealing?.public_key !== dep.enclave.sealingPublicKey) {
+    const o = await call(ROOT, ids.risk!, "submit", { report_json: dep.enclave.sealingReport, signature: dep.enclave.sealingSignature }, 0n, 50);
+    console.log(`sealing key ${dep.enclave.sealingPublicKey} (${hashOf(o)})`);
+  }
 
   step("vault");
+  const v = planned?.params ?? { hyperliquidNearIndex: 54, hedgeRatioBps: 9000, maxLeverageX100: 300, bandBps: 200, depositCapNear: "500", minDepositNear: "0.5" };
   await deploy("vault", ids.vault!, { method: "new", args: {
-    owner_id: ROOT, network: NETWORK, risk: ids.risk, keeper: wallets.keeper, linear: "linear-protocol.testnet", wnear: "wrap.testnet", usdc: ids.usdc, oracle: ids.oracle, signer: "v1.signer-prod.testnet",
-    hedge: { asset: "NEAR", asset_index: 54, sz_decimals: 1, hedge_ratio_bps: 9000, max_leverage_x100: 300, band_bps: 200 },
-    deposit_cap: near(500).toString(), min_deposit: near(0.5).toString(),
+    owner_id: ROOT, network: NETWORK, risk: ids.risk, keeper: wallets.keeper, linear: X.linear, wnear: X.wnear, usdc: X.usdc, oracle: X.oracle, signer: X.signer,
+    hedge: { asset: "NEAR", asset_index: v.hyperliquidNearIndex, sz_decimals: 1, hedge_ratio_bps: v.hedgeRatioBps, max_leverage_x100: v.maxLeverageX100, band_bps: v.bandBps },
+    deposit_cap: near(Number(v.depositCapNear)).toString(), min_deposit: near(Number(v.minDepositNear)).toString(),
   } });
-  const linReg = await viewCall<unknown>("linear-protocol.testnet", "storage_balance_of", { account_id: ids.vault }).catch(() => null);
-  if (!linReg) await call(ROOT, "linear-protocol.testnet", "storage_deposit", { account_id: ids.vault, registration_only: true }, near(0.01), 30);
+  const linReg = await viewCall<unknown>(X.linear!, "storage_balance_of", { account_id: ids.vault }).catch(() => null);
+  if (!linReg) await call(ROOT, X.linear!, "storage_deposit", { account_id: ids.vault, registration_only: true }, near(0.01), 30);
 
   step("protected-account code (global, by hash) and the factory");
   const acctCode = wasm("account");
@@ -323,18 +428,17 @@ async function main() {
     save();
     console.log(`published account code ${acctHash} (${hashOf(o)})`);
   }
+  // The lending contract's own asset settings: wNEAR with no extra decimals, USDC with 12.
   const protocol = {
-    lending: ids.lending, oracle: ids.oracle, dex: "ref-finance-101.testnet", risk: ids.risk, signer: "v1.signer-prod.testnet", factory: ids.accounts,
+    lending: X.lending, oracle: X.oracle, dex: X.dex, risk: ids.risk, signer: X.signer, factory: ids.accounts,
     tokens: [
-      { token_id: "wrap.testnet", symbol: "wNEAR", decimals: 24, extra_decimals: 0, price_id: "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750", rate_call: null, mark: "NEAR" },
-      { token_id: ids.usdc, symbol: "USDC", decimals: 6, extra_decimals: 12, price_id: "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a", rate_call: null, mark: null },
+      { token_id: X.wnear, symbol: "wNEAR", decimals: 24, extra_decimals: 0, price_id: NEAR_USD_ID, rate_call: null, mark: "NEAR" },
+      { token_id: X.usdc, symbol: "USDC", decimals: 6, extra_decimals: 12, price_id: USDC_USD_ID, rate_call: null, mark: null },
     ],
   };
   await deploy("accounts", ids.accounts!, { method: "new", args: { owner: ROOT, network: NETWORK, protocol, account_code: acctHash } });
   dep.contracts.factory = dep.contracts.accounts!;
   save();
-
-  console.log(`\nDone. deployments/${NETWORK}.json is up to date.`);
 }
 
 await main();

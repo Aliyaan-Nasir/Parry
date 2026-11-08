@@ -149,7 +149,15 @@ export interface Decision {
   envelope: string | null;
   /** The enclave's ed25519 signature over the envelope (standard base64), when published. */
   envelopeSignature?: string | null;
-  txs: { action: string | null; record: string | null; hyperliquid: string | null; evm: string | null };
+  txs: {
+    action: string | null;
+    record: string | null;
+    hyperliquid: string | null;
+    evm: string | null;
+    /** The NEAR transaction in which the MPC network verified the EVM transaction. */
+    evmVerify?: string | null;
+    evmVerified?: "verified" | "failed" | null;
+  };
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
