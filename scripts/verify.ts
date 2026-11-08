@@ -147,7 +147,7 @@ async function main() {
   });
 
   await check("Protected accounts are created from published global code, by hash", async () => {
-    const cfg = await view<{ account_code: string; created: number }>(dep.contracts.factory?.account ?? `accounts.${NETWORK === "testnet" ? "parry.testnet" : "parry.near"}`, "config");
+    const cfg = await view<{ account_code: string; created: number }>(dep.contracts.factory?.account ?? `accounts.${NETWORK === "testnet" ? "parry.testnet" : "parryguard.near"}`, "config");
     if (cfg.account_code !== dep.contracts.account?.codeHash) throw new Error(`factory uses ${cfg.account_code}, recorded ${dep.contracts.account?.codeHash}`);
     return `code ${cfg.account_code}; ${cfg.created} accounts created`;
   });

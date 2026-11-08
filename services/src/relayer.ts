@@ -65,14 +65,17 @@ async function delegate(sql: Sql, body: { payload?: string; signedDelegateAction
   return { txHash: txHash(o) };
 }
 
-/** Testnet market shock for people without a NEAR wallet: the oracle itself bounds and rate limits it. */
+/**
+ * Testnet market shock for people without a NEAR wallet: the oracle itself bounds and rate limits
+ * it. `bps: 0` clears the active shock.
+ */
 async function shock(sql: Sql, body: { bps: number }, ip: string) {
   if (network !== "testnet") throw new Error("the market shock exists only on testnet");
   if (!relayer) throw new Error("the relayer wallet is not configured");
   const bps = Math.trunc(Number(body.bps));
-  if (!Number.isFinite(bps) || bps === 0) throw new Error("bps must be a non-zero integer");
+  if (!Number.isFinite(bps)) throw new Error("bps must be an integer (0 clears the shock)");
   if (!(await useQuota(sql, "shock", ip, intEnv("SHOCKS_PER_IP", 20)))) throw new Error("too many shocks from this address today");
-  const o = await relayer.call({ receiverId: contract("oracle"), methodName: bps === 0 ? "reset_shock" : "shock", args: { price_id: NEAR_USD, bps }, tgas: 30 });
+  const o = await relayer.call({ receiverId: contract("oracle"), methodName: bps === 0 ? "reset_shock" : "shock", args: bps === 0 ? { price_id: NEAR_USD } : { price_id: NEAR_USD, bps }, tgas: 30 });
   const s = await view<unknown>(contract("oracle"), "shock_of", { price_id: NEAR_USD });
   return { txHash: txHash(o), shock: s };
 }

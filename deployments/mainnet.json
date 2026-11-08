@@ -1,12 +1,18 @@
 {
   "network": "mainnet",
   "status": "planned",
-  "note": "Nothing below parry.near is deployed. MAINNET.md has the steps; they wait for the owner's go-ahead.",
-  "root": "parry.near",
+  "note": "Nothing below parryguard.near is deployed. MAINNET.md has the steps; they wait for the owner's go-ahead.",
+  "root": "parryguard.near",
   "contracts": {
-    "factory": { "account": "accounts.parry.near" },
-    "risk": { "account": "risk.parry.near" },
-    "vault": { "account": "vault.parry.near" }
+    "factory": {
+      "account": "accounts.parryguard.near"
+    },
+    "risk": {
+      "account": "risk.parryguard.near"
+    },
+    "vault": {
+      "account": "vault.parryguard.near"
+    }
   },
   "external": {
     "lending": "contract.main.burrow.near",
@@ -18,6 +24,7 @@
     "signer": "v1.signer",
     "outlayer": "outlayer.near"
   },
+  "dexPool": 4512,
   "params": {
     "hyperliquidNearIndex": 74,
     "hedgeRatioBps": 9000,

@@ -35,12 +35,12 @@ const DEFAULT_CONTRACTS: Record<Network, Record<string, string>> = {
     signer: "v1.signer-prod.testnet",
     outlayer: "outlayer.testnet",
   },
-  // #mainnet: Parry's own contracts are planned under parry.near; the rest are live.
+  // #mainnet: Parry's own contracts are planned under parryguard.near; the rest are live.
   mainnet: {
-    factory: "accounts.parry.near",
-    vault: "vault.parry.near",
-    risk: "risk.parry.near",
-    oracle: "pyth-oracle.near",
+    factory: "accounts.parryguard.near",
+    vault: "vault.parryguard.near",
+    risk: "risk.parryguard.near",
+    oracle: "aggregate-oracle.near",
     lending: "contract.main.burrow.near",
     usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
     wnear: "wrap.near",

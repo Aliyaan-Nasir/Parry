@@ -51,10 +51,10 @@ export const NETWORKS: Readonly<Record<Network, NetworkDefaults>> = {
   mainnet: {
     network: "mainnet",
     contracts: {
-      factory: "accounts.parry.near",
-      vault: "vault.parry.near",
-      risk: "risk.parry.near",
-      oracle: "pyth-oracle.near",
+      factory: "accounts.parryguard.near",
+      vault: "vault.parryguard.near",
+      risk: "risk.parryguard.near",
+      oracle: "aggregate-oracle.near",
       lending: "contract.main.burrow.near",
       dex: "v2.ref-finance.near",
       signer: "v1.signer",

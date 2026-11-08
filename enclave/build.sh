@@ -25,7 +25,8 @@ export PARRY_NETWORK="$network"
 # The deployed ids come from deployments/<network>.json when it exists.
 dep="../deployments/$network.json"
 if [ -f "$dep" ]; then
-  get() { python3 -c "import json,sys; d=json.load(open('$dep')); print(d.get('contracts',{}).get('$1',{}).get('account','') or d.get('$1',''))"; }
+  # Parry's own contracts are under `contracts`; on mainnet, lending, oracle and USDC are `external`.
+  get() { python3 -c "import json,sys; d=json.load(open('$dep')); print(d.get('contracts',{}).get('$1',{}).get('account','') or d.get('external',{}).get('$1','') or d.get('$1',''))"; }
   for pair in RISK:risk VAULT:vault LENDING:lending ORACLE:oracle USDC:usdc; do
     var="PARRY_${pair%%:*}"; val="$(get "${pair##*:}")"
     [ -n "$val" ] && [ -z "${!var:-}" ] && export "$var=$val"

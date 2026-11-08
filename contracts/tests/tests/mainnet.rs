@@ -104,7 +104,7 @@ async fn mainnet_configuration_rescues_a_position_and_runs_a_vault_cycle() -> Re
 
     let sandbox_root = worker.root_account()?;
     let second = sub(&sandbox_root, "circle", 10).await?;
-    let root = top_level(&worker, "parry.near", 2_000).await?;
+    let root = top_level(&worker, "parryguard.near", 2_000).await?;
     let signer = top_level(&worker, "v1.signer", 10).await?;
     signer.deploy(&wasm("parry_test_mock_signer")).await?.into_result()?;
     let oracle = top_level(&worker, "aggregate-oracle.near", 10).await?;
@@ -287,7 +287,7 @@ async fn mainnet_configuration_rescues_a_position_and_runs_a_vault_cycle() -> Re
     )
     .await?;
 
-    // Parry under parry.near, network "mainnet".
+    // Parry under parryguard.near, network "mainnet".
     let enclave = SigningKey::from_bytes(&[77u8; 32]);
     let risk = sub(&root, "risk", 20).await?;
     risk.deploy(&wasm("parry_risk")).await?.into_result()?;
