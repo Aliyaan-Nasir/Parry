@@ -8,12 +8,13 @@
 import type { FinalExecutionOutcome } from "near-kit";
 import { contract, intEnv } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
+import { APPROVAL_TOPIC, assembleSigned, broadcast, finalizedBlock, receipt, REPAY_TOPIC, signerOf, verifyOnNear, waitForReceipt } from "./lib/evm";
 import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
 import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
 import { eventsOf, returnValue, senderFromEnv, TxError, txHash } from "./lib/near";
-import { oraclePrices, readRhea } from "./lib/positions";
+import { derivedAddress, oraclePrices, PATH_EVM, readRhea } from "./lib/positions";
 import { quoteRescue } from "./lib/routes";
 
 const wallet = senderFromEnv("GUARDIAN");
@@ -60,6 +61,29 @@ function outcomeOf(o: FinalExecutionOutcome): { outcome: string; detail: string 
   return { outcome: "executed", detail: "" };
 }
 
+type EvmSignature = { r: string; s: string; v: number };
+
+/**
+ * Adds the MPC signature to the transaction the account built, checks it recovers to the
+ * person's own derived address, broadcasts it and waits for the receipt. The keeper later has the
+ * MPC network verify it once final (`txs.evm_verify`).
+ */
+async function sendEvm(account: string, o: FinalExecutionOutcome, txs: Record<string, string | null>, outcome: string, detail: string) {
+  const sig = returnValue<EvmSignature | null>(o);
+  const signed = eventsOf(o).find((e) => e.standard === "parry-account" && e.event === "evm_signed")?.data as { unsigned_tx: string } | undefined;
+  if (!sig || !signed) return { outcome: outcome === "executed" ? "refused" : outcome, detail: detail || "the account did not sign the EVM transaction" };
+  const own = await derivedAddress(account, PATH_EVM);
+  if (signerOf(signed.unsigned_tx, sig).toLowerCase() !== own.toLowerCase()) {
+    return { outcome: "failed", detail: "the MPC signature does not recover to the account's EVM address" };
+  }
+  const hash = await broadcast(assembleSigned(signed.unsigned_tx, sig));
+  txs.evm = hash;
+  const r = await waitForReceipt(hash);
+  if (!r) return { outcome, detail: "broadcast; the receipt is not in yet" };
+  if (r.status !== "0x1") return { outcome: "failed", detail: "the EVM transaction reverted" };
+  return { outcome, detail };
+}
+
 async function carryOut(sql: Sql, d: EnclaveDecision) {
   const id = JSON.parse(d.decision_json ?? "{}").id ?? d.review_hash;
   const actionName = Object.keys(d.action)[0] ?? "unknown";
@@ -94,6 +118,9 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
           outcome = "refused";
         }
       }
+      if (actionName === "evm_approve" || actionName === "evm_repay") {
+        ({ outcome, detail } = await sendEvm(d.account, o, txs, outcome, detail));
+      }
     } catch (e) {
       outcome = "refused";
       detail = errorText(e);
@@ -114,6 +141,42 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
   await sql`INSERT INTO alerts (account, kind, severity, key, title, body) VALUES (${d.account}, 'guardian', 'info', ${`guardian:${id}`},
     ${`Guardian ${outcome.replace("_", " ")}: ${actionName.replace("_", " ")}`}, ${d.plan}) ON CONFLICT DO NOTHING`;
   log.info("guardian decision", { account: d.account, action: actionName, outcome, tx: txs.action });
+}
+
+/**
+ * Once an EVM rescue's block is final, the MPC network verifies the transaction on the foreign
+ * chain and signs what it found (the block hash and the repay or approval log), so the outcome
+ * is attested on NEAR as well as on the EVM chain.
+ */
+export async function verifyEvm(sql: Sql): Promise<number> {
+  if (!wallet) return 0;
+  const rows = await sql<{ id: string; action: string; txs: Record<string, string | null> }[]>`SELECT id, action, txs FROM decisions
+    WHERE txs->>'evm' IS NOT NULL AND txs->>'evm_verify' IS NULL AND outcome = 'executed' AND created_at > now() - interval '2 days' ORDER BY created_at LIMIT 5`;
+  if (rows.length === 0) return 0;
+  const final = await finalizedBlock();
+  let done = 0;
+  for (const row of rows) {
+    const r = await receipt(row.txs.evm!).catch(() => null);
+    if (!r || Number(BigInt(r.blockNumber)) > final) continue;
+    const topic = row.action === "evm_repay" ? REPAY_TOPIC : APPROVAL_TOPIC;
+    const found = r.logs.find((l) => l.topics[0]?.toLowerCase() === topic);
+    let tx: string | null = null;
+    let result: unknown = null;
+    try {
+      const o = await verifyOnNear(wallet, row.txs.evm!, found ? Number(BigInt(found.logIndex)) : null);
+      tx = txHash(o);
+      result = returnValue(o) ?? null;
+    } catch (e) {
+      log.warn("foreign transaction verification failed", { decision: row.id, error: errorText(e) });
+      if (!(e instanceof TxError) || !e.hash) continue;
+      tx = e.hash;
+    }
+    const payloadHash = (result as { payload_hash?: string } | null)?.payload_hash ?? null;
+    await sql`UPDATE decisions SET txs = txs || ${sql.json({ evm_verify: tx, evm_verified: payloadHash ? "verified" : "failed" } as never)} WHERE id = ${row.id}`;
+    log.info("foreign transaction verified", { decision: row.id, near: tx, payloadHash });
+    done++;
+  }
+  return done;
 }
 
 export async function tick(sql: Sql) {
@@ -144,6 +207,9 @@ export async function main() {
       await setStatus(sql, "guardian", false, lastDetail);
       throw e;
     }
+  });
+  every(intEnv("EVM_VERIFY_MS", 60_000), "evm-verify", async () => {
+    await verifyEvm(sql);
   });
   serveHealth("guardian", intEnv("PORT", 4300), async () => ({ ok: !!wallet, detail: wallet ? lastDetail : "GUARDIAN_ACCOUNT_ID and GUARDIAN_PRIVATE_KEY are not set", lastRunAt: lastRun ? new Date(lastRun).toISOString() : null }));
 }

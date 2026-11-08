@@ -4,7 +4,7 @@
  * every 60 s (public RPCs are rate limited), and price samples for the Tremor index.
  */
 
-import { contract, intEnv } from "./lib/config";
+import { contract, EVM, intEnv } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
 import { mid } from "./lib/hyperliquid";
@@ -75,7 +75,7 @@ async function tickAave(sql: Sql) {
         await sql`DELETE FROM positions WHERE id = ${`${a.account}:aave:main`}`;
         continue;
       }
-      await upsert(sql, `${a.account}:aave:main`, a.account, "aave", "Aave on Sepolia", { ...r, pool: guard.pool, address: guard.address }, r.collateralUsd, r.debtUsd);
+      await upsert(sql, `${a.account}:aave:main`, a.account, "aave", `Aave on ${EVM.name}`, { ...r, pool: guard.pool, address: guard.address }, r.collateralUsd, r.debtUsd);
     } catch (e) {
       log.warn("aave read failed", { account: a.account, error: errorText(e) });
     }

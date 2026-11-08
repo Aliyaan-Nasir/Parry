@@ -16,6 +16,8 @@ case "$network" in
     export PARRY_HYPERLIQUID_URL="${PARRY_HYPERLIQUID_URL:-https://api.hyperliquid.xyz}"
     export PARRY_WNEAR="${PARRY_WNEAR:-wrap.near}"
     export PARRY_LINEAR="${PARRY_LINEAR:-linear-protocol.near}"
+    export PARRY_EVM_RPC_URL="${PARRY_EVM_RPC_URL:-https://mainnet.base.org}"
+    export PARRY_EVM_CHAIN_ID="${PARRY_EVM_CHAIN_ID:-8453}"
     ;;
   *) echo "PARRY_NETWORK must be testnet or mainnet" >&2; exit 1 ;;
 esac

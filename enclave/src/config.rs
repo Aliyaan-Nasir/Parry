@@ -26,17 +26,20 @@ cfg!(
     "PARRY_HYPERLIQUID_URL",
     "https://api.hyperliquid-testnet.xyz"
 );
-cfg!(
-    EVM_RPC,
-    "PARRY_EVM_RPC_URL",
-    "https://ethereum-sepolia-rpc.publicnode.com"
-);
+// The EVM chain the guardian repays Aave loans on: Base Sepolia on testnet (the testnet MPC
+// network verifies Base transactions; it has no Ethereum).
+cfg!(EVM_RPC, "PARRY_EVM_RPC_URL", "https://sepolia.base.org");
+cfg!(EVM_CHAIN, "PARRY_EVM_CHAIN_ID", "84532");
 cfg!(NEARAI, "PARRY_NEARAI_URL", "https://cloud-api.near.ai/v1");
 cfg!(MODEL, "PARRY_REVIEW_MODEL", "z-ai/glm-5.3-flash");
 
 pub const NEAR_USD: &str = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
 pub const USDC_USD: &str = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
 pub const HL_SZ_DECIMALS: u32 = 1;
+
+pub fn evm_chain_id() -> u64 {
+    EVM_CHAIN.parse().unwrap_or(0)
+}
 
 pub fn mainnet() -> bool {
     NETWORK == "mainnet"

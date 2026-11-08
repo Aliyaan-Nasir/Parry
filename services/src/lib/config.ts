@@ -76,8 +76,18 @@ export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "te
 
 export const HYPERLIQUID_URL = process.env.HYPERLIQUID_URL ?? (network === "testnet" ? "https://api.hyperliquid-testnet.xyz" : "https://api.hyperliquid.xyz");
 export const HYPERLIQUID_NEAR_INDEX = network === "testnet" ? 54 : 74;
-export const EVM_RPC_URL = process.env.EVM_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
-export const EVM_CHAIN_ID = Number(process.env.EVM_CHAIN_ID ?? 11155111);
+/**
+ * The EVM chain of the Aave rescue: Base Sepolia on testnet (the testnet MPC network verifies
+ * Base transactions, not Ethereum's), Base on mainnet. `foreignChain` is the MPC network's name
+ * for it in `verify_foreign_transaction`.
+ */
+export const EVM = network === "testnet"
+  ? { name: "Base Sepolia", chainId: 84532, foreignChain: "Base", explorer: "https://sepolia.basescan.org",
+      aave: { pool: "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27", usdc: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f", weth: "0x4200000000000000000000000000000000000006" } }
+  : { name: "Base", chainId: 8453, foreignChain: "Base", explorer: "https://basescan.org",
+      aave: { pool: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5", usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", weth: "0x4200000000000000000000000000000000000006" } };
+export const EVM_RPC_URL = process.env.EVM_RPC_URL ?? (network === "testnet" ? "https://sepolia.base.org" : "https://mainnet.base.org");
+export const EVM_CHAIN_ID = EVM.chainId;
 export const FASTNEAR_TX_URL = process.env.FASTNEAR_TX_URL ?? (network === "testnet" ? "https://tx.test.fastnear.com" : "https://tx.main.fastnear.com");
 export const NEAR_USD = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
 export const USDC_USD = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
@@ -86,7 +96,7 @@ export const explorers = {
   near: network === "testnet" ? "https://testnet.nearblocks.io" : "https://nearblocks.io",
   hyperliquid: network === "testnet" ? "https://app.hyperliquid-testnet.xyz/explorer" : "https://app.hyperliquid.xyz/explorer",
   intents: "https://explorer.near-intents.org",
-  evm: "https://sepolia.etherscan.io",
+  evm: EVM.explorer,
 };
 
 export function env(name: string, fallback?: string): string {

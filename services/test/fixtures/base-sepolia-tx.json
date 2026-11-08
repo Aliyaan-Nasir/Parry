@@ -1,0 +1,15 @@
+{
+  "hash": "0x4137360923b90c1a73bf6ffe4b2896134626e27ccccad5b3c5b8879766901c1e",
+  "from": "0x7d341bbbb7e583f6d3159d06bf3cbd29bafb62af",
+  "chainId": "0x14a34",
+  "nonce": "0x8276f",
+  "maxPriorityFeePerGas": "0xf4240",
+  "maxFeePerGas": "0xa7d8c0",
+  "gas": "0x7568",
+  "to": "0x64c2ee8db5538860aa9951ebb491ed8d4a93ab67",
+  "value": "0x0",
+  "input": "0x9932875f01a196cbf9ed7809893b591a12fdcf7900000000000000000000000000000000",
+  "yParity": "0x0",
+  "r": "0x9a6e44c0959788af228433aed5223f17437badafb2dfc7fe0ca6de15f7ef33af",
+  "s": "0x68e664990a4df12be9f771419a715570b7c10e407941e71ddd78c2c63c64d42"
+}

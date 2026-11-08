@@ -207,6 +207,25 @@ pub fn assess_lending(
     }
 }
 
+/// An Aave position from its own health factor. With the collateral moving as one asset,
+/// liquidation is a fall to 1/health of today's price; Parry keeps no history for that asset, so
+/// the default volatility stands in (as `assessAave` in services/src/risk.ts).
+pub fn assess_aave(health: f64) -> Assessment {
+    let sigma = DEFAULT_ANNUAL_VOL / HOURS_PER_YEAR.sqrt();
+    let liq = (health.is_finite() && health > 0.0).then(|| 1.0 / health);
+    let p24 = probability(1.0, liq, sigma, 0.0, 24.0);
+    Assessment {
+        health,
+        liq_price: liq,
+        sigma,
+        annual: DEFAULT_ANNUAL_VOL,
+        trend: 0.0,
+        p24,
+        ttl_hours: median_hours(1.0, liq, sigma, 0.0),
+        score: score(health, p24, DEFAULT_ANNUAL_VOL, 0.0),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

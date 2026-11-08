@@ -8,7 +8,7 @@ use crate::io::{Io, Result};
 use crate::plan::{self, Budgets, Position, Step};
 use crate::risk::{self, Assessment};
 use crate::seal::{self, Policy};
-use crate::{hl, reserves, sha256};
+use crate::{evm, hl, reserves, sha256};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -17,6 +17,7 @@ pub const RISK_DOMAIN: &[u8] = b"parry-risk:v1:";
 pub const ENVELOPE_DOMAIN: &[u8] = b"parry-guardian:v1:";
 const PATH_HL: &str = "parry-hyperliquid";
 const PATH_VAULT: &str = "parry-vault-hedge";
+const PATH_EVM: &str = "parry-evm";
 /// How old the oracle price the guardian acts on may be.
 const PRICE_MAX_AGE: u64 = 300;
 const MAX_ACCOUNTS: usize = 25;
@@ -218,6 +219,8 @@ struct Decided {
     action: Value,
     action_name: &'static str,
     plan: String,
+    /// The position the plan acts on, for the review (the lending position when absent).
+    position: Option<Value>,
 }
 
 /// The lending rescue's first step, within the mandate and the account's balances.
@@ -280,6 +283,7 @@ fn lending_step(
                 venue: "rhea",
                 action: json!({ "repay": { "token": config::USDC, "amount": format!("{}", (usd * 1e6).round() as u128) } }),
                 action_name: "repay",
+                position: None,
                 plan: format!(
                     "Repay {usd:.2} USDC from the reserve: health {} to {} (target {:.2}).",
                     health(&p),
@@ -297,6 +301,7 @@ fn lending_step(
                 venue: "rhea",
                 action: json!({ "add_collateral": { "token": config::WNEAR, "amount": format!("{}", (near * 1e4).round() as u128 * 10u128.pow(20)) } }),
                 action_name: "add_collateral",
+                position: None,
                 plan: format!(
                     "Add {near:.4} wNEAR collateral from the reserve: health {} to {}.",
                     health(&p),
@@ -320,6 +325,7 @@ fn lending_step(
                     "pool_id": pool, "debt": config::USDC, "min_out": format!("{}", (min_out_usd * 1e6).floor() as u128),
                 }}),
                 action_name: "deleverage",
+                position: None,
                 plan: format!(
                     "Sell {near:.4} NEAR of collateral for at least {min_out_usd:.2} USDC and repay: health {} to at least {}.",
                     health(&p),
@@ -396,7 +402,124 @@ fn hyperliquid_step(
             venue: "hyperliquid",
             action: json!({ "hl_reduce": { "order": order, "nonce": io.now() * 1000 } }),
             action_name: "hl_reduce",
+            position: Some(json!({ "venue": "hyperliquid", "size": perp.size, "entry": perp.entry, "liquidation": perp.liquidation, "mark": mid })),
             plan: format!("Reduce the Hyperliquid NEAR {} by {size} (of {:.1}), reduce-only, near the mark {mid:.4}.", if long { "long" } else { "short" }, perp.size.abs()),
+        },
+        a,
+    )))
+}
+
+/// An Aave repay on the EVM chain from the person's own Chain Signatures address, when the
+/// position is at risk: an approval of the pool first if the allowance is short, then the repay,
+/// one per run. The repay is sized to the target health, within the guard's cap and the
+/// address's balance.
+fn evm_step(
+    io: &dyn Io,
+    account: &str,
+    m: &Value,
+    policy: &Policy,
+) -> Result<Option<(Decided, Assessment)>> {
+    let g = &m["mandate"]["evm"];
+    if !has_power(m, "evm_repay") || g.is_null() {
+        return Ok(None);
+    }
+    if g["chain_id"].as_u64() != Some(config::evm_chain_id()) {
+        return Err(format!(
+            "the EVM guard names chain {}, the guardian serves {}",
+            g["chain_id"],
+            config::EVM_CHAIN
+        ));
+    }
+    let (pool, asset, address) = (
+        g["pool"].as_str().unwrap_or(""),
+        g["asset"].as_str().unwrap_or(""),
+        g["address"].as_str().unwrap_or(""),
+    );
+    // Only the person's own position: the repay pays from, and on behalf of, their derived address.
+    let own = chain::derived_evm_address(io, account, PATH_EVM)?;
+    if !own.eq_ignore_ascii_case(address) {
+        return Err(
+            "the EVM guard's address is not this account's Chain Signatures address".into(),
+        );
+    }
+    let aave = evm::account_data(io, pool, address)?;
+    if aave.debt_usd <= 0.0 {
+        return Ok(None);
+    }
+    let a = risk::assess_aave(aave.health);
+    if a.score < policy.trigger_score && a.health > policy.evm_trigger_health {
+        return Ok(None);
+    }
+    let decimals = evm::decimals(io, asset)?;
+    let price = evm::asset_price(io, pool, asset)?;
+    // Health = collateral × threshold / debt, so the target needs debt down to collateral ×
+    // threshold / target.
+    let repay_usd = (aave.debt_usd
+        - aave.collateral_usd * aave.liquidation_threshold / policy.target_health)
+        .max(0.0);
+    let needed = (repay_usd / price * 10f64.powi(decimals as i32)).ceil() as u128;
+    let cap = u128_of(&g["max_amount"]);
+    let balance = evm::balance_of(io, asset, address)?;
+    let amount = needed.min(cap).min(balance);
+    if amount == 0 {
+        return Err(if balance == 0 {
+            "the EVM address holds none of the debt asset to repay with".into()
+        } else {
+            "the repay rounds to zero".into()
+        });
+    }
+    let approved = evm::allowance(io, asset, address, pool)?;
+    let (kind, to, data, value) = if approved < amount {
+        // Approve the guard's whole per-action cap once, so later repays need no new approval.
+        ("evm_approve", asset, evm::approve_data(pool, cap), cap)
+    } else {
+        (
+            "evm_repay",
+            pool,
+            evm::repay_data(asset, amount, address),
+            amount,
+        )
+    };
+    let gas_limit = evm::estimate_gas(io, address, to, &data)?;
+    let fees = evm::fees(io)?;
+    let gas_balance = evm::native_balance(io, address)?;
+    if gas_balance < fees.max * gas_limit as u128 {
+        return Err("the EVM address has too little ETH for gas".into());
+    }
+    let params = json!({
+        "nonce": evm::nonce(io, address)?, "max_priority_fee_per_gas": fees.priority.to_string(),
+        "max_fee_per_gas": fees.max.to_string(), "gas_limit": gas_limit,
+    });
+    let units = |x: u128| x as f64 / 10f64.powi(decimals as i32);
+    let after = |repaid_usd: f64| {
+        let debt = aave.debt_usd - repaid_usd;
+        if debt <= 0.0 {
+            f64::INFINITY
+        } else {
+            aave.collateral_usd * aave.liquidation_threshold / debt
+        }
+    };
+    let plan = if kind == "evm_approve" {
+        format!(
+            "Approve the Aave pool to take up to {:.2} of the debt asset from the person's own address, so the next run can repay {:.2} (health {:.3}, target {:.2}).",
+            units(cap), units(amount), aave.health, policy.target_health
+        )
+    } else {
+        format!(
+            "Repay {:.2} of the Aave debt from the person's own address: health {:.3} to {:.3} (target {:.2}).",
+            units(amount), aave.health, after(units(amount) * price), policy.target_health
+        )
+    };
+    Ok(Some((
+        Decided {
+            venue: "evm",
+            action: json!({ kind: { "params": params, "amount": value.to_string() } }),
+            action_name: kind,
+            plan,
+            position: Some(json!({
+                "venue": "aave", "chain_id": config::evm_chain_id(), "collateral_usd": aave.collateral_usd, "debt_usd": aave.debt_usd,
+                "liquidation_threshold": aave.liquidation_threshold, "health": aave.health, "asset_price_usd": price, "balance": units(balance),
+            })),
         },
         a,
     )))
@@ -461,6 +584,7 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
             let Some((decided, a)) = lending
                 .map(Ok)
                 .or_else(|| hyperliquid_step(io, &account, &m, &policy).transpose())
+                .or_else(|| evm_step(io, &account, &m, &policy).transpose())
                 .transpose()?
             else {
                 return Ok(None);
@@ -468,7 +592,7 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
             let (_, guardian_nonce) = chain::nonces(io, &account)?;
             let facts = json!({
                 "account": account, "venue": decided.venue, "network": config::NETWORK,
-                "position": seen.lending.as_ref().map(|l| json!({ "collateral_near": l.collateral_near, "debt_usd": l.debt_usd })),
+                "position": decided.position.clone().or_else(|| seen.lending.as_ref().map(|l| json!({ "collateral_near": l.collateral_near, "debt_usd": l.debt_usd }))),
                 "near_price_usd": price,
                 "risk": { "score": a.score, "tier": risk::tier(a.score), "health": if a.health.is_finite() { json!(a.health) } else { Value::Null },
                           "liquidation_price": a.liq_price, "p_liquidation_24h": a.p24, "median_hours_to_liquidation": a.ttl_hours, "annual_volatility": a.annual },
@@ -848,6 +972,167 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("another guardian key"));
+    }
+
+    /// A world with no lending position and an Aave loan on the EVM chain at the account's own
+    /// derived address: 1000 USD of collateral at an 83 % threshold against 800 USD of debt.
+    fn evm_world(allowance: u128, guard_address: Option<&str>) -> Scripted {
+        let ec = EcKey::from_slice(&[3u8; 32]).unwrap();
+        let point = ec.verifying_key().to_encoded_point(false);
+        let derived = format!("secp256k1:{}", bs58::encode(point.as_bytes()).into_string());
+        let address = format!(
+            "0x{}",
+            hex::encode(&crate::keccak256(&point.as_bytes()[1..])[12..])
+        );
+        let (pool, asset) = (
+            format!("0x{}", "11".repeat(20)),
+            format!("0x{}", "22".repeat(20)),
+        );
+        let me = public_key(&Scripted {
+            seed: [5u8; 32],
+            ..Default::default()
+        })
+        .unwrap();
+        let mandate = json!({
+            "mandate": {
+                "guardian_key": me, "powers": ["evm_repay"], "limits": [], "max_actions_per_day": 10, "min_health_after_bps": 10500,
+                "max_slippage_bps": 200, "hl": null, "sealed": null, "expires_at": 1_900_000_000u64,
+                "evm": { "chain_id": 84532, "pool": pool, "asset": asset, "address": guard_address.unwrap_or(&address), "max_amount": "500000000" },
+            },
+            "set_at": 1, "paused_until": 0, "expired": false, "spent": [], "moved_today": [], "actions_today": 0,
+        });
+        let eth = |result: &str| json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string();
+        let words = |w: &[u128]| {
+            eth(&format!(
+                "0x{}",
+                w.iter().map(|x| evm::word_u128(*x)).collect::<String>()
+            ))
+        };
+        let addr = |a: &str| eth(&format!("0x{}", evm::word_address(a)));
+        let w = base_world(5)
+            .respond(
+                config::RPC,
+                Some("\"method_name\":\"mandate\""),
+                &rpc(&mandate),
+            )
+            .respond(
+                config::RPC,
+                Some("\"method_name\":\"get_account\""),
+                &rpc(&Value::Null),
+            )
+            .respond(
+                config::RPC,
+                Some("\"method_name\":\"derived_public_key\""),
+                &rpc(&json!(derived)),
+            )
+            .respond(
+                config::EVM_RPC,
+                Some("bf92857c"),
+                &words(&[
+                    100_000_000_000,
+                    80_000_000_000,
+                    0,
+                    8300,
+                    8000,
+                    1_037_500_000_000_000_000,
+                ]),
+            )
+            .respond(config::EVM_RPC, Some("313ce567"), &words(&[6]))
+            .respond(
+                config::EVM_RPC,
+                Some("0542975c"),
+                &addr(&format!("0x{}", "33".repeat(20))),
+            )
+            .respond(
+                config::EVM_RPC,
+                Some("fca513a8"),
+                &addr(&format!("0x{}", "44".repeat(20))),
+            )
+            .respond(config::EVM_RPC, Some("b3596f07"), &words(&[100_000_000]))
+            .respond(config::EVM_RPC, Some("70a08231"), &words(&[300_000_000]))
+            .respond(config::EVM_RPC, Some("dd62ed3e"), &words(&[allowance]))
+            .respond(config::EVM_RPC, Some("eth_estimateGas"), &eth("0x30d40"))
+            .respond(
+                config::EVM_RPC,
+                Some("eth_getBlockByNumber"),
+                &json!({ "jsonrpc": "2.0", "id": 1, "result": { "baseFeePerGas": "0x3b9aca00" } })
+                    .to_string(),
+            )
+            .respond(
+                config::EVM_RPC,
+                Some("eth_maxPriorityFeePerGas"),
+                &eth("0x5f5e100"),
+            )
+            .respond(
+                config::EVM_RPC,
+                Some("eth_getBalance"),
+                &eth("0x2386f26fc10000"),
+            )
+            .respond(
+                config::EVM_RPC,
+                Some("eth_getTransactionCount"),
+                &eth("0x7"),
+            );
+        w
+    }
+
+    fn approved_envelope(w: Scripted) -> Value {
+        let input = json!({ "mode": "guardian", "accounts": [ACCOUNT] });
+        let dry = run(&w, &input).unwrap();
+        assert!(dry["decisions"].as_array().unwrap().is_empty(), "{dry}");
+        let body = w
+            .log
+            .borrow()
+            .iter()
+            .find(|(u, _)| u.ends_with("/chat/completions"))
+            .unwrap()
+            .1
+            .clone();
+        let w = w.respond(
+            &format!("{}/signature/", config::NEARAI),
+            None,
+            &tee_signature(&body).to_string(),
+        );
+        let out = run(&w, &input).unwrap();
+        assert_eq!(out["decisions"][0]["outcome"], "approved", "{out}");
+        serde_json::from_str(out["decisions"][0]["envelope"].as_str().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn guardian_approves_the_pool_before_an_aave_repay() {
+        let w = evm_world(0, None);
+        let e = approved_envelope(w);
+        let a = &e["action"]["evm_approve"];
+        // The guard's whole cap, once, at the next nonce, with fees inside the contract's caps.
+        assert_eq!(a["amount"], "500000000");
+        assert_eq!(a["params"]["nonce"], 7);
+        assert_eq!(a["params"]["max_priority_fee_per_gas"], "100000000");
+        assert_eq!(a["params"]["max_fee_per_gas"], "2100000000");
+        assert_eq!(a["params"]["gas_limit"], 260_000);
+        assert!(e["trigger"]["score"].as_u64().unwrap() >= 50);
+    }
+
+    #[test]
+    fn guardian_repays_aave_toward_the_target_health() {
+        let w = evm_world(500_000_000, None);
+        let e = approved_envelope(w);
+        // Health 1000 × 0.83 / 800 = 1.0375; reaching 1.45 needs debt down to 572.41, so it repays
+        // 227.586207 USDC (rounded up), under the 300 balance and the 500 cap.
+        assert_eq!(e["action"]["evm_repay"]["amount"], "227586207");
+    }
+
+    #[test]
+    fn guardian_refuses_an_evm_guard_for_someone_elses_address() {
+        // Someone else's loan: the repay would spend the person's funds on another debt.
+        let w = evm_world(500_000_000, Some(&format!("0x{}", "55".repeat(20))));
+        let out = run(&w, &json!({ "mode": "guardian", "accounts": [ACCOUNT] })).unwrap();
+        assert!(
+            out["skipped"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not this account's"),
+            "{out}"
+        );
     }
 
     #[test]
