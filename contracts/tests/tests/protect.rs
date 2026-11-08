@@ -434,7 +434,15 @@ async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()>
     assert_eq!(reqs.last().unwrap().1, "parry-hyperliquid");
     assert_eq!(reqs.last().unwrap().2, signed[0]["digest"].as_str().unwrap());
     let sig: Value = r.json()?;
-    assert_eq!(sig["v"], 28);
+    assert_signed_by(
+        &s.worker,
+        s.signer.id(),
+        &acct,
+        "parry-hyperliquid",
+        signed[0]["digest"].as_str().unwrap(),
+        &sig,
+    )
+    .await?;
 
     // Outside the band: refused, nothing signed.
     let n = reqs.len();
@@ -470,5 +478,8 @@ async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()>
     let reqs: Vec<(String, String, String)> = view(&s.worker, s.signer.id(), "requests", json!({})).await?;
     assert_eq!(reqs.last().unwrap().1, "parry-evm");
     assert_eq!(reqs.last().unwrap().2, ev["hash"].as_str().unwrap());
+    let sig: Value = r.json()?;
+    assert_signed_by(&s.worker, s.signer.id(), &acct, "parry-evm", ev["hash"].as_str().unwrap(), &sig)
+        .await?;
     Ok(())
 }

@@ -11,9 +11,10 @@
  * position, 4 a mandate with a sealed policy, 5 the market shock, 6 the AI-reviewed rescues
  * (repay, add collateral, deleverage) and recovery, 7 the limits (replayed and forged envelopes,
  * a non-owner withdrawal, an expired mandate), 10 and 11 the vault (deposit, hedge, withdrawal
- * through the queue, proof of reserves, pausing from risk), 12 a paid risk check over x402, 13 the
- * SDK and the MCP server. Scenario 1 (sign-in) runs in a browser, 8 and 9 need Hyperliquid and Base
- * Sepolia funds (scripts/evm-position.ts opens the Aave loan for 9).
+ * through the queue, proof of reserves, pausing from risk), 9 an Aave loan on Base Sepolia rescued
+ * through Chain Signatures and verified by the MPC network, 12 a paid risk check over x402, 13 the
+ * SDK and the MCP server. Scenario 1 (sign-in) runs in a browser; 8 and the vault's hedge need
+ * Hyperliquid testnet USDC at the derived addresses, and 9 needs Base Sepolia ETH.
  *
  * Proofs go to deployments/testnet-proofs.json (deployments/sandbox-proofs.json with --sandbox).
  * Each scenario account is a fresh subaccount of the deployment root, funded from it. A full run
@@ -21,7 +22,7 @@
  * run the relayer with RELAYER_ACCOUNTS_PER_IP=20 for it.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { generateKey, Near } from "near-kit";
@@ -69,7 +70,14 @@ const parry = createParry({ network: "testnet", apiUrl: API, rpcUrl: RPC, contra
 // ---------------------------------------------------------------------------------------------
 
 const proofFile = join(ROOT_DIR, "deployments", sandbox ? "sandbox-proofs.json" : "testnet-proofs.json");
-const proofs: { network: string; scenarios: Record<string, { title: string; ok: boolean; at: string; steps: unknown[] }> } = existsSync(proofFile)
+/** `scenarios` is the record; `rescue`, `hedge` and `evm` point `pnpm verify` at one proof of each. */
+const proofs: {
+  network: string;
+  scenarios: Record<string, { title: string; ok: boolean; at: string; steps: unknown[] }>;
+  rescue?: { decision: string };
+  hedge?: { tx: string };
+  evm?: { decision: string };
+} = existsSync(proofFile)
   ? JSON.parse(readFileSync(proofFile, "utf8"))
   : { network: sandbox ? "sandbox" : "testnet", scenarios: {} };
 const explorer = (hash: string) => (sandbox ? hash : `https://testnet.nearblocks.io/txns/${hash}`);
@@ -84,7 +92,7 @@ function save(n: number, title: string, ok: boolean, steps: unknown[]) {
 // Chain and API helpers
 // ---------------------------------------------------------------------------------------------
 
-type Outcome = { hash: string; failure: string | null; o: FinalExecutionOutcome };
+type Outcome = { hash: string; failure: string | null; o: FinalExecutionOutcome | null };
 
 function failureOf(o: FinalExecutionOutcome): string | null {
   for (const s of [o.status, ...(o.receipts_outcome ?? []).map((r) => r.outcome.status)]) {
@@ -93,12 +101,19 @@ function failureOf(o: FinalExecutionOutcome): string | null {
   return null;
 }
 
+/** Sends one call; a refusal comes back as `failure` with the transaction's hash, not as a throw. */
 async function send(n: Near, from: string, to: string, method: string, args: object, deposit = 0n, tgas = 300): Promise<Outcome> {
-  const o = (await n
-    .transaction(from)
-    .functionCall(to, method, args, { gas: `${tgas} Tgas` as never, attachedDeposit: `${deposit} yocto` as never })
-    .send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
-  return { hash: o.transaction?.hash ?? "", failure: failureOf(o), o };
+  const tx = n.transaction(from).functionCall(to, method, args, { gas: `${tgas} Tgas` as never, attachedDeposit: `${deposit} yocto` as never });
+  await tx.sign();
+  const hash = tx.getHash() ?? "";
+  try {
+    const o = (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+    return { hash: o.transaction?.hash ?? hash, failure: failureOf(o), o };
+  } catch (e) {
+    const panic = (e as { panic?: string }).panic;
+    if (panic === undefined) throw e;
+    return { hash, failure: panic, o: null };
+  }
 }
 
 async function call(n: Near, from: string, to: string, method: string, args: object, deposit = 0n, tgas = 300): Promise<Outcome> {
@@ -113,8 +128,8 @@ async function view<T>(account: string, method: string, args: object = {}): Prom
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "optimistic", account_id: account, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") } }),
   });
-  const body = (await res.json()) as { result?: { result: number[] }; error?: unknown };
-  if (!body.result) throw new Error(`${account}.${method}: ${JSON.stringify(body.error).slice(0, 200)}`);
+  const body = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: unknown };
+  if (!body.result?.result) throw new Error(`${account}.${method}: ${body.result?.error ?? JSON.stringify(body.error).slice(0, 200)}`);
   return JSON.parse(Buffer.from(body.result.result).toString());
 }
 
@@ -253,6 +268,7 @@ async function protect() {
         return log.items.find((x) => x.outcome === "executed" || x.outcome === "rejected_by_review" || x.outcome === "refused" || x.outcome === "rolled_back");
       });
       decisions[kind] = d;
+      if (d.outcome === "executed" && !proofs.rescue) proofs.rescue = { decision: d.id };
       const alerts = await api<{ title: string }[]>(`/v1/alerts?account=${p.account}`);
       const v = await api<{ ok: boolean; checks: { name: string; ok: boolean }[] }>(`/v1/guardian/decisions/${d.id}/verify`);
       const after = await health(p.account);
@@ -321,6 +337,11 @@ async function vault() {
     return s.hedge && BigInt(s.hedge.sizeE8 ?? "0") !== 0n ? s : null;
   }).catch((e) => ({ error: String(e) }));
   steps.push({ step: "the keeper rebalances: a Chain Signatures order shorts NEAR on Hyperliquid", hedge });
+  const lastOrder = (await api<{ hedge: { lastOrder: { tx: string } | null } }>("/v1/vault")).hedge.lastOrder;
+  if (lastOrder) {
+    proofs.hedge = { tx: lastOrder.tx };
+    steps.push({ step: "the order's signing transaction", tx: explorer(lastOrder.tx) });
+  }
   const w = await call(p.n, p.owner, c("vault"), "request_withdraw", { shares: (BigInt(shares) / 2n).toString() }, 1n, 30);
   steps.push({ step: "request a withdrawal of half the shares", tx: explorer(w.hash) });
   const paid = await until("the withdrawal to be processed", 10 * 60_000, async () => {
@@ -345,6 +366,67 @@ async function paid() {
     { step: "the payer takes test USDC from the faucet", tx: explorer(fau.hash) },
     { step: "pays per call with a signed delegate ft_transfer, settled before the answer", payment: r.payment, score: (r.result as { score?: number } | undefined)?.score },
   ]);
+}
+
+/**
+ * 9: an Aave loan on Base Sepolia at the account's Chain Signatures address, rescued by the
+ * guardian (approve, then repay) and verified by the MPC network. One test owner is kept in the
+ * keychain (`evm-owner.<root>`), so its derived address needs Base Sepolia ETH only once; the
+ * first run creates it, prints the address and stops.
+ */
+async function evmRescue() {
+  const title = "An Aave position on Base Sepolia rescued through Chain Signatures";
+  const ownerId = `evm-owner.${rootId}`;
+  const credDir = join(homedir(), ".near-credentials", "testnet");
+  const credFile = join(credDir, `${ownerId}.json`);
+  let p: Person;
+  if (!existsSync(credFile)) {
+    const k = generateKey();
+    await root.transaction(rootId).createAccount(ownerId).transfer(ownerId, `${near(2)} yocto` as never).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
+    mkdirSync(credDir, { recursive: true });
+    writeFileSync(credFile, JSON.stringify({ account_id: ownerId, public_key: k.publicKey.toString(), private_key: k.secretKey }), { mode: 0o600 });
+    const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: ownerId } });
+    p = { owner: ownerId, key: k.secretKey, n: client(ownerId, k.secretKey), account: created.accountId, steps: [{ step: "protected account", tx: explorer(created.txHash) }] };
+  } else {
+    const key = (JSON.parse(readFileSync(credFile, "utf8")) as { private_key: string }).private_key;
+    const account = await view<string>(c("factory"), "account_id_of", { near_account: ownerId });
+    p = { owner: ownerId, key, n: client(ownerId, key), account, steps: [] };
+  }
+  const open = Bun.spawnSync(["bun", "scripts/evm-position.ts", p.account, "--eth", "0.003", "--health", "1.15"], {
+    cwd: ROOT_DIR,
+    env: { ...process.env, OWNER_ACCOUNT_ID: p.owner, OWNER_PRIVATE_KEY: p.key, PARRY_NETWORK: "testnet" },
+  });
+  const out = open.stdout.toString() + open.stderr.toString();
+  if (open.exitCode === 2) return save(9, title, false, [{ step: "fund the account's Base Sepolia address with ETH, then run again", detail: out.trim().split("\n").slice(-1)[0] }]);
+  if (open.exitCode !== 0) return save(9, title, false, [{ step: "open the Aave loan", error: out.slice(-600) }]);
+  p.steps.push(...out.split("\n").filter((l) => /basescan|Aave:/.test(l)).map((l) => ({ step: l })));
+  const guard = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)) as { chain_id: number; pool: string; asset: string; address: string; max_amount: string };
+  const { key, sealingKey } = await parry.enclave();
+  const m = buildMandate({
+    account: p.account, guardianKey: key.public_key, powers: ["evm_repay"], limits: [], maxActionsPerDay: 10, minHealthAfterBps: 10500, maxSlippageBps: 300,
+    evm: { chainId: guard.chain_id, pool: guard.pool, asset: guard.asset, address: guard.address, maxAmount: guard.max_amount },
+    expiresAt: Math.floor(Date.now() / 1000) + 7 * 86400, policy: { ...policy("repay-first"), evmTriggerHealth: 1.2 },
+    ...(sealingKey ? { sealingPublicKey: sealingKey.public_key } : {}),
+  });
+  const set = await ownerCall(p, [{ set_mandate: { mandate: m } }]);
+  p.steps.push({ step: "mandate: evm_repay on the Aave pool for the account's own address", tx: explorer(set.hash) });
+  const wait = Number(process.env.SCENARIO_DECISION_MS ?? 8 * 60_000);
+  for (const action of ["evm_approve", "evm_repay"]) {
+    const d = await until(`${action} for ${p.account}`, wait, async () => {
+      const log = await api<{ items: Decision[] }>(`/v1/guardian/decisions?account=${p.account}&limit=10`);
+      return log.items.find((x) => x.action === action && x.outcome === "executed" && x.txs.evm);
+    }).catch((e) => e as Error);
+    if (d instanceof Error) return save(9, title, false, [...p.steps, { step: action, error: d.message }]);
+    p.steps.push({ step: `${action}: ${d.plan}`, near: explorer(d.txs.action!), base: `https://sepolia.basescan.org/tx/${d.txs.evm}` });
+    if (action === "evm_repay") proofs.evm = { decision: d.id };
+  }
+  // The MPC network verifies once the Base Sepolia block is final (about 20 minutes).
+  const verified = await until("the MPC network's verification", Number(process.env.SCENARIO_VERIFY_MS ?? 40 * 60_000), async () => {
+    const d = await api<Decision>(`/v1/guardian/decisions/${proofs.evm!.decision}`);
+    return d.txs.evmVerify ? d : null;
+  }).catch(() => null);
+  p.steps.push({ step: "verify_foreign_transaction on the MPC signer", tx: verified?.txs.evmVerify ? explorer(verified.txs.evmVerify) : null, result: verified?.txs.evmVerified ?? "pending" });
+  save(9, title, verified?.txs.evmVerified === "verified", p.steps);
 }
 
 async function agents() {
@@ -385,6 +467,7 @@ async function agents() {
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
 if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
 if (runs(7)) await limits();
+if (runs(9) && !sandbox) await evmRescue();
 if (runs(10) || runs(11)) await vault();
 if (runs(12)) await paid().catch((e) => save(12, "A paid risk check over x402 on NEAR", false, [{ error: String(e) }]));
 if (runs(13)) await agents().catch((e) => save(13, "Core flows through the SDK and the MCP server", false, [{ error: String(e) }]));

@@ -20,11 +20,12 @@ export interface SourcePrice {
 export async function latest(ids: string[]): Promise<SourcePrice[]> {
   const out: SourcePrice[] = [];
   for (const id of ids) {
-    const r = await rpc<{ result: number[] }>(
+    const r = await rpc<{ result?: number[]; error?: string }>(
       "query",
       { request_type: "call_function", finality: "final", account_id: PRICE_SOURCE, method_name: "get_price_unsafe", args_base64: Buffer.from(JSON.stringify({ price_identifier: id })).toString("base64") },
       PRICE_SOURCE_RPC,
     );
+    if (!r.result) throw new Error(`${PRICE_SOURCE}.get_price_unsafe: ${r.error ?? "no result"}`);
     const p = JSON.parse(Buffer.from(r.result).toString()) as { price: string; conf: string; expo: number; publish_time: number } | null;
     if (!p) throw new Error(`${PRICE_SOURCE} has no price for ${id}`);
     out.push({ id, price: p.price, conf: p.conf, expo: p.expo, publishTime: p.publish_time });

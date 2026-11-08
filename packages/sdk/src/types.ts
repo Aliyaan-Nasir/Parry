@@ -209,7 +209,12 @@ export interface VaultState {
     maxLeverage: number;
     hedgeRatio: number;
     needsMargin: boolean;
-    address: string;
+    accountValueUsd: number;
+    fundingUsd: number;
+    /** The vault's Chain Signatures address on Hyperliquid. */
+    address: string | null;
+    /** The latest signed hedge order: the NEAR transaction that signed it and Hyperliquid's answer. */
+    lastOrder: { tx: string; side: "buy" | "sell"; size: string; price: string; status: string; at: string } | null;
   };
   yield: { stakingApr: number | null; fundingUsd: number; hedgePnlUsd: number };
   reserves: { root: string; leaves: number; totalUsd: number; liabilitiesUsd: number; ratioBps: number };

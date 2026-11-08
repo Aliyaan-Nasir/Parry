@@ -481,10 +481,8 @@ async fn rebalance_signs_one_hyperliquid_order_per_report() -> Result<()> {
     let digest = hex::encode(order_digest(&expected, nonce, false));
     assert_eq!(ev["digest"], digest.as_str());
     assert_eq!(e.sign_requests().await?, vec![(vault.to_string(), HEDGE_PATH.to_string(), digest.clone())]);
-    // The mock signer derives r and s from the payload; v is its recovery id 1 + 27.
-    let r = hex::encode(Sha256::digest(format!("r{digest}")));
-    let sig = hex::encode(Sha256::digest(format!("s{digest}")));
-    assert_eq!(d.json::<Value>()?, json!({ "r": r, "s": sig, "v": 28 }));
+    // The signature recovers to the vault's derived key at the hedge path, as on testnet.
+    assert_signed_by(&e.s.worker, e.s.signer.id(), vault, HEDGE_PATH, &digest, &d.json::<Value>()?).await?;
     assert!(events_from(&d, vault, "hedge_sign_failed").is_empty());
 
     // The same report cannot sign a second order.

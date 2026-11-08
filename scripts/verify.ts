@@ -18,6 +18,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import { assembleSigned, signerOf, txHashOf } from "../services/src/lib/evm";
 
 const ROOT = join(import.meta.dir, "..");
 const NETWORK = process.env.PARRY_NETWORK === "mainnet" ? "mainnet" : "testnet";
@@ -53,7 +54,8 @@ async function rpc<T>(method: string, params: unknown, url = RPC): Promise<T> {
 }
 const account = (id: string, url = RPC) => rpc<{ code_hash: string; amount: string }>("query", { request_type: "view_account", finality: "final", account_id: id }, url);
 async function view<T>(id: string, method: string, args: object = {}, url = RPC): Promise<T> {
-  const r = await rpc<{ result: number[] }>("query", { request_type: "call_function", finality: "final", account_id: id, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }, url);
+  const r = await rpc<{ result?: number[]; error?: string }>("query", { request_type: "call_function", finality: "final", account_id: id, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }, url);
+  if (!r.result) throw new Error(`${id}.${method}: ${r.error ?? "no result"}`);
   return JSON.parse(Buffer.from(r.result).toString()) as T;
 }
 const b58 = (b: Uint8Array) => {
@@ -163,6 +165,35 @@ async function main() {
     }
     return `${e.public_key}, build ${e.wasm_sha256.slice(0, 16)}...${tx ? `, keys run ${tx}` : ""}`;
   });
+
+  await check("Policies are sealed to the enclave's own key", async () => {
+    const k = await view<{ public_key: string; run_id: number } | null>(dep.contracts.risk!.account, "sealing_key");
+    if (!k) throw new Error("the risk board has no sealing key");
+    const expected = dep.enclave?.sealingPublicKey;
+    if (expected && k.public_key !== expected) throw new Error(`board ${k.public_key}, the enclave's keys run gave ${expected}`);
+    return `X25519 ${k.public_key.slice(0, 16)}..., accepted only from an enclave-signed report`;
+  });
+
+  const evm = proofs.evm;
+  if (evm) {
+    await check("An Aave rescue on Base Sepolia: signed for the person's own address by Chain Signatures and verified by the MPC network", async () => {
+      const d = (await (await fetch(`${API}/v1/guardian/decisions/${evm.decision}`)).json()) as { account: string; txs: { action: string; evm: string; evmVerify: string | null } };
+      const o = await txOutcome(d.txs.action, dep.services!.guardian!);
+      const signed = events(o).find((e) => e.event === "evm_signed")?.data as { unsigned_tx: string } | undefined;
+      const sv = (o.status as { SuccessValue?: string }).SuccessValue;
+      if (!signed || !sv) throw new Error("no evm_signed event or signature in the action transaction");
+      const sig = JSON.parse(Buffer.from(sv, "base64").toString()) as { r: string; s: string; v: number };
+      const pk = await view<string>(NETWORK === "testnet" ? "v1.signer-prod.testnet" : "v1.signer", "derived_public_key", { path: "parry-evm", predecessor: d.account, domain_id: 0 });
+      const point = unb58(pk.replace(/^secp256k1:/, ""));
+      const own = `0x${bytesToHex(keccak_256(point.length === 65 ? point.subarray(1) : point).slice(12))}`;
+      if (signerOf(signed.unsigned_tx, sig).toLowerCase() !== own) throw new Error(`the signature does not recover to ${own}`);
+      if (txHashOf(assembleSigned(signed.unsigned_tx, sig)) !== d.txs.evm) throw new Error(`the broadcast transaction is not ${d.txs.evm}`);
+      if (!d.txs.evmVerify) throw new Error("the MPC network has not verified it yet");
+      const v = await txOutcome(d.txs.evmVerify, dep.services!.guardian!);
+      if (v.status && typeof v.status === "object" && "Failure" in v.status) throw new Error(`verification failed in ${d.txs.evmVerify}`);
+      return `${d.txs.evm} from ${own}, verified on NEAR in ${d.txs.evmVerify}`;
+    });
+  }
 
   const rescue = proofs.rescue;
   if (rescue) {

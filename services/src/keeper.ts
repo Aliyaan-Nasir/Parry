@@ -82,16 +82,19 @@ async function sealingKey(): Promise<string> {
   return `published in ${txHash(o)}`;
 }
 
-async function rebalance(): Promise<string> {
+async function rebalance(sql: Sql): Promise<string> {
   if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   const o = await keeper.call({ receiverId: contract("vault"), methodName: "rebalance", args: {}, tgas: 150 });
   const sig = returnValue<{ r: string; s: string; v: number } | null>(o);
   const ev = eventsOf(o).find((e) => e.event === "hedge_order");
   if (!sig || !ev) return "in band";
-  const { order, nonce } = ev.data as { order: HlOrder; nonce: number };
+  const { order, nonce, digest } = ev.data as { order: HlOrder; nonce: number; digest: string };
   const res = await submitOrder(order, nonce, sig);
-  log.info("hedge order", { order, res });
+  // The signed order and Hyperliquid's answer, for the API and `pnpm verify`.
+  await sql`INSERT INTO reports (kind, run_id, tx_hash, payload) VALUES ('hedge_order', ${nonce}, ${txHash(o)},
+    ${sql.json({ order, nonce, digest, signature: sig, status: res.status, response: res } as never)}) ON CONFLICT DO NOTHING`;
+  log.info("hedge order", { order, res, tx: txHash(o) });
   return `order ${order.is_buy ? "buy" : "sell"} ${order.size} at ${order.price}: ${res.status}`;
 }
 
@@ -168,7 +171,7 @@ export async function main() {
   every(intEnv("FEED_MS", 20_000), "feed", track("feed", feed));
   every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
-  every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", rebalance));
+  every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));
   every(intEnv("LIQUIDATOR_MS", 30_000), "liquidator", track("liquidator", () => liquidator(sql)));
   every(600_000, "mandates", track("mandates", () => mandates(sql)));

@@ -165,7 +165,12 @@ interface VaultState {
   stakedLinear: string;
   linearRate: number;
   nearPriceUsd: number;
-  hedge: { targetNear: number; currentNear: number; entry: number; mark: number; liquidation: number; leverage: number; maxLeverage: number; hedgeRatio: number; needsMargin: boolean; address: string };
+  hedge: {
+    targetNear: number; currentNear: number; entry: number; mark: number; liquidation: number; leverage: number; maxLeverage: number;
+    hedgeRatio: number; needsMargin: boolean; accountValueUsd: number; fundingUsd: number;
+    address: string | null;    // the vault's Chain Signatures address on Hyperliquid
+    lastOrder: { tx: string; side: "buy" | "sell"; size: string; price: string; status: string; at: string } | null;
+  };
   yield: { stakingApr: number | null; fundingUsd: number; hedgePnlUsd: number };
   reserves: { root: string; leaves: number; totalUsd: number; liabilitiesUsd: number; ratioBps: number };
   depositCapNear: string;

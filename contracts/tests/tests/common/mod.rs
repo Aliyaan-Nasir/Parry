@@ -118,6 +118,41 @@ pub async fn try_call(
         .await?)
 }
 
+/// Checks that `sig` (the contract's `{ r, s, v }`) over the 32-byte `digest` (hex) recovers to
+/// the key the signer derives for `predecessor` at `path`, as Chain Signatures does on testnet.
+#[allow(dead_code)]
+pub async fn assert_signed_by(
+    worker: &Worker<Sandbox>,
+    signer: &AccountId,
+    predecessor: &AccountId,
+    path: &str,
+    digest: &str,
+    sig: &Value,
+) -> Result<()> {
+    let derived: String = view(
+        worker,
+        signer,
+        "derived_public_key",
+        json!({ "path": path, "predecessor": predecessor, "domain_id": 0 }),
+    )
+    .await?;
+    let rs = hex::decode(format!("{}{}", sig["r"].as_str().unwrap_or(""), sig["s"].as_str().unwrap_or("")))?;
+    let v = sig["v"].as_u64().unwrap_or(0) as u8;
+    let recid =
+        k256::ecdsa::RecoveryId::from_byte(v.wrapping_sub(27)).ok_or_else(|| anyhow::anyhow!("bad v {v}"))?;
+    let key = k256::ecdsa::VerifyingKey::recover_from_prehash(
+        &hex::decode(digest)?,
+        &k256::ecdsa::Signature::from_slice(&rs)?,
+        recid,
+    )?;
+    let point = key.to_encoded_point(false);
+    let got = format!("secp256k1:{}", bs58::encode(&point.as_bytes()[1..]).into_string());
+    if got != derived {
+        bail!("the signature recovers to {got}, not {derived} ({predecessor} at {path})");
+    }
+    Ok(())
+}
+
 pub async fn view<T: serde::de::DeserializeOwned>(
     worker: &Worker<Sandbox>,
     id: &AccountId,

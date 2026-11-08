@@ -1,6 +1,6 @@
 [package]
 name = "parry-test-mock-signer"
-description = "Sandbox test helper: answers Chain Signatures `sign` requests with a deterministic secp256k1-shaped response."
+description = "Sandbox test helper standing in for the Chain Signatures contract: per-caller, per-path secp256k1 keys and real recoverable signatures."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,3 +13,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 near-sdk = { workspace = true }
 hex = { workspace = true }
+k256 = { version = "0.13.4", default-features = false, features = ["ecdsa", "arithmetic"] }

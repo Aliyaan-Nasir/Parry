@@ -137,6 +137,8 @@ export async function vaultState(sql: Sql) {
   const h = v.hedge;
   const n = (x: unknown) => Number(x ?? 0);
   const [hedgeAddress] = await sql<{ extra: { hedgeAddress?: string } }[]>`SELECT extra FROM reports WHERE kind = 'vault_report' ORDER BY run_id DESC LIMIT 1`;
+  const [order] = await sql<{ tx_hash: string; payload: { order: { is_buy: boolean; size: string; price: string }; status: string }; created_at: Date }[]>`
+    SELECT tx_hash, payload, created_at FROM reports WHERE kind = 'hedge_order' ORDER BY run_id DESC LIMIT 1`;
   return {
     network,
     paused: v.paused,
@@ -162,6 +164,9 @@ export async function vaultState(sql: Sql) {
       accountValueUsd: n(h.account_value_e6) / 1e6,
       fundingUsd: n(h.funding_e6) / 1e6,
       address: hedgeAddress?.extra?.hedgeAddress ?? null,
+      lastOrder: order
+        ? { tx: order.tx_hash, side: order.payload.order.is_buy ? "buy" : "sell", size: order.payload.order.size, price: order.payload.order.price, status: order.payload.status, at: order.created_at.toISOString() }
+        : null,
     },
     yield: {
       stakingApr: y && days > 0 ? (y.staking_rate_growth_bps / 10_000) * (365 / days) : null,

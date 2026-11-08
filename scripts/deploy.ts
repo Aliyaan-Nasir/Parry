@@ -120,7 +120,8 @@ async function account(id: string): Promise<{ amount: string; code_hash: string 
 }
 
 async function viewCall<T>(id: string, method: string, args: object = {}): Promise<T> {
-  const r = await rpc<{ result: number[] }>("query", { request_type: "call_function", finality: "optimistic", account_id: id, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") });
+  const r = await rpc<{ result?: number[]; error?: string }>("query", { request_type: "call_function", finality: "optimistic", account_id: id, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") });
+  if (!r.result) throw new Error(`${id}.${method}: ${r.error ?? "no result"}`);
   return JSON.parse(Buffer.from(r.result).toString()) as T;
 }
 
