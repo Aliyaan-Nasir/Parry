@@ -50,7 +50,8 @@ bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --s
 | Passkey owner (WebAuthn P-256 on chain) | `contracts/account/src/passkey.rs` |
 | Guardian that can only protect | `contracts/account/src/guardian.rs` (`guardian_execute`), `contracts/common/src/mandate.rs` (`GuardianAction` has no transfer) |
 | Chain Signatures: Hyperliquid orders | `contracts/common/src/hyperliquid.rs` (agent digest), `guardian.rs` (`on_hl_mark` band check), `contracts/vault/src/hedge.rs` |
-| Chain Signatures: EVM repay | `contracts/common/src/evm.rs`, `guardian.rs` (`EvmRepay`) |
+| Chain Signatures: EVM repay (Aave on Base Sepolia) | `contracts/common/src/evm.rs`, `guardian.rs` (`EvmRepay`), `enclave/src/modes.rs` (`evm_step`), `services/src/lib/evm.ts` |
+| MPC foreign-transaction verification | `services/src/lib/evm.ts` (`verify_foreign_transaction`), `services/src/guardian.ts` (`verifyEvm`) |
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
 | NEAR AI Cloud verifiable review | `enclave/src/ai.rs`, `apps/api/src/verify.ts` |
 | Sealed mandates | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
@@ -76,3 +77,4 @@ bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --s
 - OutLayer derives the enclave keys from the build and the calling account: every service calls it from `enclave.parry.testnet`.
 - Publishing the account code as global code burns about 36 NEAR; `scripts/deploy.ts` never republishes the same hash.
 - Contract refusals in callbacks are `guardian_refused` events, not failed transactions: read the receipts' logs.
+- The testnet MPC network verifies Base, not Ethereum, transactions, so the EVM rescue runs on Base Sepolia (84532); `scripts/evm-position.ts` opens a loan there from an account's derived address.

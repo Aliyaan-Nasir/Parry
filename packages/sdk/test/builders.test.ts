@@ -139,10 +139,10 @@ describe("mandates", () => {
       ...base,
       powers: ["hl_reduce", "evm_repay"],
       hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 10n ** 9n, bandBps: 150, hedgeIsBuy: false },
-      evm: { chainId: 11155111, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: "1000000" },
+      evm: { chainId: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: "1000000" },
     });
     expect(m.hl).toEqual({ asset: "NEAR", asset_index: 54, max_size_e8: "1000000000", band_bps: 150, hedge_is_buy: false });
-    expect(m.evm).toEqual({ chain_id: 11155111, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, max_amount: "1000000" });
+    expect(m.evm).toEqual({ chain_id: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, max_amount: "1000000" });
   });
 
   test("a policy is sealed to the enclave and bound to the account", () => {

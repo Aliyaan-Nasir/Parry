@@ -23,7 +23,7 @@ const near = (id: string, key: string) => new Near({ network: { networkId: "loca
 
 async function call(n: Near, from: string, to: string, method: string, args: object, deposit = 0n, tgas = 300) {
   const o = (await n.transaction(from).functionCall(to, method, args, { gas: `${tgas} Tgas` as never, attachedDeposit: `${deposit} yocto` as never }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
-  const fail = [o.status, ...o.receipts_outcome.map((r) => r.outcome.status)].find((s) => s && typeof s === "object" && "Failure" in s);
+  const fail = [o.status, ...(o.receipts_outcome ?? []).map((r) => r.outcome.status)].find((s) => s && typeof s === "object" && "Failure" in s);
   if (fail) throw new Error(`${to}.${method}: ${JSON.stringify(fail).slice(0, 300)}`);
   return o;
 }

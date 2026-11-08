@@ -62,7 +62,7 @@ interface Position {
   id: string;            // "<account>:<venue>:<name>"
   account: string;
   venue: Venue;
-  label: string;         // "Rhea wNEAR/USDC", "Hyperliquid NEAR perp", "Aave on Sepolia"
+  label: string;         // "Rhea wNEAR/USDC", "Hyperliquid NEAR perp", "Aave on Base Sepolia"
   collateralUsd: number;
   debtUsd: number;
   health: number | null; // null without debt
@@ -114,7 +114,12 @@ interface Decision {
   outcome: "executed" | "refused" | "rolled_back" | "rejected_by_review" | "pending";
   review: { model: string; chatId: string; reviewHash: string; verdict: "approve" | "reject"; reasoning: string; signingAddress: string; signedText: string; signature: string; signatureKind: string };
   envelope: string | null;
-  txs: { action: string | null; record: string | null; hyperliquid: string | null; evm: string | null };
+  txs: {
+    action: string | null; record: string | null; hyperliquid: string | null;
+    evm: string | null;          // the EVM transaction (Base Sepolia on testnet)
+    evmVerify: string | null;    // the NEAR transaction in which the MPC network verified it
+    evmVerified: "verified" | "failed" | null;
+  };
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
