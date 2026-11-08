@@ -658,8 +658,13 @@ fn delev(min_out_usdc: u128) -> GuardianAction {
     }
 }
 
-fn near_mark(price_e8: &str, at: u64) -> PromiseResult {
-    ok_json(json!([{ "asset": "NEAR", "asset_index": 54, "price_e8": price_e8, "at": at }]))
+fn oracle_price(price_e8: i64) -> PromiseResult {
+    ok_json(json!({ "price": price_e8.to_string(), "conf": "1", "expo": -8, "publish_time": NOW as i64 }))
+}
+
+/// The oracle's answers that price a wNEAR to USDC swap: NEAR at `near_e8`, USDC at 1.00.
+fn swap_prices(near_e8: i64) -> Vec<PromiseResult> {
+    vec![oracle_price(near_e8), oracle_price(100_000_000)]
 }
 
 #[test]
@@ -669,9 +674,12 @@ fn deleverage_happy_path() {
     // 10 NEAR at $3.00 = 30 USDC; 2% slippage allows 29.4 USDC.
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     assert_eq!(a.pending().unwrap().stage, "pricing");
-    assert_eq!(calls()[0].1, "marks");
+    // Priced by the protocol's oracle, not by the enclave's marks.
+    let c: Vec<_> = calls().into_iter().filter(|x| x.0 != me().as_str()).collect();
+    assert_eq!(c.len(), 2);
+    assert!(c.iter().all(|x| x.0 == "oracle.parry.testnet" && x.1 == "get_price_no_older_than"));
 
-    set_with_results(NOW + 6, vec![near_mark("300000000", NOW)]);
+    set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_marks(1);
     let c = calls();
     assert_eq!((c[0].0.as_str(), c[0].1.as_str()), ("lending.parry.testnet", "simple_withdraw"));
@@ -733,7 +741,7 @@ fn deleverage_refuses_a_cheap_sale() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(25_000_000));
-    set_with_results(NOW + 6, vec![near_mark("300000000", NOW)]);
+    set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_marks(1);
     assert!(calls().is_empty());
     assert!(logs_contain("slippage bound") && logs_contain("deleverage_rolled_back"));
@@ -747,7 +755,7 @@ fn deleverage_rolls_back_when_the_withdraw_fails() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
-    set_with_results(NOW + 6, vec![near_mark("300000000", NOW)]);
+    set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_marks(1);
     set_with_results(NOW + 8, vec![PromiseResult::Failed]);
     a.on_delev_withdrawn(1);
@@ -765,7 +773,7 @@ fn deleverage_restores_collateral_when_the_swap_fails() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
-    set_with_results(NOW + 6, vec![near_mark("300000000", NOW)]);
+    set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_marks(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
@@ -791,7 +799,7 @@ fn stuck_deleverage_can_be_retried_by_anyone() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
-    set_with_results(NOW + 6, vec![near_mark("300000000", NOW)]);
+    set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_marks(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
@@ -841,4 +849,273 @@ fn unsafe_deleverage_pauses_the_guardian() {
     assert!(logs_contain("deleverage_unsafe") && logs_contain("guardian_paused"));
     let e = envelope(2, repay(USDC));
     assert!(refused(&mut a, &e, g.sign(&e), NOW + 20).contains("paused"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Audit regressions
+// ---------------------------------------------------------------------------------------------
+
+fn panic_text(f: impl FnOnce()) -> String {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .err()
+        .and_then(|e| e.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "accepted".into())
+}
+
+/// Runs `guardian_execute` with `tgas` of prepaid gas and returns the panic text.
+fn execute_with_gas(a: &mut Account, g: &Guardian, nonce: u64, action: GuardianAction, tgas: u64) -> String {
+    let e = envelope(nonce, action);
+    testing_env!(ctx("relayer.parry.testnet", 0, NOW + 5)
+        .prepaid_gas(near_sdk::Gas::from_tgas(tgas))
+        .build());
+    panic_text(|| {
+        a.guardian_execute(e.clone(), g.sign(&e));
+    })
+}
+
+/// Anyone may relay a signed envelope, with the gas they choose. A deleverage relayed with too
+/// little gas would run out in a later callback, after the collateral left the lending contract,
+/// and stay stuck outside the position; it is refused up front instead.
+#[test]
+fn audit_deleverage_needs_gas_for_its_whole_chain() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let want = guardian::deleverage_gas(2).as_tgas();
+    assert_eq!(want, 710);
+    let msg = execute_with_gas(&mut a, &g, 1, delev(29_500_000), 300);
+    assert!(msg.contains("attach at least 710 TGas"), "{msg}");
+    assert!(a.pending().is_none());
+    assert_eq!(execute_with_gas(&mut a, &g, 1, delev(29_500_000), want), "accepted");
+    assert_eq!(a.pending().unwrap().stage, "pricing");
+}
+
+/// The same for a perp order: its signature request runs in a callback.
+#[test]
+fn audit_perp_order_needs_gas_for_its_signature() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let hedge = || GuardianAction::HlHedge { order: order(false, false, "3.60", "10"), nonce: 9 };
+    let msg = execute_with_gas(&mut a, &g, 1, hedge(), 100);
+    assert!(msg.contains("attach at least 140 TGas"), "{msg}");
+    assert_eq!(a.nonces().1, 0, "the refused envelope consumed nothing");
+    assert_eq!(execute_with_gas(&mut a, &g, 1, hedge(), 140), "accepted");
+}
+
+/// `retry_deleverage` is open to anyone: with too little gas it could move the tokens out of
+/// the exchange and then fail before repaying, leaving a state no retry resumes.
+#[test]
+fn audit_retry_needs_gas_for_the_rest_of_the_chain() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    run_guardian(&mut a, &g, 1, delev(29_500_000));
+    set_with_results(NOW + 6, swap_prices(300_000_000));
+    a.on_delev_marks(1);
+    set_with_results(NOW + 8, vec![ok_json(json!(true))]);
+    a.on_delev_withdrawn(1);
+    set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    a.on_delev_deposited(1);
+    set_with_results(NOW + 10, vec![ok_json(json!("29800000"))]);
+    a.on_delev_swapped(1);
+    set_with_results(NOW + 11, vec![ok_json(json!("0"))]);
+    a.on_delev_out(1);
+    assert_eq!(a.pending().unwrap().stage, "stuck_withdraw_out");
+    testing_env!(ctx("anyone.testnet", 0, NOW + 13).prepaid_gas(near_sdk::Gas::from_tgas(100)).build());
+    let msg = panic_text(|| {
+        a.retry_deleverage();
+    });
+    assert!(msg.contains("attach at least 320 TGas"), "{msg}");
+}
+
+/// A guardian perp order may not rest on the book: a resting order at a price far from
+/// the market could be filled by anyone, so the band around the enclave's own mark would be the
+/// only bound on the price.
+#[test]
+fn audit_guardian_perp_orders_are_immediate_or_cancel() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    for tif in ["Gtc", "Alo"] {
+        let mut o = order(true, true, "3.60", "10");
+        o.tif = tif.into();
+        let e = envelope(1, GuardianAction::HlReduce { order: o, nonce: 9 });
+        assert!(refused(&mut a, &e, g.sign(&e), NOW + 5).contains("immediate-or-cancel"), "{tif}");
+    }
+}
+
+/// The fee fields of a transaction the account signs for another chain are the guardian's
+/// choice. The priority fee goes to the block producer, so it is capped, and so is the gas limit.
+#[test]
+fn audit_signed_transaction_fees_are_capped() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let params = |tip: &str, max: &str, gas_limit: u64| EvmTxParams {
+        nonce: 3,
+        max_priority_fee_per_gas: tip.into(),
+        max_fee_per_gas: max.into(),
+        gas_limit,
+    };
+    let cases = [
+        (params("21000000000", "100000000000", 300_000), "20 gwei cap"),
+        (params("2000000000", "1000000000", 300_000), "above the max fee"),
+        (params("1000000000", "30000000000", 600_001), "gas limit"),
+        (params("1000000000", "30000000000", 0), "gas limit"),
+    ];
+    for (p, want) in cases {
+        let e = envelope(1, GuardianAction::EvmRepay { params: p, amount: U128(USDC) });
+        let msg = refused(&mut a, &e, g.sign(&e), NOW + 5);
+        assert!(msg.contains(want), "expected '{want}', got '{msg}'");
+    }
+    let e = envelope(
+        1,
+        GuardianAction::EvmApprove {
+            params: params("20000000000", "20000000000", 600_000),
+            amount: U128(USDC),
+        },
+    );
+    assert_eq!(refused(&mut a, &e, g.sign(&e), NOW + 5), "accepted");
+}
+
+/// A protocol that also lists LiNEAR, priced as NEAR times its `ft_price` rate.
+fn protocol_with_linear() -> Protocol {
+    let mut p = protocol();
+    p.tokens.push(TokenConfig {
+        token_id: id("linear-protocol.testnet"),
+        symbol: "LiNEAR".into(),
+        decimals: 24,
+        extra_decimals: 0,
+        price_id: NEAR_USD.into(),
+        rate_call: Some("ft_price".into()),
+        mark: Some("NEAR".into()),
+    });
+    p
+}
+
+/// A staked token is worth its rate times the NEAR price. Pricing the swap without the rate
+/// would let a deleverage sell LiNEAR for the value of as much NEAR, about a fifth too cheap.
+#[test]
+fn audit_deleverage_prices_a_staked_token_with_its_rate() {
+    let g = Guardian::new(1);
+    set("factory.testnet", 0, NOW);
+    near_sdk::env::storage_remove(b"rt");
+    let mut a = Account::new(
+        Owner::Near { account_id: id("alice.testnet") },
+        "testnet".into(),
+        protocol_with_linear(),
+    );
+    let mut m = mandate(&g);
+    m.limits.push(TokenLimit {
+        token: id("linear-protocol.testnet"),
+        reserve: U128(20 * NEAR),
+        daily: U128(50 * NEAR),
+    });
+    set("alice.testnet", 1, NOW);
+    a.owner_call(vec![OwnerAction::SetMandate { mandate: m }]);
+
+    let sell_linear = |min_out: u128| GuardianAction::Deleverage {
+        collateral: id("linear-protocol.testnet"),
+        amount: U128(10 * NEAR),
+        pool_id: 7,
+        debt: id("usdc.parry.testnet"),
+        min_out: U128(min_out),
+    };
+    // 10 LiNEAR at 1.25 NEAR each and $3.00 per NEAR: $37.50; 2% slippage allows $36.75.
+    let answers = || {
+        vec![
+            oracle_price(300_000_000),
+            ok_json(json!("1250000000000000000000000")),
+            oracle_price(100_000_000),
+        ]
+    };
+    run_guardian(&mut a, &g, 1, sell_linear(30 * USDC));
+    let c = calls();
+    assert!(c.iter().any(|x| x.0 == "linear-protocol.testnet" && x.1 == "ft_price"), "{c:?}");
+    set_with_results(NOW + 6, answers());
+    a.on_delev_marks(1);
+    assert!(logs_contain("slippage bound"), "30 USDC for $37.50 of LiNEAR is refused");
+    assert!(calls().is_empty());
+
+    run_guardian(&mut a, &g, 2, sell_linear(36_800_000));
+    set_with_results(NOW + 7, answers());
+    a.on_delev_marks(2);
+    assert_eq!(calls()[0].1, "simple_withdraw");
+}
+
+/// When the lending contract refuses the collateral back, the rollback has not happened: the
+/// deleverage stays pending (and blocks the guardian) until a retry re-supplies it.
+#[test]
+fn audit_refused_resupply_stays_pending_until_retried() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    run_guardian(&mut a, &g, 1, delev(29_500_000));
+    set_with_results(NOW + 6, swap_prices(300_000_000));
+    a.on_delev_marks(1);
+    set_with_results(NOW + 8, vec![ok_json(json!(true))]);
+    a.on_delev_withdrawn(1);
+    set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    a.on_delev_deposited(1);
+    set_with_results(NOW + 10, vec![PromiseResult::Failed]);
+    a.on_delev_swapped(1);
+    set_with_results(NOW + 11, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    a.on_restore_withdrawn(1, U128(10 * NEAR));
+    // The lending contract returned all of it.
+    set_with_results(NOW + 12, vec![ok_json(json!("0"))]);
+    assert!(!a.on_restored(1));
+    assert!(!logs_contain("deleverage_rolled_back"));
+    assert!(logs_contain("deleverage_stuck"));
+    assert_eq!(a.pending().unwrap().stage, "stuck_resupply");
+
+    set("anyone.testnet", 0, NOW + 13);
+    a.retry_deleverage();
+    let c = calls();
+    assert_eq!((c[0].0.as_str(), c[0].1.as_str()), ("wrap.testnet", "ft_transfer_call"));
+    assert_eq!(c[0].2["receiver_id"], "lending.parry.testnet");
+    assert_eq!(c[0].2["msg"], "\"OnlyIncreaseCollateral\"");
+    set_with_results(NOW + 14, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    assert!(a.on_restored(1));
+    assert!(logs_contain("deleverage_rolled_back"));
+    assert!(a.pending().is_none());
+}
+
+/// A deleverage whose repay leg was refused sold collateral and repaid nothing: it is reported
+/// as unsafe (and pauses the guardian), never as completed.
+#[test]
+fn audit_deleverage_that_repaid_nothing_is_not_completed() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    run_guardian(&mut a, &g, 1, delev(29_500_000));
+    let position = json!({
+        "collateral": [{ "token_id": "wrap.testnet", "balance": (90 * NEAR).to_string() }],
+        "borrowed": [{ "token_id": "usdc.parry.testnet", "balance": "120000000000000000000" }],
+    });
+    let asset = |ratio: u32| ok_json(json!({ "config": { "volatility_ratio": ratio } }));
+    set_with_results(
+        NOW + 14,
+        vec![oracle_price(300_000_000), asset(6000), oracle_price(100_000_000), asset(9500)],
+    );
+    // Health 1.28 is above the floor, but nothing was repaid.
+    let done = a.on_delev_health(
+        1,
+        U128(0),
+        position.to_string(),
+        vec![id("wrap.testnet"), id("usdc.parry.testnet")],
+    );
+    assert!(!done);
+    assert!(logs_contain("deleverage_unsafe") && !logs_contain("deleverage_completed"));
+}
+
+/// The key that signs the envelope also signs the risk board's marks, so a swap priced with
+/// those marks would let one key choose both the sale and the price it is checked against. The
+/// swap is priced with the protocol's oracle (the one the lending contract liquidates with).
+#[test]
+fn audit_deleverage_is_priced_by_the_oracle_not_by_the_enclave_marks() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    run_guardian(&mut a, &g, 1, delev(25_000_000));
+    let c = calls();
+    assert!(!c.iter().any(|x| x.0 == "risk.parry.testnet"), "{c:?}");
+    assert_eq!(c.iter().filter(|x| x.0 == "oracle.parry.testnet").count(), 2);
+    // The oracle says $3.00: 25 USDC for 10 NEAR is below the 2% bound.
+    set_with_results(NOW + 6, swap_prices(300_000_000));
+    a.on_delev_marks(1);
+    assert!(logs_contain("slippage bound"));
+    assert!(a.pending().is_none());
 }

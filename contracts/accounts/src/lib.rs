@@ -44,6 +44,8 @@ pub struct Accounts {
     account_code: Base58CryptoHash,
     created: u64,
     refunds: near_sdk::store::LookupMap<AccountId, u128>,
+    /// Sum of `refunds`: NEAR the factory holds for payers, which `sweep` must leave alone.
+    owed: u128,
 }
 
 #[near(serializers = [json])]
@@ -73,6 +75,7 @@ impl Accounts {
             account_code,
             created: 0,
             refunds: near_sdk::store::LookupMap::new(b"r"),
+            owed: 0,
         }
     }
 
@@ -154,16 +157,14 @@ impl Accounts {
         Event::AccountCreationFailed { account: &account }.emit();
         // The runtime's refund of the failed batch may land after this callback; pay at once only
         // when the factory can already cover it.
-        let free = env::account_balance()
-            .as_yoctonear()
-            .saturating_sub(env::storage_usage() as u128 * env::storage_byte_cost().as_yoctonear());
-        if free >= deposit.0 + REFUND_RESERVE.as_yoctonear() {
+        if self.free_balance() >= deposit.0 + REFUND_RESERVE.as_yoctonear() {
             Event::DepositRefunded { payer: &payer, amount: deposit, claimable: false }.emit();
             Promise::new(payer).transfer(NearToken::from_yoctonear(deposit.0)).detach();
         } else {
             Event::DepositRefunded { payer: &payer, amount: deposit, claimable: true }.emit();
             let prev = self.refunds.get(&payer).copied().unwrap_or(0);
             self.refunds.insert(payer, prev + deposit.0);
+            self.owed += deposit.0;
         }
         None
     }
@@ -173,6 +174,7 @@ impl Accounts {
         let payer = env::predecessor_account_id();
         let amount = self.refunds.remove(&payer).unwrap_or(0);
         require!(amount > 0, "nothing to refund");
+        self.owed -= amount;
         Promise::new(payer).transfer(NearToken::from_yoctonear(amount))
     }
 
@@ -182,15 +184,28 @@ impl Accounts {
 
     /// Sends NEAR the factory holds beyond its storage to the owner (fees never accrue here,
     /// but refunds of failed batches can land after their callback paid out of free balance).
+    /// Refunds still owed to payers stay: the owner cannot sweep them.
     #[payable]
     pub fn sweep(&mut self, amount: U128) -> Promise {
         require!(env::predecessor_account_id() == self.owner, "owner only");
         near_sdk::assert_one_yocto();
+        require!(
+            amount.0 <= self.free_balance(),
+            "amount exceeds what the factory holds beyond refunds owed"
+        );
         Promise::new(self.owner.clone()).transfer(NearToken::from_yoctonear(amount.0))
     }
 }
 
 impl Accounts {
+    /// Balance beyond storage and the refunds owed to payers.
+    fn free_balance(&self) -> u128 {
+        env::account_balance()
+            .as_yoctonear()
+            .saturating_sub(env::storage_usage() as u128 * env::storage_byte_cost().as_yoctonear())
+            .saturating_sub(self.owed)
+    }
+
     fn state_init(&self, owner: &Owner) -> UniversalStateInit {
         let core = AccountCore {
             owner: owner.clone(),
@@ -327,6 +342,50 @@ mod tests {
         let r =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.configure(None, Some(protocol()))));
         assert!(r.is_err());
+    }
+
+    /// Refunds recorded for payers are theirs: a sweep by the owner must leave them.
+    #[test]
+    fn audit_sweep_cannot_take_refunds_owed_to_payers() {
+        let mut f = setup("relayer.parry.testnet", NearToken::from_yoctonear(0));
+        let deposit = 300_000_000_000_000_000_000_000u128;
+        testing_env!(
+            VMContextBuilder::new()
+                .current_account_id(id("accounts.parry.testnet"))
+                .predecessor_account_id(id("accounts.parry.testnet"))
+                .account_balance(NearToken::from_millinear(10))
+                .build(),
+            near_sdk::test_vm_config(),
+            RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![PromiseResult::Failed]
+        );
+        let owner = Owner::Near { account_id: id("alice.testnet") };
+        f.on_created(id("0uabc.testnet"), owner, id("relayer.parry.testnet"), U128(deposit));
+        // The runtime's refund landed: the factory now holds the payer's deposit plus 1 NEAR.
+        let storage = env::storage_usage() as u128 * env::storage_byte_cost().as_yoctonear();
+        testing_env!(VMContextBuilder::new()
+            .current_account_id(id("accounts.parry.testnet"))
+            .predecessor_account_id(id("parry.testnet"))
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .account_balance(NearToken::from_yoctonear(
+                storage + deposit + NearToken::from_near(1).as_yoctonear()
+            ))
+            .build());
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = f.sweep(U128(NearToken::from_near(1).as_yoctonear() + deposit));
+        }));
+        assert!(r.is_err(), "the owner swept a refund owed to the payer");
+        let _ = f.sweep(U128(NearToken::from_near(1).as_yoctonear()));
+        // The payer still gets it.
+        testing_env!(VMContextBuilder::new()
+            .current_account_id(id("accounts.parry.testnet"))
+            .predecessor_account_id(id("relayer.parry.testnet"))
+            .account_balance(NearToken::from_yoctonear(storage + deposit))
+            .build());
+        let _ = f.claim_refund();
+        assert_eq!(f.refund_of(id("relayer.parry.testnet")).0, 0);
+        assert_eq!(f.owed, 0);
     }
 
     #[test]

@@ -13,8 +13,10 @@
 //! - `sealing_key`: the enclave's X25519 key that sealed mandates are encrypted to.
 //!
 //! Every history is bounded and evicts its oldest entries (storage included), so the board's
-//! storage cost has a ceiling. The enclave key history is kept whole, so a record signed before
-//! a key rotation can still be checked against the key that signed it (`key_index`).
+//! storage cost has a ceiling: that includes the accounts with stored positions, of which the
+//! board keeps the `MAX_ACCOUNTS` most recently added. The enclave key history is kept whole,
+//! so a record signed before a key rotation can still be checked against the key that signed
+//! it (`key_index`).
 
 mod report;
 mod ring;
@@ -41,6 +43,8 @@ pub const DECISION_HISTORY: u64 = 500;
 pub const DECISIONS_PER_ACCOUNT: usize = 50;
 /// Positions kept per account; a new one beyond this evicts the least recently updated.
 pub const POSITIONS_PER_ACCOUNT: usize = 16;
+/// Accounts with stored positions; a new one beyond this evicts the account first stored.
+pub const MAX_ACCOUNTS: u64 = 5_000;
 /// Distinct assets with a mark. A new asset beyond this is refused: it can only be a
 /// configuration mistake, and evicting a live mark to make room would hide one.
 pub const MAX_ASSETS: u32 = 64;
@@ -60,6 +64,7 @@ enum StorageKey {
     Decisions,
     DecisionIds,
     DecisionsByAccount,
+    TrackedAccounts,
 }
 
 /// What the vault exposes to the board.
@@ -205,6 +210,9 @@ pub struct Contract {
     stats: Stats,
     /// Per account, its positions, least recently updated first.
     positions: LookupMap<AccountId, Vec<PositionRecord>>,
+    /// The accounts in `positions`, in the order they were first stored, so the oldest can be
+    /// evicted once `MAX_ACCOUNTS` hold positions.
+    tracked: Ring<AccountId>,
     marks: IterableMap<String, Mark>,
     vault_reports: Ring<Record<VaultReport>>,
     decisions: LookupMap<Hex32, Record<Decision>>,
@@ -245,6 +253,7 @@ impl Contract {
             last_run_ids: LastRunIds::default(),
             stats: Stats::default(),
             positions: LookupMap::new(StorageKey::Positions),
+            tracked: Ring::new(StorageKey::TrackedAccounts, MAX_ACCOUNTS),
             marks: IterableMap::new(StorageKey::Marks),
             vault_reports: Ring::new(StorageKey::VaultReports, VAULT_HISTORY),
             decisions: LookupMap::new(StorageKey::Decisions),
@@ -474,11 +483,14 @@ impl Contract {
                 run_id: r.run_id,
                 at: r.at,
             };
-            let tracked = &mut self.stats.accounts_tracked;
-            let list = self.positions.entry(record.account.clone()).or_insert_with(|| {
-                *tracked += 1;
-                Vec::new()
-            });
+            if !self.positions.contains_key(&record.account) {
+                self.stats.accounts_tracked += 1;
+                if let Some(evicted) = self.tracked.push(record.account.clone()) {
+                    self.positions.remove(&evicted);
+                    self.stats.accounts_tracked -= 1;
+                }
+            }
+            let list = self.positions.entry(record.account.clone()).or_default();
             list.retain(|old| !(old.venue == record.venue && old.position == record.position));
             list.push(record);
             if list.len() > POSITIONS_PER_ACCOUNT {

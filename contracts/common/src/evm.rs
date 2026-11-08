@@ -5,7 +5,7 @@
 //! The contract builds the unsigned transaction itself, so the MPC network signs only what the
 //! guard allowed; the service that broadcasts it adds the signature (y parity, r, s) off chain.
 
-use near_sdk::{env, near};
+use near_sdk::{env, near, require};
 
 /// `approve(address,uint256)`.
 pub const SELECTOR_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3];
@@ -65,6 +65,26 @@ fn parse_wei(s: &str) -> u128 {
         env::panic_str("fee must be a decimal wei amount");
     }
     s.parse().unwrap_or_else(|_| env::panic_str("fee out of range"))
+}
+
+/// Most gas a guardian transaction may reserve: an approve or a repay uses a few hundred
+/// thousand.
+pub const MAX_GUARDIAN_GAS_LIMIT: u64 = 600_000;
+/// Largest priority fee per gas a guardian transaction may offer (20 gwei). The priority fee
+/// goes to the block producer, so without a bound a signed transaction could hand the person's
+/// gas balance to whoever builds the block.
+pub const MAX_GUARDIAN_PRIORITY_FEE_WEI: u128 = 20_000_000_000;
+
+/// Refuses fee fields a guardian may not choose: a priority fee above the cap or above the max
+/// fee, or a gas limit outside 1 to `MAX_GUARDIAN_GAS_LIMIT`.
+pub fn assert_guardian_fees(params: &EvmTxParams) {
+    let tip = parse_wei(&params.max_priority_fee_per_gas);
+    require!(tip <= parse_wei(&params.max_fee_per_gas), "priority fee above the max fee");
+    require!(tip <= MAX_GUARDIAN_PRIORITY_FEE_WEI, "priority fee above the guardian's 20 gwei cap");
+    require!(
+        params.gas_limit > 0 && params.gas_limit <= MAX_GUARDIAN_GAS_LIMIT,
+        "gas limit outside the guardian's 1 to 600000"
+    );
 }
 
 /// The unsigned EIP-1559 transaction: 0x02 || rlp([chainId, nonce, maxPriorityFee, maxFee, gas,

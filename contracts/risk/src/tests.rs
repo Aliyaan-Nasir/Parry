@@ -809,3 +809,25 @@ fn config_shows_owner_and_vault() {
     let c = deploy();
     assert_eq!(c.config(), Config { owner_id: account("owner.testnet"), vault: Some(account(VAULT)) });
 }
+
+// ----- audit regressions -------------------------------------------------------------------------
+
+/// Positions are bounded per account, and the accounts are bounded too: beyond `MAX_ACCOUNTS`
+/// the account first stored is evicted with its positions, so reports about ever more accounts
+/// cannot grow the board's storage (and the NEAR it locks) without limit.
+#[test]
+fn audit_tracked_accounts_are_bounded() {
+    let mut c = deploy();
+    let total = MAX_ACCOUNTS + 100;
+    let reports = (0..total / 100).map(|r| {
+        let positions: Vec<Value> =
+            (0..100).map(|i| position(&format!("acc{}.testnet", r * 100 + i), "near-usdc", 10)).collect();
+        json!({ "kind": "risk_update", "run_id": r + 1, "at": T0, "positions": positions, "marks": [] })
+    });
+    submit_all(&mut c, reports);
+    assert_eq!(c.stats().accounts_tracked, MAX_ACCOUNTS);
+    assert!(c.risks_of(account("acc0.testnet")).is_empty(), "the first account was evicted");
+    assert!(c.risks_of(account("acc99.testnet")).is_empty());
+    assert_eq!(c.risks_of(account("acc100.testnet")).len(), 1);
+    assert_eq!(c.risks_of(account(&format!("acc{}.testnet", total - 1))).len(), 1);
+}
