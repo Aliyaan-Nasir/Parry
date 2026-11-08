@@ -20,7 +20,8 @@ This file is for AI agents and engineers working in the repository; the product 
 - `packages/sdk` (`@parry/sdk`), `packages/mcp` (`@parry/mcp`), `packages/brand` (design tokens).
 - `services/`: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up (Bun, one package, `bun services/src/main.ts <name>`).
 - `apps/api`: the API (Hono on Bun, contract in `docs/api.md`), `apps/web`: the site and app (Next.js 16).
-- `scripts/`: `deploy.ts` (testnet), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `verify.ts` (check every claim).
+- `scripts/`: `deploy.ts` (testnet, or a guarded mainnet plan and deploy), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `scenarios.ts` (the test matrix's scenarios, with recorded proofs), `evm-position.ts` (an Aave loan on Base Sepolia from an account's derived address), `verify.ts` (check every claim), `security.ts`.
+- `skills/parry/SKILL.md`: the agent skill; `tools/make_readme_art.py`: the README figures, drawn from the brand tokens.
 - `deployments/<network>.json`: deployed accounts, code hashes, transactions and commits.
 
 ## Commands
@@ -37,6 +38,8 @@ pnpm verify                    # check every README claim against testnet
 docker compose up              # the whole stack against testnet (read-only without keys)
 pnpm dev                       # the same without Docker (needs Postgres)
 bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --sandbox`
+bun scripts/scenarios.ts       # the testnet scenarios end to end (`--sandbox` for the local node)
+bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends nothing (MAINNET.md)
 ```
 
 - `contracts/scripts/build.sh --reproducible [commit]` builds in SourceScan's pinned image; only those builds are deployed (local builds carry the builder's paths), and `near contract verify deployed-at <account>` checks them.
