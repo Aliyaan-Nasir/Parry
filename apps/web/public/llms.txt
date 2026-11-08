@@ -1,0 +1,31 @@
+# Parry
+
+> Parry keeps leveraged positions on NEAR from being liquidated, and runs a delta-neutral NEAR vault. A guardian program in an OutLayer TEE watches each protected position, plans a rescue, has a NEAR AI Cloud verifiable model review it, and signs it with a key bound to its build; the person's account contract accepts only protective actions within their on-chain mandate. It runs on NEAR testnet.
+
+Parry has two products.
+
+- Protect: a protected account (a NEP-655 universal account, owned by a passkey or a NEAR account) holds a Rhea lending position, and optionally a Hyperliquid perp and an Aave loan on Base Sepolia through Chain Signatures. The owner sets a mandate: which protective powers the guardian has (repay, add collateral, deleverage, reduce or hedge a perp, repay the Aave loan), per-token reserve and daily caps, a daily action count and an expiry, with the trigger thresholds sealed to the enclave. The guardian can never transfer funds to anyone.
+- Earn: the vault stakes NEAR into LiNEAR and shorts the NEAR perp on Hyperliquid through Chain Signatures, so its value tracks dollars plus staking yield and funding. Shares are the NEP-141 token EARN. The enclave publishes the vault's risk score and a proof-of-reserves Merkle root on chain, and the vault pauses deposits when the risk is high.
+
+Every guardian action carries the SHA-256 hash of the AI review that approved it. The review is bound to the exact request and response bytes by the model's TEE signature, so anyone can check it.
+
+## Use it from an agent
+
+- [MCP server](https://github.com/Aliyaan-Nasir/Parry/blob/main/packages/mcp/README.md): `npx -y @parry/mcp`, or Streamable HTTP at `/mcp` on the Parry API. Read tools: risk_check, get_position_risk, get_market, get_vault, get_reserves, get_guardian_log, verify_guardian_decision, simulate_rescue. Capped testnet write tools: create_protected_account, set_mandate, vault_deposit, vault_withdraw.
+- [Agent skill](https://github.com/Aliyaan-Nasir/Parry/blob/main/skills/parry/SKILL.md): teaches Claude Code and Codex to use and extend Parry (`npx skills add Aliyaan-Nasir/Parry`).
+
+## Use it from code
+
+- [TypeScript SDK](https://github.com/Aliyaan-Nasir/Parry/blob/main/packages/sdk/README.md): `@parry/sdk` reads the API and the chain, builds every contract call as plain data for a wallet to sign, seals mandate policies to the enclave, and verifies guardian decisions and reserve proofs.
+- [HTTP API](https://github.com/Aliyaan-Nasir/Parry/blob/main/docs/api.md): JSON under `/v1`. Main reads: `/v1/risk/{accountId}` (any NEAR account's lending risk), `/v1/accounts/{accountId}`, `/v1/guardian/decisions`, `/v1/guardian/decisions/{id}/verify`, `/v1/vault`, `/v1/vault/reserves`, `/v1/market`, `/v1/status`. `/v1/paid/risk/{accountId}` is the same risk check paid per call over x402 on NEAR.
+
+## How it works
+
+- [Risk model](https://github.com/Aliyaan-Nasir/Parry/blob/main/docs/risk-model.md): health, liquidation price, the Tremor volatility index, first-passage liquidation probability, time to liquidation, cascade pressure and the 0 to 100 score with its tiers.
+- [Architecture and NEAR primitives](https://github.com/Aliyaan-Nasir/Parry/blob/main/AGENTS.md): where each primitive lives in the code (universal accounts, global contracts, passkeys on chain, Chain Signatures, OutLayer, NEAR AI Cloud, gas keys, NEP-366 relaying, x402).
+- [Security](https://github.com/Aliyaan-Nasir/Parry/blob/main/SECURITY.md): the trust model and every review finding.
+
+## Optional
+
+- [Judging map](https://github.com/Aliyaan-Nasir/Parry/blob/main/JUDGES.md)
+- [Mainnet readiness](https://github.com/Aliyaan-Nasir/Parry/blob/main/MAINNET.md)
