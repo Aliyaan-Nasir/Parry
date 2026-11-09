@@ -43,6 +43,7 @@
   --color-fg: var(--parry-text);
   --color-muted: var(--parry-muted);
   --color-brass: var(--parry-brass);
+  --color-mark: var(--parry-mark);
   --color-brass-fill: var(--parry-brass-fill);
   --color-brass-fill-hover: var(--parry-brass-fill-hover);
   --color-brass-soft: var(--parry-brass-soft);

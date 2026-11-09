@@ -2,7 +2,15 @@
 // health falls toward the liquidation line, the sabre meets it, and it is turned back up.
 // Coordinates are on a 640 x 360 canvas.
 
-import { MARK } from "@/components/brand/paths";
+/** The sabre drawn in the hero, on a 32 unit grid. */
+const SABRE_SHAPE = {
+  blade: "M8.18 23.53 L28.12 19.68 Q27.35 22.45 24.96 23.11 L8.88 26.86 Z",
+  grip: "M5.2 25.9 L8.53 25.2",
+  gripWidth: 2.6,
+  guard: "M9.21 28.43 L7.84 21.97",
+  guardWidth: 2.3,
+  pommel: { cx: 5, cy: 25.94, r: 1.75 },
+} as const;
 
 export const CANVAS = { width: 640, height: 360 } as const;
 
@@ -38,7 +46,7 @@ export const RECOVERY_END = { x: 624, y: 130 } as const;
 /** Horizontal guide lines, as fractions of the plot height. */
 export const GUIDES = [0.2, 0.4, 0.6] as const;
 
-/** Sabre placement: the mark's sabre scaled so its spine touches the contact point. */
+/** Sabre placement: scaled so its spine touches the contact point. */
 export const SABRE_SCALE = 4.7;
 const SPINE_CONTACT = { x: 16.1, y: 22.0 };
 export const SABRE_TRANSLATE = {
@@ -48,15 +56,8 @@ export const SABRE_TRANSLATE = {
 
 /** The sabre's pivot (its pommel) on the canvas, for the swing. */
 export const SABRE_PIVOT = {
-  x: SABRE_TRANSLATE.x + MARK.pommel.cx * SABRE_SCALE,
-  y: SABRE_TRANSLATE.y + MARK.pommel.cy * SABRE_SCALE,
+  x: SABRE_TRANSLATE.x + SABRE_SHAPE.pommel.cx * SABRE_SCALE,
+  y: SABRE_TRANSLATE.y + SABRE_SHAPE.pommel.cy * SABRE_SCALE,
 } as const;
 
-export const SABRE = {
-  blade: MARK.blade,
-  grip: MARK.grip,
-  gripWidth: MARK.gripWidth,
-  guard: MARK.guard,
-  guardWidth: MARK.guardWidth,
-  pommel: MARK.pommel,
-} as const;
+export const SABRE = SABRE_SHAPE;

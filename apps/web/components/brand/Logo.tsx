@@ -9,29 +9,17 @@ type MarkProps = {
   title?: string;
 };
 
-/** The shapes of the mark on its 32 unit grid: the strike in the text color, the sabre in brass. */
+/** The shapes of the mark on its 32 unit grid: the stem in the text color, the guard in brass. */
 export function MarkShapes() {
   return (
     <>
-      <path
-        d={MARK.strike}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={MARK.strikeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <g className="text-brass">
-        <path d={MARK.blade} fill="currentColor" />
-        <path d={MARK.grip} fill="none" stroke="currentColor" strokeWidth={MARK.gripWidth} strokeLinecap="round" />
-        <path d={MARK.guard} fill="none" stroke="currentColor" strokeWidth={MARK.guardWidth} strokeLinecap="round" />
-        <circle cx={MARK.pommel.cx} cy={MARK.pommel.cy} r={MARK.pommel.r} fill="currentColor" />
-      </g>
+      <rect x={MARK.stem.x} y={MARK.stem.y} width={MARK.stem.width} height={MARK.stem.height} rx={MARK.stem.rx} fill="currentColor" />
+      <path d={MARK.guard} className="text-mark" fill="currentColor" />
     </>
   );
 }
 
-/** The Parry mark: a sabre turning a falling strike aside. */
+/** The Parry mark: a P cut into a stem and the guard raised beside it. */
 export function Mark({ size = 28, className, title }: MarkProps) {
   return (
     <svg
@@ -55,7 +43,7 @@ type LogoProps = {
   className?: string;
 };
 
-/** Mark and wordmark lockup, outlined from Fraunces SemiBold. */
+/** Mark and wordmark lockup, the word outlined from Manrope Bold. */
 export function Logo({ height = 26, className }: LogoProps) {
   const width = Math.round((LOCKUP.width / LOCKUP.height) * height);
   return (

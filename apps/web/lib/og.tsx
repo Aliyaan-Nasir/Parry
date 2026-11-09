@@ -13,6 +13,7 @@ import {
   PROJECTED_HIT,
   RECOVERY,
   RECOVERY_END,
+  SABRE,
   SABRE_SCALE,
   SABRE_TRANSLATE,
 } from "./deflection";
@@ -59,11 +60,8 @@ export function renderOgImage(): ImageResponse {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <svg width={logoW} height={logoH} viewBox={`0 0 ${LOCKUP.width} ${LOCKUP.height}`}>
             <g transform={`translate(${LOCKUP.mark.x} ${LOCKUP.mark.y}) scale(${LOCKUP.mark.scale})`}>
-              <path d={MARK.strike} fill="none" stroke={ink.text} strokeWidth={MARK.strikeWidth} strokeLinecap="round" strokeLinejoin="round" />
-              <path d={MARK.blade} fill={ink.brass} />
-              <path d={MARK.grip} fill="none" stroke={ink.brass} strokeWidth={MARK.gripWidth} strokeLinecap="round" />
-              <path d={MARK.guard} fill="none" stroke={ink.brass} strokeWidth={MARK.guardWidth} strokeLinecap="round" />
-              <circle cx={MARK.pommel.cx} cy={MARK.pommel.cy} r={MARK.pommel.r} fill={ink.brass} />
+              <rect x={MARK.stem.x} y={MARK.stem.y} width={MARK.stem.width} height={MARK.stem.height} rx={MARK.stem.rx} fill={ink.text} />
+              <path d={MARK.guard} fill={ink.mark} />
             </g>
             <path transform={`translate(${LOCKUP.word.x} ${LOCKUP.word.y})`} d={WORDMARK.d} fill={ink.text} />
           </svg>
@@ -122,10 +120,10 @@ export function renderOgImage(): ImageResponse {
           <path d={APPROACH} fill="none" stroke={ink.text} strokeWidth="4" strokeLinecap="round" />
           <path d={RECOVERY} fill="none" stroke={ink.safe} strokeWidth="4" strokeLinecap="round" />
           <g transform={`translate(${SABRE_TRANSLATE.x} ${SABRE_TRANSLATE.y}) scale(${SABRE_SCALE})`}>
-            <path d={MARK.blade} fill={ink.brass} />
-            <path d={MARK.grip} fill="none" stroke={ink.brass} strokeWidth={MARK.gripWidth} strokeLinecap="round" />
-            <path d={MARK.guard} fill="none" stroke={ink.brass} strokeWidth={MARK.guardWidth} strokeLinecap="round" />
-            <circle cx={MARK.pommel.cx} cy={MARK.pommel.cy} r={MARK.pommel.r} fill={ink.brass} />
+            <path d={SABRE.blade} fill={ink.brass} />
+            <path d={SABRE.grip} fill="none" stroke={ink.brass} strokeWidth={SABRE.gripWidth} strokeLinecap="round" />
+            <path d={SABRE.guard} fill="none" stroke={ink.brass} strokeWidth={SABRE.guardWidth} strokeLinecap="round" />
+            <circle cx={SABRE.pommel.cx} cy={SABRE.pommel.cy} r={SABRE.pommel.r} fill={ink.brass} />
           </g>
           <circle cx={RECOVERY_END.x} cy={RECOVERY_END.y} r="6" fill={ink.safe} />
         </svg>

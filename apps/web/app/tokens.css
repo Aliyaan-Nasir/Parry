@@ -16,6 +16,7 @@
   --parry-brass: #7e5a17;
   --parry-brass-fill: #c99a45;
   --parry-on-brass: #141614;
+  --parry-mark: #a67a2a;
   --parry-safe: #24663a;
   --parry-caution: #875400;
   --parry-danger: #ae3a0b;
@@ -34,6 +35,7 @@
     --parry-brass: #d9b160;
     --parry-brass-fill: #d9b160;
     --parry-on-brass: #0e100e;
+    --parry-mark: #d9b160;
     --parry-safe: #6cc287;
     --parry-caution: #e5b54e;
     --parry-danger: #f28c4e;
@@ -52,6 +54,7 @@
   --parry-brass: #d9b160;
   --parry-brass-fill: #d9b160;
   --parry-on-brass: #0e100e;
+  --parry-mark: #d9b160;
   --parry-safe: #6cc287;
   --parry-caution: #e5b54e;
   --parry-danger: #f28c4e;
