@@ -198,7 +198,11 @@ interface Status {
   oracle: { publishTime: string; ageSeconds: number; fresh: boolean } | null;
   indexer: { lastBlock: number; lagBlocks: number };
   lanes: { service: string; account: string; key: string; nonces: number; inFlight: number }[];
-  treasury: { account: string; balanceNear: number; low: boolean; wallets: { name: string; account: string; balanceNear: number; target: number }[] };
+  treasury: {
+    account: string; balanceNear: number; low: boolean;
+    postQuantumKey: boolean;   // the treasury signs with an ML-DSA-65 (FIPS 204) key
+    wallets: { name: string; account: string; balanceNear: number; target: number }[];   // includes each gas key's prepaid balance
+  };
 }
 ```
 

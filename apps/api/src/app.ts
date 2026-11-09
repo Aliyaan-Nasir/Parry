@@ -315,6 +315,12 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   app.get("/v1/quotes/rescue", async (c) => c.json(await quoteRescue(Math.max(0.1, Number(c.req.query("amountNear") ?? 10)))));
 
+  /** Whether an account holds a post-quantum ML-DSA-65 key (the chain lists its on-trie handle). */
+  const postQuantum = async (account: string): Promise<boolean> => {
+    const r = await rpc<{ keys: { public_key: string }[] }>("query", { request_type: "view_access_key_list", finality: "final", account_id: account }).catch(() => null);
+    return !!r?.keys.some((k) => k.public_key.startsWith("ml-dsa-65"));
+  };
+
   app.get("/v1/status", async (c) => {
     const services = await sql<{ name: string; ok: boolean; detail: string; checked_at: Date }[]>`SELECT * FROM service_status ORDER BY name`;
     const oracle = await view<{ feeds: { price_id: string; publish_time: number }[] }>(contract("oracle"), "status").catch(() => null);
@@ -338,7 +344,13 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
       indexer: { lastBlock: Number(cursor?.b ?? 0), lagBlocks: head ? head.header.height - Number(cursor?.b ?? 0) : null },
       lanes,
       treasury: treasury
-        ? { account: treasury.account, balanceNear: treasury.balance, low: treasury.balance < treasury.target, wallets: wallets.filter((w) => w.name !== "treasury").map((w) => ({ name: w.name, account: w.account, balanceNear: w.balance, target: w.target })) }
+        ? {
+            account: treasury.account,
+            balanceNear: treasury.balance,
+            low: treasury.balance < treasury.target,
+            postQuantumKey: await postQuantum(treasury.account),
+            wallets: wallets.filter((w) => w.name !== "treasury").map((w) => ({ name: w.name, account: w.account, balanceNear: w.balance, target: w.target })),
+          }
         : null,
     });
   });
@@ -360,7 +372,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   app.get("/v1/treasury", async (c) => {
     const t = process.env.TREASURY_ACCOUNT_ID;
-    return c.json({ account: t ?? null, balanceNear: t ? toNear((await balanceOf(t)) ?? 0n) : null });
+    return c.json({ account: t ?? null, balanceNear: t ? toNear((await balanceOf(t)) ?? 0n) : null, postQuantumKey: t ? await postQuantum(t) : false });
   });
 
   if (opts.mcp) app.all("/mcp", (c) => opts.mcp!(c.req.raw));

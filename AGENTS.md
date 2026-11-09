@@ -58,7 +58,8 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
 | NEAR AI Cloud verifiable review | `enclave/src/ai.rs`, `apps/api/src/verify.ts` |
 | Sealed mandates | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
-| Gas keys (parallel lanes) | `services/src/lib/near.ts` (`Sender`), `scripts/deploy.ts` (lanes) |
+| Gas keys (NEP-611, parallel lanes) | `services/src/lib/near.ts` (`Sender`, `tendGasKey`), `scripts/deploy.ts` (lanes) |
+| Post-quantum keys (ML-DSA-65) | `scripts/deploy.ts` (the treasury's signing key), `apps/api/src/app.ts` (`postQuantum`) |
 | NEP-366 relayer | `services/src/relayer.ts` |
 | x402 on NEAR | `apps/api/src/x402.ts`, `@parry/sdk` `paidRiskCheck` |
 | NEAR Intents 1Click (dry-run quotes) | `services/src/lib/routes.ts` |

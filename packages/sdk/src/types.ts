@@ -273,6 +273,8 @@ export interface Status {
     account: string;
     balanceNear: number;
     low: boolean;
+    /** The treasury signs with a post-quantum ML-DSA-65 (FIPS 204) key. */
+    postQuantumKey: boolean;
     wallets: { name: string; account: string; balanceNear: number; target: number }[];
   };
 }

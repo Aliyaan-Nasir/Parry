@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { generateKey, Near } from "near-kit";
+import { generateKey, MlDsa65KeyPair, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
 
 const ROOT_DIR = join(import.meta.dir, "..");
@@ -284,7 +284,7 @@ async function main() {
   // OutLayer binds the enclave's keys to the build and the calling account, so every service
   // calls it from `enclave`, each with its own key. Monitor, keeper and relayer also get a gas
   // key with nonce lanes on their own account, for parallel transactions.
-  const env: string[] = [`PARRY_NETWORK=${NETWORK}`, `ENCLAVE_ACCOUNT_ID=${wallets.enclave}`, `TREASURY_ACCOUNT_ID=${wallets.treasury}`, `X402_PAY_TO=${wallets.api}`];
+  const env: string[] = [`PARRY_NETWORK=${NETWORK}`, `ENCLAVE_ACCOUNT_ID=${wallets.enclave}`, `X402_PAY_TO=${wallets.api}`];
   // The services that run the enclave: the risk engine (risk reports), the keeper (vault reports,
   // the sealing key) and the guardian.
   for (const svc of ["risk", "keeper", "guardian"]) {
@@ -310,9 +310,22 @@ async function main() {
     const P = svc.toUpperCase();
     env.push(`${P}_ACCOUNT_ID=${id}`, `${P}_PRIVATE_KEY=${g.private_key}`, `${P}_PUBLIC_KEY=${g.public_key}`, `${P}_LANES=${g.lanes}`);
   }
-  for (const svc of ["guardian", "treasury", "agent"].filter((w) => wallets[w])) {
+  for (const svc of ["guardian", "agent"].filter((w) => wallets[w])) {
     env.push(`${svc.toUpperCase()}_ACCOUNT_ID=${wallets[svc]}`, `${svc.toUpperCase()}_PRIVATE_KEY=${keyOf(wallets[svc]!)}`);
   }
+  // The treasury holds the most NEAR and its key lives longest, so the top-up service signs with a
+  // post-quantum ML-DSA-65 (FIPS 204) key; its ed25519 key stays in the keychain for recovery.
+  const pqFile = join(ROOT_DIR, "internal", "keys", "treasury-ml-dsa-65.json");
+  if (!existsSync(pqFile)) {
+    const pq = MlDsa65KeyPair.fromRandom();
+    const o = (await client(wallets.treasury!).transaction(wallets.treasury!).addKey(pq.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+    if (failure(o)) throw new Error(`treasury ML-DSA-65 key: ${failure(o)}`);
+    writeFileSync(pqFile, JSON.stringify({ account_id: wallets.treasury, public_key: pq.publicKey.toString(), private_key: pq.secretKey, tx: hashOf(o) }), { mode: 0o600 });
+    dep.services = { ...dep.services, treasuryKeyTx: hashOf(o) };
+    save();
+    console.log(`treasury signs with ML-DSA-65 (${hashOf(o)})`);
+  }
+  env.push(`TREASURY_ACCOUNT_ID=${wallets.treasury}`, `TREASURY_PRIVATE_KEY=${(JSON.parse(readFileSync(pqFile, "utf8")) as { private_key: string }).private_key}`);
   // The top-up service refills each wallet from the treasury to its opening balance.
   env.push(`TOPUP_WALLETS=${WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal}`).join(",")}`);
   const envFile = MAINNET ? ".env.services.mainnet" : ".env.services";
