@@ -43,6 +43,8 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `get_guardian_log(account?, limit?)`: guardian decisions with their trigger, action, AI review and outcome.
 - `verify_guardian_decision(id)`: checks a decision's review hash, model signature, enclave signature and envelope against the key on the risk board.
 - `simulate_rescue(account)`: what the guardian would do now, unsigned and unlimited.
+- `get_rescue_route(amount_near)`: the Rhea pool against a dry-run NEAR Intents 1Click quote for a rescue swap.
+- `get_status()`: every service's health, the oracle's freshness, the indexer's lag, the gas-key lanes and the treasury.
 
 ## Write tools (testnet, agent account only)
 
@@ -50,6 +52,7 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `set_mandate(powers, limits, ...)`: sets the guardian mandate on the agent's protected account, with an optional sealed policy, at most 10 calls per UTC day.
 - `vault_deposit(amount_near)`: deposits NEAR from the agent account into the vault, at most 1 NEAR per call and 5 calls per UTC day.
 - `vault_withdraw(shares)`: queues a withdrawal of the agent's vault shares, at most 5 calls per UTC day.
+- `paid_risk_check(account)`: a risk check paid per call over x402 on NEAR from the agent account (at most 0.05 test USDC a call), at most 20 calls per UTC day.
 
 Every refusal says why, and nothing is sent when a call is refused.
 

@@ -231,6 +231,41 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       }),
   );
 
+  server.registerTool(
+    "get_rescue_route",
+    {
+      title: "Rescue swap route comparison",
+      description:
+        "Compares the two ways a rescue could sell NEAR collateral for USDC right now: the Rhea exchange pool the account swaps on, and a NEAR Intents 1Click quote with dry: true " +
+        "(solvers compete on price; with a partner key the route stays confidential). On testnet the Intents side is a mainnet dry-run quote for the same amount, shown for comparison. Changes nothing.",
+      inputSchema: { amount_near: z.number().positive().max(1_000_000).describe("NEAR to sell.") },
+      annotations: read,
+    },
+    ({ amount_near }) =>
+      guard(async () => {
+        const r = await parry.rescueQuote(amount_near);
+        const intents = "outUsd" in r.intents ? `${r.intents.outUsd} USDC` : `unavailable (${r.intents.unavailable})`;
+        return ok(`Rhea pool ${r.rhea ? `${r.rhea.outUsd} USDC` : "unavailable"}, NEAR Intents ${intents}; chosen: ${r.chosen}.`, r as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "get_status",
+    {
+      title: "Service and fleet status",
+      description:
+        "Reads the health of every Parry service, the oracle feed's freshness, the indexer's lag, the gas-key lanes each service wallet transacts on in parallel, and the treasury balance, from the Parry API. Changes nothing.",
+      inputSchema: {},
+      annotations: read,
+    },
+    () =>
+      guard(async () => {
+        const s = await parry.status();
+        const down = s.services.filter((x) => !x.ok).map((x) => x.name);
+        return ok(down.length ? `Down: ${down.join(", ")}.` : `All ${s.services.length} services up.`, s as unknown as Record<string, unknown>);
+      }),
+  );
+
   // ------------------------------------------------------------------------------------------
   // Write tools: testnet only, the configured agent's own account, capped.
   // ------------------------------------------------------------------------------------------
@@ -408,6 +443,31 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
           txHash: sent.txHash,
           withdrawalId: sent.value,
           remainingToday: remaining("vault_withdraw", caps.withdrawPerDay),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "paid_risk_check",
+    {
+      title: "Paid risk check over x402",
+      description:
+        `Scores any NEAR account's lending position through the Parry API's paid endpoint, paying per call over x402 on NEAR: the agent account (${agent.accountId}) signs a delegate ft_transfer of test USDC, ` +
+        "the API settles it on chain before answering, and the result carries the payment receipt. Use it when the free tier is rate limited. " +
+        `Changes: moves the price (at most ${caps.paidMaxUnits / 1e6} test USDC) from the agent account. Testnet only; at most ${caps.paidPerDay} call(s) per UTC day.`,
+      inputSchema: { account: accountArg },
+      annotations: write,
+    },
+    ({ account }) =>
+      guard(async () => {
+        const refused = notTestnet("paid_risk_check") ?? admit("paid_risk_check", caps.paidPerDay);
+        if (refused) return refused;
+        const r = await parry.paidRiskCheck(account, { payer: agent, maxAmount: String(caps.paidMaxUnits) });
+        const p = r.result.position;
+        return ok(p ? `Score ${p.score} (${p.tier}), health ${p.health ?? "no debt"}; paid ${r.requirement?.amount ?? 0} units.` : `${account} has no lending position.`, {
+          ...(r.result as unknown as Record<string, unknown>),
+          payment: r.payment,
+          remainingToday: remaining("paid_risk_check", caps.paidPerDay),
         });
       }),
   );

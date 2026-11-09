@@ -137,6 +137,15 @@ export const routes: Record<string, unknown> = {
   },
   "GET /v1/risk/alice.testnet": { account: "alice.testnet", checkedAt: "2026-11-10T00:00:00Z", position, market, model: "docs/risk-model.md" },
   "GET /v1/market": market,
+  "GET /v1/quotes/rescue": { amountNear: 10, rhea: { outUsd: 24.6, priceImpact: 0.004, poolId: 3 }, intents: { outUsd: 24.7, confidential: false, dry: true }, chosen: "intents" },
+  "GET /v1/status": {
+    network: "testnet",
+    services: [{ name: "monitor", ok: true, detail: "", checkedAt: "2026-11-10T00:00:00Z" }, { name: "keeper", ok: true, detail: "", checkedAt: "2026-11-10T00:00:00Z" }],
+    oracle: { ageSeconds: 12 },
+    indexer: { lagBlocks: 3 },
+    lanes: [{ wallet: "keeper.parry.testnet", lanes: 8 }],
+    treasury: { account: "treasury.parry.testnet", balanceNear: 12 },
+  },
   "GET /v1/vault": vault,
   "GET /v1/vault/reserves": reserves,
   "POST /v1/simulate/0uabc.testnet": {
@@ -177,6 +186,14 @@ export function fakeParry(network: Network = "testnet"): FakeParry {
       sealingKey: { public_key: sealingPublicKey, run_id: 1, at: 1, key_index: 0 },
     }),
     vaultState: async () => ({ reserves: { root: reserves.root } }) as Awaited<ReturnType<Parry["vaultState"]>>,
+    paidRiskCheck: async (account, opts) => {
+      apiCalls.push(`PAID ${account} max ${String(opts.maxAmount)} by ${opts.payer.accountId}`);
+      return {
+        result: { account, checkedAt: "2026-11-10T00:00:00Z", position, market, model: "docs/risk-model.md" },
+        payment: { success: true, transaction: "paid-tx", network: "near:testnet", payer: opts.payer.accountId },
+        requirement: { scheme: "exact", network: "near:testnet", asset: "usdc.parry.testnet", amount: "10000", payTo: "api.parry.testnet", resource: `/v1/paid/risk/${account}`, description: "risk check" },
+      } as unknown as Awaited<ReturnType<Parry["paidRiskCheck"]>>;
+    },
     sendCall: async (call) => {
       sent.push(call);
       return { txHash: `tx-${sent.length}`, value: call.methodName === "request_withdraw" ? sent.length : null };

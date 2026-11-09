@@ -10,8 +10,19 @@ import { enclaveKey, fakeParry, genuineDecision, sealingSecret } from "./fixture
 
 const agentSeed = sha256(utf8ToBytes("agent test key"));
 const AGENT = { accountId: "agent.parry.testnet", privateKey: `ed25519:${toBase58(new Uint8Array([...agentSeed, ...ed25519.getPublicKey(agentSeed)]))}` };
-const READ_TOOLS = ["get_position_risk", "risk_check", "get_market", "get_vault", "get_reserves", "get_guardian_log", "verify_guardian_decision", "simulate_rescue"];
-const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw"];
+const READ_TOOLS = [
+  "get_position_risk",
+  "risk_check",
+  "get_market",
+  "get_vault",
+  "get_reserves",
+  "get_guardian_log",
+  "verify_guardian_decision",
+  "simulate_rescue",
+  "get_rescue_route",
+  "get_status",
+];
+const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw", "paid_risk_check"];
 
 async function connect(opts: ParryMcpOptions) {
   const server = createParryMcpServer(opts);
@@ -54,6 +65,40 @@ describe("tool listing", () => {
     expect(byName["set_mandate"]!.description).toContain("at most 10 call(s)");
     expect(byName["vault_withdraw"]!.description).toContain("at most 5 call(s)");
     expect(byName["set_mandate"]!.description).toContain("never move funds out");
+    expect(byName["paid_risk_check"]!.description).toContain("at most 20 call(s)");
+  });
+});
+
+describe("routes, status and paid checks", () => {
+  test("get_rescue_route compares the Rhea pool with a dry-run NEAR Intents quote", async () => {
+    const { client } = await connect({ parry: fakeParry().parry });
+    const r = await client.callTool({ name: "get_rescue_route", arguments: { amount_near: 10 } });
+    expect(r.isError).toBeFalsy();
+    expect(JSON.stringify(r.content)).toContain("chosen: intents");
+  });
+
+  test("get_status reports the services and the gas-key lanes", async () => {
+    const { client } = await connect({ parry: fakeParry().parry });
+    const r = await client.callTool({ name: "get_status", arguments: {} });
+    expect(JSON.stringify(r.content)).toContain("All 2 services up");
+    expect(JSON.stringify(r.structuredContent)).toContain("lanes");
+  });
+
+  test("paid_risk_check pays from the agent account within its cap", async () => {
+    const fake = fakeParry();
+    const { client } = await connect({ parry: fake.parry, agent: AGENT });
+    const r = await client.callTool({ name: "paid_risk_check", arguments: { account: "alice.testnet" } });
+    expect(r.isError).toBeFalsy();
+    expect(fake.apiCalls).toContain(`PAID alice.testnet max 50000 by ${AGENT.accountId}`);
+    expect(JSON.stringify(r.structuredContent)).toContain("paid-tx");
+  });
+
+  test("paid_risk_check refuses on mainnet before paying", async () => {
+    const fake = fakeParry("mainnet");
+    const { client } = await connect({ parry: fake.parry, agent: AGENT });
+    const r = await client.callTool({ name: "paid_risk_check", arguments: { account: "alice.near" } });
+    expect(r.isError).toBe(true);
+    expect(fake.apiCalls.some((c) => c.startsWith("PAID"))).toBe(false);
   });
 });
 

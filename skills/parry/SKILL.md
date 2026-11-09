@@ -47,10 +47,12 @@ Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_K
 | `get_guardian_log(account?, limit?)` | list guardian decisions with trigger, action, AI review and outcome |
 | `verify_guardian_decision(id)` | check a decision's review hash, the model's TEE signature, the enclave's signature and the envelope |
 | `simulate_rescue(account)` | see what the guardian would do now, unsigned |
+| `get_rescue_route(amount_near)` | compare the Rhea pool with a dry-run NEAR Intents 1Click quote for a rescue swap |
+| `get_status()` | read every service's health, the oracle's freshness, the gas-key lanes and the treasury |
 
 ## Write tools (testnet, the agent's own account only)
 
-`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`.
+`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`, and `paid_risk_check(account)`, which pays per call over x402 on NEAR.
 Every refusal says why; nothing is sent when a call is refused.
 
 ## How to explain a risk result

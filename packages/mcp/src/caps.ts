@@ -13,6 +13,10 @@ export interface McpCaps {
   depositPerDay: number;
   /** `vault_withdraw` calls per UTC day. */
   withdrawPerDay: number;
+  /** `paid_risk_check` calls per UTC day. */
+  paidPerDay: number;
+  /** Most a `paid_risk_check` may pay, in USDC units (6 decimals). */
+  paidMaxUnits: number;
 }
 
 export const DEFAULT_CAPS: Readonly<McpCaps> = {
@@ -21,6 +25,8 @@ export const DEFAULT_CAPS: Readonly<McpCaps> = {
   depositMaxNear: 1,
   depositPerDay: 5,
   withdrawPerDay: 5,
+  paidPerDay: 20,
+  paidMaxUnits: 50_000,
 };
 
 /** Counts write-tool calls per UTC day. Share one ledger across server instances (HTTP). */
