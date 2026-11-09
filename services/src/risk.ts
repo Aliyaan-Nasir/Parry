@@ -26,7 +26,7 @@ import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
-import { senderFromEnv, txHash } from "./lib/near";
+import { senderFromEnv, tendGasKey, txHash } from "./lib/near";
 
 const reporter = senderFromEnv("MONITOR");
 let lastOk = 0;
@@ -111,10 +111,13 @@ export async function scoreAll(sql: Sql): Promise<number> {
     await sql`UPDATE alerts SET status = 'resolved', updated_at = now() WHERE account = ${r.account} AND status <> 'resolved'
       AND kind IN ('risk', 'health') AND key LIKE ${`%:${r.id}`} AND NOT (key = ANY(${keys}))`;
 
-    // Protected accounts in caution or worse go to the guardian (it decides with the sealed policy).
+    // Protected accounts in caution or worse go to the guardian (it decides with the sealed
+    // policy); the queue keeps each account's last run, so the guardian's cooldown holds.
     if (r.raw.protected !== false && a.score.tier !== "safe") {
       await sql`INSERT INTO guardian_queue (account, reason) VALUES (${r.account}, ${`${r.venue} ${a.score.tier} ${a.score.score}`})
         ON CONFLICT (account) DO UPDATE SET reason = excluded.reason`;
+    } else {
+      await sql`DELETE FROM guardian_queue WHERE account = ${r.account} AND reason LIKE ${`${r.venue} %`}`;
     }
   }
   const market = cascadeAlert("NEAR", c.pressure, c.atRiskUsd, DEFAULT_THRESHOLDS);
@@ -153,6 +156,7 @@ export async function main() {
     lastOk = Date.now();
     await setStatus(sql, "risk", true, `${n} positions scored`);
   });
+  every(600_000, "gas-key", () => tendGasKey(sql, "monitor", reporter));
   every(intEnv("RISK_PUBLISH_MS", 300_000), "publish", async () => {
     try {
       await publish(sql);

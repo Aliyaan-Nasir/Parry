@@ -14,7 +14,7 @@ import { every, serveHealth } from "./lib/health";
 import { latest, PRICE_SOURCE } from "./lib/prices";
 import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
-import { eventsOf, returnValue, rpc, senderFromEnv, txHash, view } from "./lib/near";
+import { eventsOf, returnValue, rpc, senderFromEnv, tendGasKey, txHash, view } from "./lib/near";
 import { oraclePrices, readRhea } from "./lib/positions";
 
 const keeper = senderFromEnv("KEEPER");
@@ -168,6 +168,7 @@ async function indexerCheck(sql: Sql): Promise<string> {
 export async function main() {
   const sql = db();
   await migrate(sql);
+  every(600_000, "gas-key", () => tendGasKey(sql, "keeper", keeper));
   every(intEnv("FEED_MS", 20_000), "feed", track("feed", feed));
   every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));

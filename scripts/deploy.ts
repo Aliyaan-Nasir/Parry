@@ -54,6 +54,8 @@ const arg = (name: string) => {
 
 const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: ROOT_DIR }).stdout.toString().trim();
 const wasmDir = arg("wasm-dir") ?? join(ROOT_DIR, "contracts", "target", "near-reproducible", commit);
+/** The commit the deployed wasm was built from (its reproducible build directory), which its NEP-330 metadata names. */
+const builtFrom = /^[0-9a-f]{40}$/.test(wasmDir.split("/").filter(Boolean).pop() ?? "") ? wasmDir.split("/").filter(Boolean).pop()! : commit;
 const depFile = join(ROOT_DIR, "deployments", `${NETWORK}.json`);
 type Dep = {
   network: string;
@@ -198,19 +200,29 @@ async function deploy(name: string, id: string, init: { method: string; args: ob
   const o = (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
   const f = failure(o);
   if (f) throw new Error(`deploy ${id}: ${f}`);
-  dep.contracts[name] = { account: id, codeHash: hash, tx: hashOf(o), commit, source: "contracts/" + name };
+  dep.contracts[name] = { account: id, codeHash: hash, tx: hashOf(o), commit: builtFrom, source: "contracts/" + name };
   save();
   console.log(`deployed ${id} ${hash} (${hashOf(o)})`);
 }
 
-/** Contract accounts and their opening balances (code storage plus room for state). */
+/** Contract accounts and their opening balances (code storage at 1 NEAR per 100 kB, plus room for state). */
 const CONTRACT_ACCOUNTS: readonly (readonly [string, number])[] = MAINNET
   ? [["risk", 4], ["vault", 4], ["accounts", 3]]
-  : [["usdc", 4], ["boost", 3], ["oracle", 4], ["risk", 6], ["lending", 13], ["vault", 6], ["accounts", 5]];
-/** Service wallets (the agent wallet backs the MCP write tools, which exist on testnet only). */
+  : [["usdc", 2.5], ["boost", 2.2], ["oracle", 2.5], ["risk", 5], ["lending", 12], ["vault", 4.5], ["accounts", 2.5]];
+/**
+ * Service wallets and their opening balances, which include their gas keys' prepaid NEAR (the
+ * agent wallet backs the MCP write tools, which exist on testnet only). The top-up service
+ * refills each to this balance from the treasury.
+ */
 const WALLETS: readonly (readonly [string, number])[] = MAINNET
   ? [["treasury", 5], ["monitor", 2], ["guardian", 2], ["keeper", 3], ["relayer", 5], ["api", 0.5], ["enclave", 2]]
-  : [["treasury", 2], ["monitor", 3], ["guardian", 5], ["keeper", 6], ["relayer", 6], ["api", 1], ["agent", 3], ["enclave", 4]];
+  : [["treasury", 2], ["monitor", 1.5], ["guardian", 3], ["keeper", 3.5], ["relayer", 3.5], ["api", 0.5], ["agent", 1], ["enclave", 3]];
+/** Gas keys: the wallet, its nonce lanes and the NEAR prepaid into the key (out of the wallet's balance). */
+const GAS_KEYS: readonly (readonly [string, number, number])[] = [
+  ["monitor", 4, 0.5],
+  ["keeper", 8, 2],
+  ["relayer", 8, 1],
+];
 /** Protocols Parry uses but does not own; on testnet the lending, oracle and USDC ids are filled in once deployed. */
 const X: Record<string, string> = planned
   ? { ...planned.external }
@@ -224,8 +236,10 @@ async function mainnetPlan(): Promise<void> {
   const code = (name: string) => readFileSync(join(wasmDir, `parry_${name}.wasm`)).length;
   const rows: [string, number][] = [];
   for (const [name, bal] of CONTRACT_ACCOUNTS) rows.push([`${name}.${ROOT}: account with ${name === "accounts" ? "the factory" : `the ${name}`} (${(code(name === "accounts" ? "accounts" : name) / 1000).toFixed(0)} kB of code)`, bal]);
-  for (const [name, bal] of WALLETS) rows.push([`${name}.${ROOT}: service wallet`, bal]);
-  rows.push(["gas-key lanes for monitor, keeper and relayer (1.5 NEAR each)", 4.5]);
+  for (const [name, bal] of WALLETS) {
+    const key = GAS_KEYS.find(([n]) => n === name);
+    rows.push([`${name}.${ROOT}: service wallet${key ? `, ${key[2]} NEAR of it prepaid into a gas key with ${key[1]} lanes` : ""}`, bal]);
+  }
   const accountCode = code("account");
   rows.push([`publish the protected-account code by hash (${(accountCode / 1000).toFixed(0)} kB, burns 10x storage)`, storageNear(accountCode) * 10]);
   rows.push(["transaction fees and storage registrations (LiNEAR, wNEAR, USDC)", 1]);
@@ -271,7 +285,9 @@ async function main() {
   // calls it from `enclave`, each with its own key. Monitor, keeper and relayer also get a gas
   // key with nonce lanes on their own account, for parallel transactions.
   const env: string[] = [`PARRY_NETWORK=${NETWORK}`, `ENCLAVE_ACCOUNT_ID=${wallets.enclave}`, `TREASURY_ACCOUNT_ID=${wallets.treasury}`, `X402_PAY_TO=${wallets.api}`];
-  for (const svc of ["monitor", "keeper", "guardian"]) {
+  // The services that run the enclave: the risk engine (risk reports), the keeper (vault reports,
+  // the sealing key) and the guardian.
+  for (const svc of ["risk", "keeper", "guardian"]) {
     const file = join(ROOT_DIR, "internal", "keys", `enclave-${svc}.json`);
     if (!existsSync(file)) {
       const k = generateKey();
@@ -281,12 +297,12 @@ async function main() {
     }
     env.push(`ENCLAVE_KEY_${svc.toUpperCase()}=${(JSON.parse(readFileSync(file, "utf8")) as { private_key: string }).private_key}`);
   }
-  for (const [svc, lanes] of [["monitor", 4], ["keeper", 8], ["relayer", 8]] as const) {
+  for (const [svc, lanes, prepaid] of GAS_KEYS) {
     const id = wallets[svc]!;
     const file = join(ROOT_DIR, "internal", "keys", `${svc}-gas-key.json`);
     if (!existsSync(file)) {
       const k = generateKey();
-      const o = (await client(id).transaction(id).addKey(k.publicKey.toString(), { type: "gasKeyFullAccess", numNonces: lanes }).transferToGasKey(k.publicKey.toString(), `${near(1.5)} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+      const o = (await client(id).transaction(id).addKey(k.publicKey.toString(), { type: "gasKeyFullAccess", numNonces: lanes }).transferToGasKey(k.publicKey.toString(), `${near(prepaid)} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
       if (failure(o)) throw new Error(`gas key for ${svc}: ${failure(o)}`);
       writeFileSync(file, JSON.stringify({ account_id: id, public_key: k.publicKey.toString(), private_key: k.secretKey, lanes }), { mode: 0o600 });
     }
@@ -297,6 +313,8 @@ async function main() {
   for (const svc of ["guardian", "treasury", "agent"].filter((w) => wallets[w])) {
     env.push(`${svc.toUpperCase()}_ACCOUNT_ID=${wallets[svc]}`, `${svc.toUpperCase()}_PRIVATE_KEY=${keyOf(wallets[svc]!)}`);
   }
+  // The top-up service refills each wallet from the treasury to its opening balance.
+  env.push(`TOPUP_WALLETS=${WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal}`).join(",")}`);
   const envFile = MAINNET ? ".env.services.mainnet" : ".env.services";
   writeFileSync(join(ROOT_DIR, envFile), `${env.join("\n")}\n`, { mode: 0o600 });
   console.log(`wrote ${envFile} (gitignored)`);
@@ -376,7 +394,7 @@ async function testnetOnly(ids: Record<string, string>, wallets: Record<string, 
     const o = await call(ROOT, dex, "add_simple_pool", { tokens: ["wrap.testnet", ids.usdc], fee: 25 }, near(0.1), 50);
     const pool = JSON.parse(Buffer.from((o.status as { SuccessValue: string }).SuccessValue, "base64").toString()) as number;
     await call(ROOT, dex, "register_tokens", { token_ids: ["wrap.testnet", ids.usdc] }, 1n, 30);
-    const poolNear = Number(process.env.POOL_NEAR ?? 15);
+    const poolNear = Number(process.env.POOL_NEAR ?? 5);
     await call(ROOT, "wrap.testnet", "near_deposit", {}, near(poolNear), 30);
     await call(ROOT, "wrap.testnet", "ft_transfer_call", { receiver_id: dex, amount: near(poolNear).toString(), msg: "" }, 1n, 100);
     const usdcIn = BigInt(Math.round(poolNear * nearPrice * 1e6));
@@ -425,7 +443,7 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
   if (dep.contracts.account?.codeHash !== acctHash) {
     const o = (await client(ROOT).transaction(ROOT).publishContract(acctCode, { identifiedBy: "hash" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
     if (failure(o)) throw new Error(`publish: ${failure(o)}`);
-    dep.contracts.account = { account: "global", codeHash: acctHash, tx: hashOf(o), commit, source: "contracts/account" };
+    dep.contracts.account = { account: "global", codeHash: acctHash, tx: hashOf(o), commit: builtFrom, source: "contracts/account" };
     save();
     console.log(`published account code ${acctHash} (${hashOf(o)})`);
   }

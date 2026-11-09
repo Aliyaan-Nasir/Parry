@@ -8,9 +8,9 @@
 import { decodeSignedDelegateAction } from "near-kit";
 import { contract, intEnv, network, NEAR_USD } from "./lib/config";
 import { db, migrate, setStatus, useQuota, type Sql } from "./lib/db";
-import { serveHealth } from "./lib/health";
+import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
-import { senderFromEnv, txHash, view, yocto } from "./lib/near";
+import { senderFromEnv, tendGasKey, txHash, view, yocto } from "./lib/near";
 import { derivedAddress, PATH_EVM, PATH_HYPERLIQUID } from "./lib/positions";
 
 const relayer = senderFromEnv("RELAYER");
@@ -107,5 +107,6 @@ export async function main() {
       return fail(errorText(e));
     }
   };
+  every(600_000, "gas-key", () => tendGasKey(sql, "relayer", relayer));
   serveHealth("relayer", intEnv("PORT", 4500), async () => ({ ok: !!relayer, detail: relayer ? last : "RELAYER wallet is not configured", lanes: relayer?.lanes ?? 0, inFlight: relayer?.inFlight ?? 0 }), handle);
 }

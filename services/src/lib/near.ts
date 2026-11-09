@@ -255,6 +255,28 @@ export class Sender {
     return this.send((tx) => tx.transfer(receiverId, `${amount} yocto` as never));
   }
 
+  /** The gas key's prepaid balance in yoctoNEAR, or null when this sender has no gas key. */
+  async gasKeyBalance(): Promise<bigint | null> {
+    if (!this.lanes) return null;
+    const k = await rpc<{ permission: unknown }>("query", { request_type: "view_access_key", finality: "final", account_id: this.accountId, public_key: this.publicKey });
+    const b = balanceIn(k.permission);
+    return b === null ? null : BigInt(b);
+  }
+
+  /**
+   * Moves NEAR from the account into its own gas key once the key falls under `minNear`, back up
+   * to `targetNear` (a full-access gas key may fund itself). The top-up service keeps the account
+   * itself funded from the treasury.
+   */
+  async refillGasKey(minNear: number, targetNear: number): Promise<string> {
+    const b = await this.gasKeyBalance();
+    if (b === null) return "no gas key";
+    if (toNear(b) >= minNear) return `gas key ${toNear(b).toFixed(2)} NEAR`;
+    const add = yocto(targetNear) - b;
+    await this.send((tx) => tx.transferToGasKey(this.publicKey, `${add} yocto` as never));
+    return `gas key refilled with ${toNear(add).toFixed(2)} NEAR`;
+  }
+
   /** Relays a NEP-366 signed delegate action (base64 borsh) as this account. */
   relayDelegate(payloadBase64: string): Promise<FinalExecutionOutcome> {
     const signed = decodeSignedDelegateAction(payloadBase64);
@@ -275,6 +297,32 @@ export function senderFromEnv(prefix: string): Sender | null {
   const privateKey = process.env[`${prefix}_PRIVATE_KEY`];
   if (!accountId || !privateKey) return null;
   return new Sender({ accountId, privateKey, lanes: Number(process.env[`${prefix}_LANES`] ?? 0) });
+}
+
+/** The first `balance` anywhere in an access key's permission (a gas key carries its prepaid balance). */
+function balanceIn(v: unknown): string | null {
+  if (!v || typeof v !== "object") return null;
+  for (const [k, x] of Object.entries(v)) {
+    if (k === "balance" && (typeof x === "string" || typeof x === "number")) return String(x);
+    const inner = balanceIn(x);
+    if (inner) return inner;
+  }
+  return null;
+}
+
+/**
+ * Keeps a service's gas key funded and records its balance for the status page. Each gas-key
+ * service (monitor, keeper, relayer) runs this every 10 minutes.
+ */
+export async function tendGasKey(sql: import("./db").Sql, name: string, sender: Sender | null): Promise<void> {
+  if (!sender?.lanes) return;
+  const min = Number(process.env.GAS_KEY_MIN_NEAR ?? 0.5);
+  const target = Number(process.env.GAS_KEY_TARGET_NEAR ?? 1.5);
+  const detail = await sender.refillGasKey(min, target);
+  const b = await sender.gasKeyBalance();
+  await sql`INSERT INTO wallets (name, account, balance, target, checked_at) VALUES (${`${name} gas key`}, ${sender.accountId}, ${b === null ? 0 : toNear(b)}, ${target}, now())
+    ON CONFLICT (name) DO UPDATE SET balance = excluded.balance, target = excluded.target, checked_at = now()`;
+  if (detail.includes("refilled")) console.log(JSON.stringify({ t: new Date().toISOString(), level: "info", service: name, msg: detail }));
 }
 
 /** The gas key's nonce lanes, for the status page. */

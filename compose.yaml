@@ -32,6 +32,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parry}
       POSTGRES_DB: parry
     volumes: [pgdata:/var/lib/postgresql/data]
+    # Local only: `pnpm dev` and the tests reach it on 55432; nothing outside this machine can.
+    ports: ["127.0.0.1:${POSTGRES_PORT:-55432}:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U parry"]
       interval: 5s

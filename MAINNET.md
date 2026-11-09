@@ -50,11 +50,10 @@ One-time, from the deploy plan (storage at 1 NEAR per 100 kB; global code burns 
 | 4.00 | `risk.<root>` with the risk board (311 kB of code) |
 | 4.00 | `vault.<root>` with the vault (307 kB) |
 | 3.00 | `accounts.<root>` with the factory (184 kB) |
-| 19.50 | service wallets: treasury 5, relayer 5, keeper 3, monitor 2, guardian 2, enclave 2, api 0.5 |
-| 4.50 | gas-key lanes for the monitor, keeper and relayer |
+| 19.50 | service wallets: treasury 5, relayer 5, keeper 3, monitor 2, guardian 2, enclave 2, api 0.5 (the monitor, keeper and relayer prepay 0.5, 2 and 1 of theirs into gas keys) |
 | 36.41 | publishing the protected-account code by hash (364 kB, burnt) |
 | 1.00 | transaction fees and token storage registrations |
-| **72.41** | **total from the root account** |
+| **67.91** | **total from the root account** |
 
 Plus the root account's registration, done with a wallet.
 `parry.near` is taken; `deployments/mainnet.json` plans `parryguard.near`, which was free on 2026-11-10.
@@ -73,7 +72,7 @@ Running costs:
 Each step waits for the owner's explicit OK, and none of them is done.
 
 1. **Register the root.**
-   Register `parryguard.near` (or another free name, set in `deployments/mainnet.json` and the `#mainnet` ids in `services/src/lib/config.ts` and `packages/sdk/src/networks.ts`) with a mainnet wallet, fund it with at least 75 NEAR, and put its full-access key at `~/.near-credentials/mainnet/<root>.json`.
+   Register `parryguard.near` (or another free name, set in `deployments/mainnet.json` and the `#mainnet` ids in `services/src/lib/config.ts` and `packages/sdk/src/networks.ts`) with a mainnet wallet, fund it with at least 70 NEAR, and put its full-access key at `~/.near-credentials/mainnet/<root>.json`.
 2. **Build reproducibly** at the tagged commit: `contracts/scripts/build.sh --reproducible <commit>`.
 3. **Check the plan**: `bun scripts/deploy.ts --network mainnet --wasm-dir contracts/target/near-reproducible/<commit>`.
 4. **Create the accounts and wallets**: run the same command with `--confirm-mainnet`.
