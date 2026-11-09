@@ -40,7 +40,7 @@ if (sandbox && !existsSync(join(ROOT, ".env.sandbox"))) {
 
 const procs = [
   { name: "api", cmd: ["bun", "apps/api/src/index.ts"], port: 4000 },
-  ...["monitor", "risk", "guardian", "keeper", "relayer", "indexer", "alerts", "topup"].map((s, i) => ({ name: s, cmd: ["bun", "services/src/main.ts", s], port: 4100 + i * 100 })),
+  ...["monitor", "risk", "guardian", "keeper", "relayer", "indexer", "alerts", "topup", "market"].map((s, i) => ({ name: s, cmd: ["bun", "services/src/main.ts", s], port: 4100 + i * 100 })),
   { name: "web", cmd: ["pnpm", "-F", "@parry/web", "dev"], port: 3000 },
 ].filter((p) => !(process.argv.includes("--no-web") && p.name === "web"));
 

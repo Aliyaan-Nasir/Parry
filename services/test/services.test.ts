@@ -76,3 +76,29 @@ describe.skipIf(!url)("database-backed services", () => {
     expect(open.length).toBe(0);
   });
 });
+
+describe("Agent Market worker", () => {
+  test("reads named and implicit NEAR accounts from a job, at most five", async () => {
+    const { accountsIn } = await import("../src/market");
+    expect(accountsIn("Check alice.near and Bob.Testnet please, also alice.near")).toEqual(["alice.near", "bob.testnet"]);
+    expect(accountsIn(`implicit ${"ab".repeat(32)}`)).toEqual(["ab".repeat(32)]);
+    expect(accountsIn("a.near b.near c.near d.near e.near f.near")).toHaveLength(5);
+  });
+
+  test("reports each position and says when a job names no account", async () => {
+    const { report } = await import("../src/market");
+    expect(report([], [])).toContain("names no NEAR account");
+    const md = report(
+      [
+        {
+          account: "alice.near",
+          position: { label: "Rhea wNEAR/USDC", health: 1.04, liqPrice: 2.31, probability24h: 0.18, ttlHours: 30.5, score: 81, tier: "critical" },
+          market: { near: { priceUsd: 2.4 }, tremor: { annual: 0.72, level: "elevated" }, cascade: { pressure: 0.12 } },
+        },
+      ],
+      ["gone.near"],
+    );
+    expect(md).toContain("| `alice.near` | 1.040 | $2.310 | 18.0 % | 30.5 h | 81 (critical) |");
+    expect(md).toContain("`gone.near` | could not be read");
+  });
+});

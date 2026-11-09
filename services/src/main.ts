@@ -12,6 +12,7 @@ const services: Record<string, () => Promise<{ main: () => Promise<void> }>> = {
   indexer: () => import("./indexer"),
   alerts: () => import("./alerts"),
   topup: () => import("./topup"),
+  market: () => import("./market"),
 };
 
 const load = service ? services[service] : undefined;

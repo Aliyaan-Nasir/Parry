@@ -66,6 +66,9 @@ services:
   topup:
     <<: *service
     environment: { <<: *env, SERVICE: topup, PORT: "4800" }
+  market:
+    <<: *service
+    environment: { <<: *env, SERVICE: market, PORT: "4900", PARRY_API_URL: "http://api:4000" }
 
   web:
     build: { context: ., dockerfile: apps/web/Dockerfile, args: { NEXT_PUBLIC_API_URL: "${PUBLIC_API_URL:-http://localhost:4000}", NEXT_PUBLIC_PARRY_NETWORK: "${PARRY_NETWORK:-testnet}" } }

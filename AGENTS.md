@@ -18,7 +18,7 @@ This file is for AI agents and engineers working in the repository; the product 
 - `enclave/`: the guardian program for OutLayer (Rust, `wasm32-wasip2`): risk model, planner, AI review, sealed policies, reserves tree, signed outputs.
 - `packages/core`: the risk model, planner, hedge math and reserves tree in TypeScript (the enclave's Rust mirrors it; both pass `packages/core/fixtures/risk-cases.json`).
 - `packages/sdk` (`@parry/sdk`), `packages/mcp` (`@parry/mcp`), `packages/brand` (design tokens).
-- `services/`: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up (Bun, one package, `bun services/src/main.ts <name>`).
+- `services/`: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up, and the Agent Market worker (Bun, one package, `bun services/src/main.ts <name>`).
 - `apps/api`: the API (Hono on Bun, contract in `docs/api.md`), `apps/web`: the site and app (Next.js 16).
 - `scripts/`: `deploy.ts` (testnet, or a guarded mainnet plan and deploy), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `scenarios.ts` (the test matrix's scenarios, with recorded proofs), `evm-position.ts` (an Aave loan on Base Sepolia from an account's derived address), `verify.ts` (check every claim), `security.ts`.
 - `skills/parry/SKILL.md`: the agent skill; `tools/make_readme_art.py`: the README figures, drawn from the brand tokens.
@@ -62,6 +62,7 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | NEP-366 relayer | `services/src/relayer.ts` |
 | x402 on NEAR | `apps/api/src/x402.ts`, `@parry/sdk` `paidRiskCheck` |
 | NEAR Intents 1Click (dry-run quotes) | `services/src/lib/routes.ts` |
+| NEAR Agent Market (market.near.ai) | `deploy/agent-market/`, `scripts/market.ts` (listing), `services/src/market.ts` (answers hires) |
 | Rhea lending and exchange | `contracts/common/src/rhea.rs`, `guardian.rs` (deleverage chain) |
 
 ## Conventions
