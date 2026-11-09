@@ -5,6 +5,7 @@
  *                                    NEAR AI key as a secret readable only by the enclave account
  *   bun scripts/enclave.ts keys      run the `keys` mode through OutLayer: the enclave's ed25519 key
  *                                    and X25519 sealing key, and a signed sealing-key report
+ *   bun scripts/enclave.ts secret    store the NEAR AI key for the published build (when publish ran without it)
  *
  * Needs `outlayer login <network>` with the enclave account's key, ENCLAVE_ACCOUNT_ID and one
  * ENCLAVE_KEY_* in the environment (from .env.services), and NEARAI_API_KEY for `publish`.
@@ -36,13 +37,24 @@ async function publish() {
   const uploaded = sh(["outlayer", "upload", wasm]);
   const url = uploaded.match(/https:\/\/\S+\.wasm/)?.[0];
   if (!url) throw new Error(`no FastFS URL in:\n${uploaded}`);
-  const key = process.env.NEARAI_API_KEY;
-  if (!key) throw new Error("NEARAI_API_KEY is not set");
   const caller = process.env.ENCLAVE_ACCOUNT_ID ?? `enclave.${dep.root ?? "parry.testnet"}`;
-  sh(["outlayer", "secrets", "set", JSON.stringify({ NEARAI_API_KEY: key }), "--profile", "parry", "--wasm-hash", hash, "--access", `whitelist:${caller}`]);
   dep.enclave = { ...(dep.enclave ?? {}), wasmSha256: hash, wasmUrl: url, secretsProfile: "parry", secretsOwner: process.env.OUTLAYER_ACCOUNT ?? caller };
   save();
   console.log(`enclave ${hash}\n  ${url}`);
+  // The keys are bound to the build, not to the secret, so the secret can follow later.
+  if (process.env.NEARAI_API_KEY) await secret();
+  else console.log("NEARAI_API_KEY is not set: the guardian fails closed until `bun scripts/enclave.ts secret` stores it");
+}
+
+/** Stores the NEAR AI key as a secret only this build, called from the enclave account, can read. */
+async function secret() {
+  const key = process.env.NEARAI_API_KEY;
+  if (!key) throw new Error("NEARAI_API_KEY is not set");
+  const hash = dep.enclave?.wasmSha256;
+  if (!hash) throw new Error("publish the enclave first");
+  const caller = process.env.ENCLAVE_ACCOUNT_ID ?? `enclave.${dep.root ?? "parry.testnet"}`;
+  sh(["outlayer", "secrets", "set", JSON.stringify({ NEARAI_API_KEY: key }), "--profile", "parry", "--wasm-hash", hash, "--access", `whitelist:${caller}`]);
+  console.log(`NEAR AI key stored for build ${hash.slice(0, 16)}..., readable by ${caller} only`);
 }
 
 async function keys() {
@@ -60,7 +72,8 @@ async function keys() {
 const cmd = process.argv[2];
 if (cmd === "publish") await publish();
 else if (cmd === "keys") await keys();
+else if (cmd === "secret") await secret();
 else {
-  console.error("usage: bun scripts/enclave.ts publish|keys");
+  console.error("usage: bun scripts/enclave.ts publish|keys|secret");
   process.exit(2);
 }
