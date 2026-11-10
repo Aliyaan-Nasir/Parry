@@ -1,22 +1,17 @@
 import type { Metadata } from "next";
+import { GuardianLog } from "./GuardianLog";
 import { PageHeader } from "@/components/app/PageHeader";
-import { Mark } from "@/components/brand/Logo";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 export const metadata: Metadata = { title: "Guardian log" };
 
-export default function GuardianLogPage() {
+export default function GuardianPage() {
   return (
     <div className="grid gap-8">
       <PageHeader
         title="Guardian log"
-        description="Every action the guardian takes, with the hash of the AI review that approved it."
+        description="Every action the guardian took or was refused, with its AI review, its transactions and checks you can run here."
       />
-      <EmptyState
-        icon={<Mark size={22} />}
-        title="Connect an account to see the guardian's actions"
-        description="Each rescue is listed with what was done, why, the review hash and a link to the transaction on its explorer."
-      />
+      <GuardianLog />
     </div>
   );
 }
