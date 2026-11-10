@@ -1,7 +1,7 @@
 # Mainnet
 
 Parry runs on NEAR testnet.
-Nothing is deployed on mainnet, and every step below waits for the owner's go-ahead.
+Nothing is deployed on mainnet yet; the steps below are the launch, run once mainnet launch is decided.
 This file says what is ready, how it was tested, and the exact go-live steps and costs.
 
 ## What is ready
@@ -23,6 +23,8 @@ On mainnet, Parry deploys only its own contracts and uses the live protocols for
 | TEE | OutLayer (`outlayer.near`) | the enclave build for mainnet compiles all of the above in |
 | Review model | NEAR AI Cloud, `z-ai/glm-5.3-flash` | the same verifiable endpoint as testnet |
 | Rescue routes | NEAR Intents 1Click | quotes with `dry: true`; confidential quotes with a partner key |
+| Confidential rescue reserve | NEAR Intents Agent API | an owner-signed policy that only swaps wNEAR and USDC on confidential routes and withdraws into the protected account (`services/src/lib/intents.ts`, tested offline) |
+| Hedge margin | 1Click, USDC on NEAR to USDC on HyperCore | the keeper records a dry-run quote whenever the hedge needs margin |
 
 What changes on mainnet, in code:
 
@@ -69,7 +71,7 @@ Running costs:
 
 ## Go-live steps
 
-Each step waits for the owner's explicit OK, and none of them is done.
+None of these steps has been run.
 
 1. **Register the root.**
    Register `parryguard.near` (or another free name, set in `deployments/mainnet.json` and the `#mainnet` ids in `services/src/lib/config.ts` and `packages/sdk/src/networks.ts`) with a mainnet wallet, fund it with at least 70 NEAR, and put its full-access key at `~/.near-credentials/mainnet/<root>.json`.
@@ -81,4 +83,5 @@ Each step waits for the owner's explicit OK, and none of them is done.
 6. **Finish the deploy**: `bun scripts/deploy.ts --network mainnet --confirm-mainnet --wasm-dir ... --enclave-key <key> --enclave-wasm-sha256 <hash>` deploys the risk board (with the sealing key), the vault, the account code and the factory.
 7. **Fund the hedge**: deposit USDC margin on Hyperliquid at the vault's Chain Signatures address: `derived_public_key` on `v1.signer` with path `parry-vault-hedge` and the vault as predecessor, also shown as `hedge.address` by the API's `/v1/vault`.
 8. **Run the services** with `PARRY_NETWORK=mainnet` and `.env.services.mainnet`, and build the app with `NEXT_PUBLIC_PARRY_NETWORK=mainnet`.
+   For private rescue swaps, add a NEAR Intents partner key (`NEAR_INTENTS_AGENT_API_KEY`) and `ONECLICK_JWT`; each owner then signs their rescue reserve's policy in the app.
 9. **Verify**: `near contract verify deployed-at <account>` for `risk`, `vault` and `accounts`, then `PARRY_NETWORK=mainnet pnpm verify --quick`.

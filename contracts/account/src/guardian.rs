@@ -293,7 +293,7 @@ impl Account {
                 });
                 Event::DeleverageStage { id, stage: "pricing" }.emit();
                 pricing.then(
-                    Self::ext(me).with_static_gas(GAS_CALLBACK).with_unused_gas_weight(1).on_delev_marks(id),
+                    Self::ext(me).with_static_gas(GAS_CALLBACK).with_unused_gas_weight(1).on_delev_prices(id),
                 )
             }
             Action::HlReduce { order, nonce } => self.hl_mark_then_sign(e.nonce, "reduce", order, nonce),
@@ -419,10 +419,9 @@ impl Account {
 
     /// Prices the swap with the protocol's price oracle (times the token's rate, for a staked
     /// token): `min_out` must be within the mandate's slippage of that value, so a signed envelope
-    /// cannot sell collateral cheaply. The name is kept for compatibility; it no longer reads the
-    /// risk board's marks.
+    /// cannot sell collateral cheaply.
     #[private]
-    pub fn on_delev_marks(&mut self, id: u64) -> PromiseOrValue<bool> {
+    pub fn on_delev_prices(&mut self, id: u64) -> PromiseOrValue<bool> {
         let (mut rt, pd) = match self.pending_for(id) {
             Some(x) => x,
             None => return PromiseOrValue::Value(false),

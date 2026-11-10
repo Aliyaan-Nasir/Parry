@@ -26,8 +26,8 @@ fn mandate(s: &Stack, key: &SigningKey) -> Value {
         "max_slippage_bps": 300,
         "hl": { "asset": "NEAR", "asset_index": 54, "max_size_e8": (50u128 * 100_000_000).to_string(), "band_bps": 200, "hedge_is_buy": false },
         "evm": {
-            "chain_id": 11_155_111, "pool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
-            "asset": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8", "address": "0x2222222222222222222222222222222222222222",
+            "chain_id": 84_532, "pool": "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27",
+            "asset": "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f", "address": "0x2222222222222222222222222222222222222222",
             "max_amount": (100 * USDC).to_string(),
         },
         "sealed": "c2VhbGVk",
@@ -473,7 +473,7 @@ async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()>
         .await?)?;
     let ev = &r.events("evm_signed")[0];
     let tx = ev["unsigned_tx"].as_str().unwrap();
-    assert!(tx.contains("6ae43d3271ff6888e7fc43fd7321a503ff738951") && tx.contains("573ade81"));
+    assert!(tx.contains("8bab6d1b75f19e9ed9fce8b9bd338844ff79ae27") && tx.contains("573ade81"));
     assert!(tx.contains("2222222222222222222222222222222222222222"));
     let reqs: Vec<(String, String, String)> = view(&s.worker, s.signer.id(), "requests", json!({})).await?;
     assert_eq!(reqs.last().unwrap().1, "parry-evm");

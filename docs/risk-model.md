@@ -87,7 +87,7 @@ Health floors apply whatever the forecast says: below 1.10 the score is at least
 | danger | 50 to 74 |
 | critical | 75 and above |
 
-The first calibration weighted P_hit linearly and scored a 21% daily liquidation chance as safe; the square root fixed that, and the fixtures pin the result.
+The square root is deliberate: weighted linearly, a 21 % chance of liquidation within a day would still score as safe; with the root it scores as danger, and the fixtures pin the result.
 
 ## 8. Other venues
 

@@ -1,7 +1,7 @@
 {
   "network": "mainnet",
   "status": "planned",
-  "note": "Nothing below parryguard.near is deployed. MAINNET.md has the steps; they wait for the owner's go-ahead.",
+  "note": "Nothing below parryguard.near is deployed. MAINNET.md has the launch steps.",
   "root": "parryguard.near",
   "contracts": {
     "factory": {

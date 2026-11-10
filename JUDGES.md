@@ -20,7 +20,7 @@ cd enclave && cargo test     # the guardian program, against the same risk fixtu
   The account accepts an envelope only with the enclave's signature, within 120 seconds, at the next nonce, inside the mandate's powers, caps, daily count and expiry, and only with the gas its whole promise chain needs: [`guardian_execute`](contracts/account/src/guardian.rs#L171).
   No guardian action has a recipient: [`GuardianAction`](contracts/common/src/mandate.rs#L162); the mandate is checked on the way in: [`assert_valid`](contracts/common/src/mandate.rs#L100).
 - **An atomic deleverage on real lending code.**
-  Withdraw, swap, repay and check health as one promise chain where every failed step restores the position, priced by the lending contract's own oracle: [`on_delev_marks`](contracts/account/src/guardian.rs#L425) and the steps after it.
+  Withdraw, swap, repay and check health as one promise chain where every failed step restores the position, priced by the lending contract's own oracle: [`on_delev_prices`](contracts/account/src/guardian.rs#L425) and the steps after it.
   The sandbox suite runs it against Rhea lending's exact mainnet wasm, the Rhea exchange, wNEAR and LiNEAR: [`contracts/tests/tests/protect.rs`](contracts/tests/tests/protect.rs).
 - **Chain Signatures for two other chains.**
   Hyperliquid orders: the account builds the EIP-712 agent digest on chain ([`agent_digest`](contracts/common/src/hyperliquid.rs#L139)) and checks the order against a price band before signing ([`on_hl_mark`](contracts/account/src/guardian.rs#L368)).

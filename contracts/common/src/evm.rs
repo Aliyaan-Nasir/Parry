@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(&o[..2], &[0xb8, 56]);
     }
 
-    /// A Sepolia approve: the type byte, the list header and the chain id encoding.
+    /// A Base Sepolia approve: the type byte, the list header and the chain id encoding.
     #[test]
     fn unsigned_tx_shape() {
         let params = EvmTxParams {
@@ -191,23 +191,23 @@ mod tests {
             max_fee_per_gas: "100000000000".into(),
             gas_limit: 200_000,
         };
-        let to = parse_address("0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951").unwrap();
+        let to = parse_address("0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27").unwrap();
         let data = approve_calldata(&to, 5_000_000);
-        let tx = eip1559_unsigned(11_155_111, &params, &to, 0, &data);
+        let tx = eip1559_unsigned(84_532, &params, &to, 0, &data);
         assert_eq!(tx[0], 0x02);
         // list header 0xf8 + one length byte (payload between 56 and 255 bytes)
         assert_eq!(tx[1], 0xf8);
         assert_eq!(tx.len(), 3 + tx[2] as usize);
-        // chain id 11155111 = 0xaa36a7
-        assert_eq!(&tx[3..7], &[0x83, 0xaa, 0x36, 0xa7]);
+        // chain id 84532 = 0x014a34
+        assert_eq!(&tx[3..7], &[0x83, 0x01, 0x4a, 0x34]);
         assert_eq!(data.len(), 4 + 64);
         assert_eq!(repay_calldata(&to, 1, &to).len(), 4 + 128);
     }
 
     #[test]
     fn parses_addresses() {
-        assert!(parse_address("0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951").is_some());
-        assert!(parse_address("6Ae43d3271ff6888e7Fc43Fd7321a503ff738951").is_none());
+        assert!(parse_address("0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27").is_some());
+        assert!(parse_address("8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27").is_none());
         assert!(parse_address("0x1234").is_none());
     }
 }

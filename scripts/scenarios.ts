@@ -38,7 +38,7 @@ const runs = (n: number) => !only || only.has(n);
 const NEAR = 10n ** 24n;
 const near = (n: number) => (BigInt(Math.round(n * 1000)) * NEAR) / 1000n;
 const API = (process.env.PARRY_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
-const COLLATERAL = Number(process.env.SCENARIO_COLLATERAL_NEAR ?? 10);
+const COLLATERAL = Number(process.env.SCENARIO_COLLATERAL_NEAR ?? 3);
 
 const env = (file: string): Record<string, string> =>
   existsSync(file)

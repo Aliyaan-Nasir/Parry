@@ -4,7 +4,7 @@
  *
  *   bun scripts/deploy.ts [--wasm-dir contracts/target/near-reproducible/<commit>] [--enclave-key ed25519:...] [--enclave-wasm-sha256 <hex>]
  *   bun scripts/deploy.ts --network mainnet [...]                     print the mainnet plan and its cost, send nothing
- *   bun scripts/deploy.ts --network mainnet --confirm-mainnet [...]   deploy to mainnet (MAINNET.md; only with the owner's go-ahead)
+ *   bun scripts/deploy.ts --network mainnet --confirm-mainnet [...]   deploy to mainnet (the launch, MAINNET.md)
  *
  * Testnet deploys everything, including the test tokens, the oracle with the market shock, the
  * lending contract (mainnet's exact wasm) and a seeded exchange pool. #mainnet deploys only
@@ -42,7 +42,8 @@ const planned = MAINNET
   : null;
 const RPC = process.env.NEAR_RPC_URL ?? (MAINNET ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com");
 const ROOT = process.env.PARRY_ROOT ?? (planned ? planned.root : "parry.testnet");
-const BOOTSTRAP = process.env.PARRY_BOOTSTRAP ?? "d0dab28d069e68db06179a10ed526611b888b62179bf1cf510217de2127c8a11";
+/** The funded account that creates the testnet root (its key in the keychain or internal/keys/). */
+const BOOTSTRAP = process.env.PARRY_BOOTSTRAP ?? "";
 const CRED_DIR = join(homedir(), ".near-credentials", NETWORK);
 const NEAR = 10n ** 24n;
 const near = (n: number) => (BigInt(Math.round(n * 1000)) * NEAR) / 1000n;
@@ -260,6 +261,7 @@ async function main() {
     if (!(await account(ROOT))) throw new Error(`${ROOT} does not exist: register it with a mainnet wallet first (MAINNET.md)`);
     console.log(`exists  ${ROOT}`);
   } else if (!(await account(ROOT))) {
+    if (!BOOTSTRAP) throw new Error(`${ROOT} does not exist: set PARRY_BOOTSTRAP to a funded testnet account that creates it`);
     const boot = keyOf(BOOTSTRAP);
     if (!boot) throw new Error(`no key for the bootstrap account ${BOOTSTRAP}`);
     const bal = await account(BOOTSTRAP);

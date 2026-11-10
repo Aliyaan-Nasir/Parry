@@ -185,9 +185,9 @@ fn mandate(g: &Guardian) -> Mandate {
             hedge_is_buy: false,
         }),
         evm: Some(EvmGuard {
-            chain_id: 11_155_111,
-            pool: "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951".into(),
-            asset: "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8".into(),
+            chain_id: 84_532,
+            pool: "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27".into(),
+            asset: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f".into(),
             address: "0x1111111111111111111111111111111111111111".into(),
             max_amount: U128(50 * USDC),
         }),
@@ -639,7 +639,7 @@ fn evm_guard_builds_only_approve_and_repay() {
     assert_eq!(c[0].2["request"]["payload_v2"]["Ecdsa"], hash);
     // The repay is sent to the guard's pool, on behalf of the person's own address.
     let tx_hex = hex::encode(&tx);
-    assert!(tx_hex.contains(&"6Ae43d3271ff6888e7Fc43Fd7321a503ff738951".to_lowercase()));
+    assert!(tx_hex.contains(&"8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27".to_lowercase()));
     assert!(tx_hex.contains("573ade81"));
     assert!(tx_hex.contains("1111111111111111111111111111111111111111"));
 }
@@ -680,7 +680,7 @@ fn deleverage_happy_path() {
     assert!(c.iter().all(|x| x.0 == "oracle.parry.testnet" && x.1 == "get_price_no_older_than"));
 
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     let c = calls();
     assert_eq!((c[0].0.as_str(), c[0].1.as_str()), ("lending.parry.testnet", "simple_withdraw"));
     assert_eq!(c[0].2["amount_with_inner_decimal"], (10 * NEAR).to_string());
@@ -742,7 +742,7 @@ fn deleverage_refuses_a_cheap_sale() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(25_000_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     assert!(calls().is_empty());
     assert!(logs_contain("slippage bound") && logs_contain("deleverage_rolled_back"));
     assert!(a.pending().is_none());
@@ -756,7 +756,7 @@ fn deleverage_rolls_back_when_the_withdraw_fails() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     set_with_results(NOW + 8, vec![PromiseResult::Failed]);
     a.on_delev_withdrawn(1);
     let c = calls();
@@ -774,7 +774,7 @@ fn deleverage_restores_collateral_when_the_swap_fails() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
     set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
@@ -800,7 +800,7 @@ fn stuck_deleverage_can_be_retried_by_anyone() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
     set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
@@ -909,7 +909,7 @@ fn audit_retry_needs_gas_for_the_rest_of_the_chain() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
     set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
@@ -1029,13 +1029,13 @@ fn audit_deleverage_prices_a_staked_token_with_its_rate() {
     let c = calls();
     assert!(c.iter().any(|x| x.0 == "linear-protocol.testnet" && x.1 == "ft_price"), "{c:?}");
     set_with_results(NOW + 6, answers());
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     assert!(logs_contain("slippage bound"), "30 USDC for $37.50 of LiNEAR is refused");
     assert!(calls().is_empty());
 
     run_guardian(&mut a, &g, 2, sell_linear(36_800_000));
     set_with_results(NOW + 7, answers());
-    a.on_delev_marks(2);
+    a.on_delev_prices(2);
     assert_eq!(calls()[0].1, "simple_withdraw");
 }
 
@@ -1047,7 +1047,7 @@ fn audit_refused_resupply_stays_pending_until_retried() {
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(29_500_000));
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     set_with_results(NOW + 8, vec![ok_json(json!(true))]);
     a.on_delev_withdrawn(1);
     set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
@@ -1115,7 +1115,7 @@ fn audit_deleverage_is_priced_by_the_oracle_not_by_the_enclave_marks() {
     assert_eq!(c.iter().filter(|x| x.0 == "oracle.parry.testnet").count(), 2);
     // The oracle says $3.00: 25 USDC for 10 NEAR is below the 2% bound.
     set_with_results(NOW + 6, swap_prices(300_000_000));
-    a.on_delev_marks(1);
+    a.on_delev_prices(1);
     assert!(logs_contain("slippage bound"));
     assert!(a.pending().is_none());
 }

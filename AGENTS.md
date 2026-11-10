@@ -56,13 +56,14 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | Chain Signatures: EVM repay (Aave on Base Sepolia) | `contracts/common/src/evm.rs`, `guardian.rs` (`EvmRepay`), `enclave/src/modes.rs` (`evm_step`), `services/src/lib/evm.ts` |
 | MPC foreign-transaction verification | `services/src/lib/evm.ts` (`verify_foreign_transaction`), `services/src/guardian.ts` (`verifyEvm`) |
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
-| NEAR AI Cloud verifiable review | `enclave/src/ai.rs`, `apps/api/src/verify.ts` |
+| NEAR AI Cloud verifiable review | `enclave/src/ai.rs` (signature over the exact exchange), `apps/api/src/verify.ts` (`modelAttestation`: TDX and GPU attestation with NEAR AI's inference SDK) |
 | Sealed mandates | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
 | Gas keys (NEP-611, parallel lanes) | `services/src/lib/near.ts` (`Sender`, `tendGasKey`), `scripts/deploy.ts` (lanes) |
 | Post-quantum keys (ML-DSA-65) | `scripts/deploy.ts` (the treasury's signing key), `apps/api/src/app.ts` (`postQuantum`) |
 | NEP-366 relayer | `services/src/relayer.ts` |
 | x402 on NEAR | `apps/api/src/x402.ts`, `@parry/sdk` `paidRiskCheck` |
-| NEAR Intents 1Click (dry-run quotes) | `services/src/lib/routes.ts` |
+| NEAR Intents 1Click (dry-run quotes) | `services/src/lib/routes.ts` (`quoteRescue`, `marginQuote` for the vault's Hyperliquid margin) |
+| NEAR Intents Agent API (mainnet) | `services/src/lib/intents.ts`: a confidential rescue reserve whose owner-signed policy only swaps and pays back into the protected account |
 | NEAR Agent Market (market.near.ai) | `deploy/agent-market/`, `scripts/market.ts` (listing), `services/src/market.ts` (answers hires) |
 | Rhea lending and exchange | `contracts/common/src/rhea.rs`, `guardian.rs` (deleverage chain) |
 
