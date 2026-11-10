@@ -218,6 +218,8 @@ export interface VaultState {
     address: string | null;
     /** The latest signed hedge order: the NEAR transaction that signed it and Hyperliquid's answer. */
     lastOrder: { tx: string; side: "buy" | "sell"; size: string; price: string; status: string; at: string } | null;
+    /** When the hedge needs margin: the dry-run 1Click route from USDC on NEAR to USDC on HyperCore. */
+    marginRoute: { amountUsd: number; outUsd: number | null; unavailable: string | null; at: string } | null;
   };
   yield: { stakingApr: number | null; fundingUsd: number; hedgePnlUsd: number };
   reserves: { root: string; leaves: number; totalUsd: number; liabilitiesUsd: number; ratioBps: number };

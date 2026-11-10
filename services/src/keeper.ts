@@ -16,6 +16,7 @@ import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
 import { eventsOf, returnValue, rpc, senderFromEnv, tendGasKey, txHash, view } from "./lib/near";
 import { oraclePrices, readRhea } from "./lib/positions";
+import { marginQuote } from "./lib/routes";
 
 const keeper = senderFromEnv("KEEPER");
 const status: Record<string, { ok: boolean; detail: string; at: number }> = {};
@@ -80,6 +81,23 @@ async function sealingKey(): Promise<string> {
   const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 50 });
   log.info("sealing key published", { tx: txHash(o), key: run.output.sealing_public_key });
   return `published in ${txHash(o)}`;
+}
+
+/**
+ * When the vault's hedge needs margin, records how it would be funded: a dry-run 1Click quote
+ * from USDC on NEAR to USDC on HyperCore, delivered to the vault's Chain Signatures address.
+ * The operator executes it on mainnet; nothing moves here.
+ */
+async function marginRoute(sql: Sql): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
+  const v = await view<{ hedge: { needs_margin?: boolean } }>(contract("vault"), "vault_state");
+  if (!v.hedge.needs_margin) return "margin sufficient";
+  const [r] = await sql<{ extra: { hedgeAddress?: string } }[]>`SELECT extra FROM reports WHERE kind = 'vault_report' ORDER BY run_id DESC LIMIT 1`;
+  const recipient = r?.extra?.hedgeAddress;
+  if (!recipient) return "no hedge address reported yet";
+  const route = await marginQuote(intEnv("MARGIN_TOPUP_USD", 100), recipient);
+  await sql`INSERT INTO reports (kind, run_id, payload) VALUES ('margin_route', ${Date.now()}, ${sql.json(route as never)}) ON CONFLICT DO NOTHING`;
+  return "outUsd" in route.quote ? `margin needed: ${route.amountUsd} USDC routes to ${route.quote.outUsd} on HyperCore` : `margin needed; ${route.quote.unavailable}`;
 }
 
 async function rebalance(sql: Sql): Promise<string> {
@@ -173,6 +191,7 @@ export async function main() {
   every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
+  every(intEnv("MARGIN_ROUTE_MS", 1_800_000), "margin-route", track("margin-route", () => marginRoute(sql)));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));
   every(intEnv("LIQUIDATOR_MS", 30_000), "liquidator", track("liquidator", () => liquidator(sql)));
   every(600_000, "mandates", track("mandates", () => mandates(sql)));

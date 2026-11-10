@@ -20,6 +20,8 @@ export interface RouteComparison {
 const ONECLICK = process.env.ONECLICK_URL ?? "https://1click.chaindefuser.com";
 const MAINNET_WNEAR = "nep141:wrap.near";
 const MAINNET_USDC = "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1";
+/** USDC on HyperCore (Hyperliquid's own ledger, the perp margin asset), as 1Click names it. */
+export const HYPERCORE_USDC = "1cs_v1:hypercore:hip1:0x6d1e7cde53ba9467b783cb7c530ce054";
 
 export async function intentsQuote(amountNear: number): Promise<RouteComparison["intents"]> {
   const jwt = process.env.ONECLICK_JWT;
@@ -78,4 +80,42 @@ export async function quoteRescue(amountNear: number): Promise<RouteComparison> 
   // On testnet the account can only settle on the Rhea pool; on mainnet the better quote wins.
   const chosen = network === "testnet" || !("outUsd" in intents) || (rhea && rhea.outUsd >= intents.outUsd) ? "rhea" : "intents";
   return { amountNear, rhea, intents, chosen };
+}
+
+export interface MarginRoute {
+  amountUsd: number;
+  recipient: string;
+  /** What 1Click would deliver on HyperCore, or why there is no quote. */
+  quote: { outUsd: number; depositAddress: string | null; dry: true } | { unavailable: string };
+}
+
+/**
+ * A dry-run 1Click quote for topping up the vault's Hyperliquid margin: USDC on NEAR to USDC on
+ * HyperCore, delivered to the vault's Chain Signatures address. On mainnet the operator funds the
+ * margin through this route; nothing moves until a quote without `dry` is executed.
+ */
+export async function marginQuote(amountUsd: number, recipient: string, fetchFn: typeof fetch = fetch): Promise<MarginRoute> {
+  const refundTo = process.env.ONECLICK_REFUND_TO ?? process.env.TREASURY_ACCOUNT_ID ?? "intents.near";
+  const body = {
+    dry: true,
+    swapType: "EXACT_INPUT",
+    slippageTolerance: 50,
+    originAsset: MAINNET_USDC,
+    depositType: "ORIGIN_CHAIN",
+    destinationAsset: HYPERCORE_USDC,
+    amount: String(Math.round(amountUsd * 1e6)),
+    refundTo,
+    refundType: "ORIGIN_CHAIN",
+    recipient,
+    recipientType: "DESTINATION_CHAIN",
+    deadline: new Date(Date.now() + 30 * 60_000).toISOString(),
+  };
+  try {
+    const res = await fetchFn(`${ONECLICK}/v0/quote`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+    const q = (await res.json()) as { quote?: { amountOut?: string; depositAddress?: string }; message?: string };
+    if (!res.ok || !q.quote?.amountOut) return { amountUsd, recipient, quote: { unavailable: `1Click: ${q.message ?? res.status}` } };
+    return { amountUsd, recipient, quote: { outUsd: Number(q.quote.amountOut) / 1e8, depositAddress: q.quote.depositAddress ?? null, dry: true } };
+  } catch (e) {
+    return { amountUsd, recipient, quote: { unavailable: `1Click unreachable: ${(e as Error).message}` } };
+  }
 }

@@ -17,6 +17,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@near-intents-agent-api/sdk": "0.8.2",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@parry/core": "workspace:*",
