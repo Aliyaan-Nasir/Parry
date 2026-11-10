@@ -16,9 +16,9 @@ export type ConnectButtonProps = {
   className?: string;
 };
 
-function shorten(accountId: string): string {
-  if (accountId.length <= 20) return accountId;
-  return `${accountId.slice(0, 8)}...${accountId.slice(-8)}`;
+function shorten(accountId: string, head = 8, tail = 8): string {
+  if (accountId.length <= head + tail + 4) return accountId;
+  return `${accountId.slice(0, head)}...${accountId.slice(-tail)}`;
 }
 
 /** The account slot in the top bar. Wallet wiring plugs in through `onClick` and `accountId`. */
@@ -46,7 +46,16 @@ export function ConnectButton({ onClick, accountId, pending = false, label = "Co
         aria-hidden="true"
         className={cn("size-1.5 rounded-full", connected ? "bg-safe" : available ? "bg-on-brass/70" : "bg-line-strong")}
       />
-      {connected ? <span className="num text-[13px]">{shorten(accountId)}</span> : pending ? "Connecting" : label}
+      {connected ? (
+        <span className="num text-[13px]" title={accountId}>
+          <span className="sm:hidden">{shorten(accountId, 5, 4)}</span>
+          <span className="hidden sm:inline">{shorten(accountId)}</span>
+        </span>
+      ) : pending ? (
+        "Connecting"
+      ) : (
+        label
+      )}
     </button>
   );
 }

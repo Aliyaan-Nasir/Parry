@@ -8,7 +8,7 @@ export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
   "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold tracking-[-0.005em] " +
-  "transition-[background-color,border-color,color,box-shadow] duration-150 ease-out " +
+  "transition-[background-color,border-color,color,box-shadow,scale] duration-150 ease-out enabled:active:scale-[0.985] " +
   "disabled:cursor-not-allowed aria-disabled:cursor-not-allowed";
 
 const variants: Record<ButtonVariant, string> = {

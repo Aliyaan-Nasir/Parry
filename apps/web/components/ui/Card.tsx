@@ -41,7 +41,8 @@ export type CardHeaderProps = {
 export function CardHeader({ title, description, actions, titleAs: Title = "h3", className }: CardHeaderProps) {
   return (
     <div className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2", className)}>
-      <div className="min-w-0">
+      {/* The title block shares the line with the actions until the card gets narrow. */}
+      <div className="min-w-0 flex-1 basis-64">
         <Title className="text-[15px] font-semibold tracking-[-0.01em] text-fg">{title}</Title>
         {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
       </div>

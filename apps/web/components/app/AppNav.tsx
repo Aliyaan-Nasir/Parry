@@ -2,18 +2,38 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useState } from "react";
+import { Suspense, useLayoutEffect, useState, type ReactNode } from "react";
 import { NAV, isActive } from "./nav";
 import { Logo } from "@/components/brand/Logo";
 import { Sheet } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+/**
+ * The current path, read under Suspense: on a page with a runtime param (a position) the path is
+ * only known at request time, so the nav prerenders without an active item and fills it in.
+ */
+function WithPathname({ children }: { children: (pathname: string | null) => ReactNode }) {
+  return (
+    <Suspense fallback={children(null)}>
+      <CurrentPath>{children}</CurrentPath>
+    </Suspense>
+  );
+}
+
+function CurrentPath({ children }: { children: (pathname: string | null) => ReactNode }) {
   const pathname = usePathname();
+  return <>{children(pathname)}</>;
+}
+
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  return <WithPathname>{(pathname) => <NavList pathname={pathname} onNavigate={onNavigate} />}</WithPathname>;
+}
+
+function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate?: (() => void) | undefined }) {
   return (
     <ul className="grid gap-0.5">
       {NAV.map((item) => {
-        const active = isActive(pathname, item.href);
+        const active = pathname !== null && isActive(pathname, item.href);
         return (
           <li key={item.href}>
             <Link
@@ -61,10 +81,7 @@ export function Sidebar() {
 
 /** Phone and tablet navigation: a bottom bar with the main pages and a sheet with all of them. */
 export function MobileNav() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const primary = NAV.filter((i) => i.primary);
-  const inMenu = !primary.some((i) => isActive(pathname, i.href));
 
   // Lets fixed elements elsewhere (toasts) sit above the bottom bar while the app shell is shown.
   useLayoutEffect(() => {
@@ -81,44 +98,7 @@ export function MobileNav() {
         aria-label="App"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
-        <ul className="mx-auto grid h-16 max-w-xl grid-cols-5">
-          {primary.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex h-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
-                    active ? "text-fg" : "text-muted hover:text-fg",
-                  )}
-                >
-                  <span className={active ? "text-brass" : undefined}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-          <li>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              aria-haspopup="dialog"
-              className={cn(
-                "flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
-                inMenu ? "text-fg" : "text-muted hover:text-fg",
-              )}
-            >
-              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" className={inMenu ? "text-brass" : undefined}>
-                <circle cx="4.5" cy="10" r="1.5" fill="currentColor" />
-                <circle cx="10" cy="10" r="1.5" fill="currentColor" />
-                <circle cx="15.5" cy="10" r="1.5" fill="currentColor" />
-              </svg>
-              More
-            </button>
-          </li>
-        </ul>
+        <WithPathname>{(pathname) => <MobileBar pathname={pathname} onMore={() => setOpen(true)} />}</WithPathname>
       </nav>
       <Sheet open={open} onOpenChange={setOpen} title="All pages">
         <nav aria-label="All pages">
@@ -126,5 +106,50 @@ export function MobileNav() {
         </nav>
       </Sheet>
     </>
+  );
+}
+
+function MobileBar({ pathname, onMore }: { pathname: string | null; onMore: () => void }) {
+  const primary = NAV.filter((i) => i.primary);
+  const inMenu = pathname !== null && !primary.some((i) => isActive(pathname, i.href));
+  return (
+    <ul className="mx-auto grid h-16 max-w-xl grid-cols-5">
+      {primary.map((item) => {
+        const active = pathname !== null && isActive(pathname, item.href);
+        return (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex h-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
+                active ? "text-fg" : "text-muted hover:text-fg",
+              )}
+            >
+              <span className={active ? "text-brass" : undefined}>{item.icon}</span>
+              {item.label}
+            </Link>
+          </li>
+        );
+      })}
+      <li>
+        <button
+          type="button"
+          onClick={onMore}
+          aria-haspopup="dialog"
+          className={cn(
+            "flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
+            inMenu ? "text-fg" : "text-muted hover:text-fg",
+          )}
+        >
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" className={inMenu ? "text-brass" : undefined}>
+            <circle cx="4.5" cy="10" r="1.5" fill="currentColor" />
+            <circle cx="10" cy="10" r="1.5" fill="currentColor" />
+            <circle cx="15.5" cy="10" r="1.5" fill="currentColor" />
+          </svg>
+          More
+        </button>
+      </li>
+    </ul>
   );
 }

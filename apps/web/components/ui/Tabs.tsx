@@ -1,5 +1,6 @@
 "use client";
 
+import { m } from "framer-motion";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
@@ -74,12 +75,20 @@ export function Tabs({ items, label, value, defaultValue, onValueChange, classNa
               onClick={() => select(t.id)}
               className={cn(
                 "relative -mb-px h-10 shrink-0 whitespace-nowrap rounded-t-md px-3 text-sm font-semibold transition-colors",
-                "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors",
-                active ? "text-fg after:bg-brass-fill" : "text-muted after:bg-transparent hover:text-fg",
+                active ? "text-fg" : "text-muted hover:text-fg",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
               {t.label}
+              {active ? (
+                // One underline that slides between tabs (instantly under reduced motion).
+                <m.span
+                  layoutId={`${baseId}-underline`}
+                  aria-hidden="true"
+                  className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brass-fill"
+                  transition={{ type: "spring", stiffness: 460, damping: 36, mass: 0.6 }}
+                />
+              ) : null}
             </button>
           );
         })}

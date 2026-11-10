@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type * as LightweightCharts from "lightweight-charts";
-import type { IChartApi, ISeriesApi, SeriesType, UTCTimestamp } from "lightweight-charts";
+import type { AutoscaleInfo, IChartApi, ISeriesApi, SeriesType, UTCTimestamp } from "lightweight-charts";
 import { useTheme } from "@/lib/use-theme";
 import { cn } from "@/lib/cn";
 
@@ -43,6 +43,8 @@ export type ChartProps = {
   priceLines?: readonly ChartPriceLine[];
   valueFormat?: "number" | "usd" | "percent";
   precision?: number;
+  /** The currency "usd" values are shown in (already converted by the caller); USD by default. */
+  currency?: string;
   className?: string;
 };
 
@@ -73,9 +75,9 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-function formatter(kind: NonNullable<ChartProps["valueFormat"]>, precision: number) {
+function formatter(kind: NonNullable<ChartProps["valueFormat"]>, precision: number, currency = "USD") {
   if (kind === "usd") {
-    const f = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: precision });
+    const f = new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: precision });
     return (v: number) => f.format(v);
   }
   if (kind === "percent") return (v: number) => `${v.toFixed(precision)}%`;
@@ -84,7 +86,7 @@ function formatter(kind: NonNullable<ChartProps["valueFormat"]>, precision: numb
 
 type Api = { chart: IChartApi; lib: typeof LightweightCharts; series: ISeriesApi<SeriesType>[] };
 
-export function Chart({ series, label, height = 280, priceLines = [], valueFormat = "number", precision = 2, className }: ChartProps) {
+export function Chart({ series, label, height = 280, priceLines = [], valueFormat = "number", precision = 2, currency = "USD", className }: ChartProps) {
   const box = useRef<HTMLDivElement>(null);
   const api = useRef<Api | null>(null);
   const [ready, setReady] = useState(false);
@@ -113,7 +115,7 @@ export function Chart({ series, label, height = 280, priceLines = [], valueForma
     const a = api.current;
     if (!ready || !a) return;
     const p = readPalette();
-    const fmt = formatter(valueFormat, precision);
+    const fmt = formatter(valueFormat, precision, currency);
     a.chart.applyOptions({
       layout: {
         background: { type: a.lib.ColorType.Solid, color: p.bg },
@@ -138,7 +140,26 @@ export function Chart({ series, label, height = 280, priceLines = [], valueForma
     a.series = [];
     series.forEach((s, i) => {
       const color = p[s.tone ?? (i === 0 ? "fg" : "brass")];
-      const common = { title: s.title ?? "", lastValueVisible: true, priceLineVisible: false, lineWidth: 2 as const };
+      const marks = i === 0 ? priceLines.map((l) => l.price) : [];
+      const common = {
+        title: s.title ?? "",
+        lastValueVisible: true,
+        priceLineVisible: false,
+        lineWidth: 2 as const,
+        // Markers such as the liquidation level stay in view, however far the data is from them.
+        ...(marks.length > 0
+          ? {
+              autoscaleInfoProvider: (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
+                const res = original();
+                if (!res?.priceRange) return res;
+                const lo = Math.min(res.priceRange.minValue, ...marks);
+                const hi = Math.max(res.priceRange.maxValue, ...marks);
+                const pad = (hi - lo) * 0.04;
+                return { ...res, priceRange: { minValue: lo - pad, maxValue: hi + pad } };
+              },
+            }
+          : {}),
+      };
       const created =
         s.kind === "area"
           ? a.chart.addSeries(a.lib.AreaSeries, {
@@ -165,7 +186,7 @@ export function Chart({ series, label, height = 280, priceLines = [], valueForma
       a.series.push(created);
     });
     a.chart.timeScale().fitContent();
-  }, [ready, series, priceLines, valueFormat, precision, resolved]);
+  }, [ready, series, priceLines, valueFormat, precision, currency, resolved]);
 
   return (
     <figure className={cn("relative m-0", className)}>
