@@ -3,6 +3,17 @@
 Each criterion, with the evidence for it and where to find it.
 Links go to the exact code; `pnpm verify` re-checks the live claims and prints pass or fail per claim.
 
+## Verify it yourself in five minutes
+
+```bash
+pnpm install
+pnpm verify --quick          # every live claim against testnet: code hashes, the enclave key, a recorded rescue, the hedge, the oracle, the API
+pnpm test:contracts          # 229 contract unit tests, including an audit_* test for every review finding
+cd enclave && cargo test     # the guardian program, against the same risk fixtures as the TypeScript model
+```
+
+`deployments/testnet.json` lists every deployed account, code hash and transaction; `deployments/testnet-proofs.json` records each scenario of the test matrix with its transactions; [`AGENTS.md`](AGENTS.md) maps every NEAR primitive to its code.
+
 ## Technical implementation
 
 - **A guardian that can only protect.**
