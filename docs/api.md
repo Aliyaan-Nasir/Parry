@@ -130,6 +130,8 @@ interface Verification {
   id: string;
   checks: { name: string; ok: boolean; detail: string }[]; // review signature recovers to the signing address; the address is attested (NEAR AI verification); review hash on chain matches; envelope signed by the enclave key; enclave key bound to the published wasm
   verifyUrl: string; // https://cloud.near.ai/verify
+  attestation: string; // "checked" when the API verified the model's TDX and GPU attestation with NEAR AI's inference SDK
+  ok: boolean;
 }
 
 interface Alert {

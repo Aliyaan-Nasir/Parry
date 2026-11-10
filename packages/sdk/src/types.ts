@@ -173,6 +173,9 @@ export interface Verification {
   id: string;
   checks: { name: string; ok: boolean; detail: string }[];
   verifyUrl: string;
+  /** "checked" when the API verified the model's Intel TDX and NVIDIA GPU attestation with NEAR AI's inference SDK. */
+  attestation?: string;
+  ok?: boolean;
 }
 
 export interface Alert {

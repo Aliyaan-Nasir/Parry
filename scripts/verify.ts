@@ -213,7 +213,11 @@ async function main() {
       const o = await txOutcome(d.txs.action, dep.services!.guardian!);
       const acted = events(o).find((e) => e.event === "guardian_acted");
       if (acted?.data.review_hash !== hash) throw new Error(`on chain ${acted?.data.review_hash}, recomputed ${hash}`);
-      return `review ${hash.slice(0, 16)}... by ${r.model} (${addr}), action ${d.txs.action}`;
+      // With a NEAR AI key, the signer must also be a key attested in TEE hardware right now.
+      const { modelAttestation } = await import("../apps/api/src/verify");
+      const att = await modelAttestation(r.model!, r.signingAddress!);
+      if (att && !att.ok) throw new Error(att.detail);
+      return `review ${hash.slice(0, 16)}... by ${r.model} (${addr}${att ? ", attested" : ""}), action ${d.txs.action}`;
     });
   }
 

@@ -91,3 +91,10 @@ describe.skipIf(!url)("routes on a database", () => {
     expect((await app.request("/v1/accounts/0unknown.testnet")).status).toBe(404);
   });
 });
+
+describe("model attestation", () => {
+  test("is not run without a NEAR AI key, and says so", async () => {
+    const { modelAttestation } = await import("../src/verify");
+    expect(await modelAttestation("z-ai/glm-5.3-flash", `0x${"ab".repeat(20)}`, "")).toBeNull();
+  });
+});

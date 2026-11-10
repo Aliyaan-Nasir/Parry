@@ -12,18 +12,19 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@nearai/inference-sdk": "0.3.0",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@parry/core": "workspace:*",
+    "@parry/mcp": "workspace:*",
+    "@parry/sdk": "workspace:*",
     "@parry/services": "workspace:*",
     "hono": "4.13.17",
-    "near-kit": "0.20.2",
-    "@parry/sdk": "workspace:*",
-    "@parry/mcp": "workspace:*"
+    "near-kit": "0.20.2"
   },
   "devDependencies": {
     "@types/bun": "1.3.1",
-    "typescript": "5.9.3",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "typescript": "5.9.3"
   }
 }
