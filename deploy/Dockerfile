@@ -3,6 +3,8 @@
 FROM node:22.21.1-alpine AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
+# The packages are built below, once their sources are in the image.
+ENV PARRY_SKIP_PACKAGE_BUILD=1
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/core/package.json packages/core/
 COPY packages/brand/package.json packages/brand/
