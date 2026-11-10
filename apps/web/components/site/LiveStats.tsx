@@ -62,7 +62,7 @@ export function LiveStats() {
   const data = query.data;
   const loading = query.isPending;
   const unavailable = !loading && !data;
-  const tier = data ? tierFromScore(data.vaultRiskScore) : null;
+  const tier = data && data.vaultRiskScore !== null ? tierFromScore(data.vaultRiskScore) : null;
   const shownNetwork = data?.network ?? network;
 
   const value = (render: (s: Stats) => ReactNode, width: string) =>
@@ -107,7 +107,11 @@ export function LiveStats() {
             {value((s) => <NumberTicker value={s.vaultTvlUsd} format="usdCompact" />, "6ch")}
           </Cell>
           <Cell label="Vault risk score">
-            {value((s) => <NumberTicker value={s.vaultRiskScore} />, "3ch")}
+            {data && data.vaultRiskScore === null ? (
+              <span className="text-[15px] font-normal leading-9 tracking-normal text-muted">No report yet</span>
+            ) : (
+              value((s) => (s.vaultRiskScore !== null ? <NumberTicker value={s.vaultRiskScore} /> : null), "3ch")
+            )}
             {tier ? <TierBadge tier={tier} className="text-xs tracking-normal" /> : null}
           </Cell>
         </dl>

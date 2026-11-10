@@ -11,10 +11,11 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Modal";
 
 const LINKS = [
+  { href: "#how", label: "How it works" },
   { href: "#protect", label: "Protect" },
   { href: "#earn", label: "Earn" },
-  { href: "#guardian", label: "Guardian" },
-  { href: "#privacy", label: "Privacy" },
+  { href: "#near", label: "NEAR" },
+  { href: "#agents", label: "Agents" },
   { href: "#faq", label: "FAQ" },
 ] as const;
 

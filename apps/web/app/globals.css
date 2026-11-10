@@ -258,6 +258,38 @@ html.lenis body {
   }
 }
 
+/* App pages: blocks rise into place one after another, once per visit (none under reduced motion). */
+@media (prefers-reduced-motion: no-preference) {
+  [data-stagger] > * {
+    animation: parry-rise 460ms var(--ease-out-quint) backwards;
+  }
+  [data-stagger] > :nth-child(2) {
+    animation-delay: 50ms;
+  }
+  [data-stagger] > :nth-child(3) {
+    animation-delay: 100ms;
+  }
+  [data-stagger] > :nth-child(4) {
+    animation-delay: 150ms;
+  }
+  [data-stagger] > :nth-child(5) {
+    animation-delay: 200ms;
+  }
+  [data-stagger] > :nth-child(n + 6) {
+    animation-delay: 240ms;
+  }
+}
+@keyframes parry-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 html[data-scroll-locked] {
   overflow: hidden;
 }

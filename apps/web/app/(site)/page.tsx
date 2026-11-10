@@ -1,6 +1,8 @@
+import { AgentsSection } from "@/components/site/AgentsSection";
 import { Faq } from "@/components/site/Faq";
 import { FinalCta } from "@/components/site/FinalCta";
 import { Hero } from "@/components/site/Hero";
+import { HowItWorks } from "@/components/site/HowItWorks";
 import { LiveStats } from "@/components/site/LiveStats";
 import { ScrollScenes } from "@/components/site/ScrollScenes";
 import {
@@ -18,12 +20,14 @@ export default function LandingPage() {
       <ScrollScenes />
       <Hero />
       <LiveStats />
+      <HowItWorks />
       <ProtectSection />
       <EarnSection />
       <GuardianSection />
       <ReviewSection />
       <PrivacySection />
       <OnlyOnNearSection />
+      <AgentsSection />
       <Faq />
       <FinalCta />
     </>

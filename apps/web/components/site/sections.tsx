@@ -6,13 +6,17 @@ import {
   CrossIcon,
   EyeIcon,
   LanesIcon,
+  LatticeIcon,
   LockIcon,
+  MarketIcon,
   PasskeyIcon,
-  PlugIcon,
   ReceiptIcon,
+  RelayIcon,
   ReviewIcon,
   ShieldRouteIcon,
   SignatureIcon,
+  StackIcon,
+  VerifiedLinkIcon,
 } from "./icons";
 import { TierBadge } from "@/components/ui/TierBadge";
 import { TIERS } from "@/lib/risk";
@@ -325,14 +329,22 @@ export function PrivacySection() {
 }
 
 const PRIMITIVES = [
-  { name: "Universal accounts", line: "Protected accounts have a passkey owner: no seed phrase, no gas.", Icon: PasskeyIcon },
-  { name: "Chain Signatures", line: "A NEAR contract signs Hyperliquid and EVM transactions inside an on-chain guard.", Icon: SignatureIcon },
-  { name: "Gas keys", line: "Parry's services transact in parallel lanes.", Icon: LanesIcon },
-  { name: "NEAR AI Cloud", line: "Verifiable inference in a TEE reviews every rescue plan.", Icon: ReviewIcon },
-  { name: "OutLayer TEE", line: "The guardian runs in Intel TDX with a key bound to its build.", Icon: ChipIcon },
-  { name: "Confidential Intents", line: "Rescue swaps on mainnet stay hidden from liquidation hunters.", Icon: ShieldRouteIcon },
-  { name: "x402 on NEAR", line: "Agents can buy risk checks with a payment over HTTP.", Icon: ReceiptIcon },
-  { name: "MCP server", line: "Agents can use Parry through an MCP server.", Icon: PlugIcon },
+  {
+    name: "Universal accounts and global contracts",
+    line: "Every protected account is a NEP-655 universal account running one global contract: created in a single call, upgraded only by its owner.",
+    Icon: StackIcon,
+  },
+  { name: "Passkeys on chain", line: "A passkey can own the account. The contract checks its P-256 signature itself: no seed phrase, no wallet.", Icon: PasskeyIcon },
+  { name: "Chain Signatures", line: "The account signs Hyperliquid orders and EVM repays through the MPC network, inside an on-chain guard.", Icon: SignatureIcon },
+  { name: "OutLayer TEE", line: "The guardian runs in Intel TDX with a key bound to its exact build.", Icon: ChipIcon },
+  { name: "NEAR AI Cloud", line: "A verifiable model in a TEE reviews and signs off every rescue plan.", Icon: ReviewIcon },
+  { name: "NEP-366 relaying", line: "The relayer pays the gas, so passkey owners never need NEAR to act.", Icon: RelayIcon },
+  { name: "Gas keys", line: "Parry's services send on parallel nonce lanes, so a rescue never queues.", Icon: LanesIcon },
+  { name: "MPC transaction checks", line: "After an Aave repay on Base, the MPC network reads it on that chain and signs what it found, so NEAR knows the rescue landed.", Icon: VerifiedLinkIcon },
+  { name: "NEAR Intents", line: "Rescue swaps compare Rhea with 1Click quotes; on mainnet a confidential reserve on the Intents Agent API refills the account privately.", Icon: ShieldRouteIcon },
+  { name: "x402 on NEAR", line: "Anyone, agents included, can buy a risk check with one payment over HTTP.", Icon: ReceiptIcon },
+  { name: "Post-quantum keys", line: "The treasury that keeps Parry's services funded signs with an ML-DSA-65 key.", Icon: LatticeIcon },
+  { name: "Agent Market", line: "Parry's risk desk answers hires on NEAR's Agent Market with a report for any account.", Icon: MarketIcon },
 ] as const;
 
 export function OnlyOnNearSection() {
@@ -345,8 +357,8 @@ export function OnlyOnNearSection() {
       lead="Each piece of Parry leans on a NEAR primitive. Together they make protection that is automatic, private and checkable."
     >
       <ul className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2" data-reveal-stagger>
-        {PRIMITIVES.map(({ name, line, Icon }) => (
-          <li key={name} className="flex gap-4 bg-raised p-5">
+        {PRIMITIVES.map(({ name, line, Icon }, i) => (
+          <li key={name} className={cn("flex gap-4 bg-raised p-5", PRIMITIVES.length % 2 === 1 && i === PRIMITIVES.length - 1 && "sm:col-span-2")}>
             <span className="mt-0.5 text-brass">
               <Icon />
             </span>

@@ -6,6 +6,8 @@ import {
   APPROACH,
   CANVAS,
   CONTACT,
+  GUARD_PATH,
+  GUARD_TRANSFORM,
   GUIDES,
   HERO_VIEW,
   LIQUIDATION_Y,
@@ -13,10 +15,6 @@ import {
   PROJECTED_HIT,
   RECOVERY,
   RECOVERY_END,
-  SABRE,
-  SABRE_PIVOT,
-  SABRE_SCALE,
-  SABRE_TRANSLATE,
 } from "@/lib/deflection";
 import type { Tier } from "@/lib/risk";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
@@ -24,7 +22,8 @@ import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
 /**
  * The hero illustration. Server render and reduced motion show the whole story in one still
  * frame. With motion allowed, GSAP (loaded after hydration) plays it on a loop: health falls,
- * the projection points at liquidation, the sabre swings in and turns the line back up.
+ * the projection points at liquidation, the guard from Parry's mark rises under the line and
+ * turns it back up.
  * The loop pauses while the hero is off screen.
  */
 export function HeroDeflection() {
@@ -48,10 +47,10 @@ export function HeroDeflection() {
       const approach = part<SVGPathElement>("approach");
       const recovery = part<SVGPathElement>("recovery");
       const projected = part<SVGGElement>("projected");
-      const sabre = part<SVGGElement>("sabre");
+      const guard = part<SVGGElement>("guard");
       const flash = part<SVGCircleElement>("flash");
       const head = part<SVGCircleElement>("head");
-      if (!approach || !recovery || !projected || !sabre || !flash || !head) return;
+      if (!approach || !recovery || !projected || !guard || !flash || !head) return;
 
       const lenA = approach.getTotalLength();
       const lenR = recovery.getTotalLength();
@@ -86,7 +85,7 @@ export function HeroDeflection() {
         })
           .set([approach, recovery, head], { opacity: 1 })
           .set(projected, { opacity: 0 })
-          .set(sabre, { opacity: 0, rotation: 30, svgOrigin: `${SABRE_PIVOT.x} ${SABRE_PIVOT.y}` })
+          .set(guard, { opacity: 0, y: 28 })
           .set(flash, { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" })
           .call(() => {
             el.dataset.anim = "running";
@@ -95,8 +94,10 @@ export function HeroDeflection() {
           .call(() => setTier("caution"), [], 1.25)
           .to(projected, { opacity: 1, duration: 0.6, ease: "power2.out" }, 1.4)
           .call(() => setTier("danger"), [], 2.15)
-          .to(sabre, { opacity: 1, duration: 0.12 }, 2.42)
-          .to(sabre, { rotation: 0, duration: 0.48, ease: "back.out(2.2)" }, 2.42)
+          .to(guard, { opacity: 1, duration: 0.2 }, 2.3)
+          .to(guard, { y: 0, duration: 0.55, ease: "back.out(1.7)" }, 2.3)
+          .to(guard, { y: 2.5, duration: 0.07, ease: "power1.out" }, 2.9)
+          .to(guard, { y: 0, duration: 0.4, ease: "power2.out" }, 2.97)
           .call(() => {
             head.dataset.state = "after";
           }, [], 2.9)
@@ -106,7 +107,7 @@ export function HeroDeflection() {
           .to(progress, { r: 1, duration: 1.7, ease: "power2.out", onUpdate: drawRecovery }, 2.9)
           .call(() => setTier("caution"), [], 3.25)
           .call(() => setTier("safe"), [], 3.85)
-          .to([approach, recovery, projected, sabre, head], { opacity: 0, duration: 0.6, ease: "power1.inOut" }, 7.2);
+          .to([approach, recovery, projected, guard, head], { opacity: 0, duration: 0.6, ease: "power1.inOut" }, 7.2);
       }, el);
 
       const io = new IntersectionObserver(([entry]) => {
@@ -182,14 +183,9 @@ export function HeroDeflection() {
           </g>
           <path data-part="approach" d={APPROACH} fill="none" className="hero-part stroke-fg" strokeWidth="3" strokeLinecap="round" />
           <path data-part="recovery" d={RECOVERY} fill="none" className="hero-part stroke-safe" strokeWidth="3" strokeLinecap="round" />
-          <circle data-part="flash" cx={CONTACT.x} cy={CONTACT.y + 2} r="16" fill="none" className="stroke-brass-fill" strokeWidth="1.5" opacity="0" />
-          <g data-part="sabre" className="hero-part text-brass-fill">
-            <g transform={`translate(${SABRE_TRANSLATE.x.toFixed(2)} ${SABRE_TRANSLATE.y.toFixed(2)}) scale(${SABRE_SCALE})`}>
-              <path d={SABRE.blade} fill="currentColor" />
-              <path d={SABRE.grip} fill="none" stroke="currentColor" strokeWidth={SABRE.gripWidth} strokeLinecap="round" />
-              <path d={SABRE.guard} fill="none" stroke="currentColor" strokeWidth={SABRE.guardWidth} strokeLinecap="round" />
-              <circle cx={SABRE.pommel.cx} cy={SABRE.pommel.cy} r={SABRE.pommel.r} fill="currentColor" />
-            </g>
+          <circle data-part="flash" cx={CONTACT.x} cy={CONTACT.y} r="16" fill="none" className="stroke-mark" strokeWidth="1.5" opacity="0" />
+          <g data-part="guard" className="hero-part text-mark">
+            <path d={GUARD_PATH} transform={GUARD_TRANSFORM} fill="currentColor" />
           </g>
           <circle data-part="head" data-state="after" cx={RECOVERY_END.x} cy={RECOVERY_END.y} r="4.5" className="hero-part hero-head" />
         </svg>

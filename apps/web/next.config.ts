@@ -5,7 +5,7 @@ const dev = process.env.NODE_ENV === "development";
 
 const securityHeaders = [
   // See lib/csp.ts for what each entry allows and why.
-  { key: "Content-Security-Policy", value: buildCsp({ apiUrl: process.env.NEXT_PUBLIC_API_URL, dev }) },
+  { key: "Content-Security-Policy", value: buildCsp({ apiUrl: process.env.NEXT_PUBLIC_API_URL, rpcUrl: process.env.NEXT_PUBLIC_NEAR_RPC_URL, dev }) },
   // Only send the origin to other sites, never full paths with account ids.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Content-Type-Options", value: "nosniff" },

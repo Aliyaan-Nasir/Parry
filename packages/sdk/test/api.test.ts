@@ -49,7 +49,7 @@ describe("API reads", () => {
     await parry.createProtectedAccount({ passkey: `02${"11".repeat(32)}` });
     await parry.relayDelegate("BASE64");
     expect(api.seen.map((r) => [r.method, r.url.replace(API.slice(0, -1), ""), r.body, r.headers["content-type"]])).toEqual([
-      ["POST", "/v1/relay/owner", { request: '{"account":"0uabc.testnet"}', assertion }, "application/json"],
+      ["POST", "/v1/relay/owner", { account: "0uabc.testnet", request: '{"account":"0uabc.testnet"}', assertion }, "application/json"],
       ["POST", "/v1/relay/create-account", { nearAccount: "alice.testnet" }, "application/json"],
       ["POST", "/v1/relay/create-account", { passkey: `02${"11".repeat(32)}` }, "application/json"],
       ["POST", "/v1/relay/delegate", { signedDelegateAction: "BASE64" }, "application/json"],

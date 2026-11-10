@@ -127,8 +127,12 @@ export function apiMethods(api: ParryApi) {
     status: () => api.request<Status>("/v1/status"),
     rescueQuote: (amountNear: number) => api.request<RouteComparison>("/v1/quotes/rescue", { query: { amountNear } }),
     /** Relays a passkey-signed owner request to `owner_execute` (the relayer pays the gas). */
-    relayOwnerRequest: (text: string, assertion: PasskeyAssertion) =>
-      api.request<{ txHash: string }>("/v1/relay/owner", { method: "POST", body: { request: text, assertion } }),
+    relayOwnerRequest: (text: string, assertion: PasskeyAssertion) => {
+      // The request names its account; the relayer checks it is a Parry account before relaying.
+      const account = (JSON.parse(text) as { account?: string }).account;
+      if (!account) throw new Error("the owner request names no account");
+      return api.request<{ txHash: string }>("/v1/relay/owner", { method: "POST", body: { account, request: text, assertion } });
+    },
     /** Creates a protected account without gas, for a passkey (compressed P-256 hex) or a NEAR account. */
     createProtectedAccount: (owner: { passkey: string } | { nearAccount: string }) =>
       api.request<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: owner }),

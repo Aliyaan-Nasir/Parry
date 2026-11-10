@@ -55,7 +55,7 @@ const TESTNET_ITEM: AccordionItem = {
 export function Faq() {
   const items = isTestnet ? [TESTNET_ITEM, ...ITEMS] : ITEMS;
   return (
-    <Section id="faq" index="07" eyebrow="Questions" title="Plain answers." lead="What Parry can and cannot do, in a few lines each.">
+    <Section id="faq" index="08" eyebrow="Questions" title="Plain answers." lead="What Parry can and cannot do, in a few lines each.">
       <div data-reveal>
         <Accordion items={items} />
       </div>

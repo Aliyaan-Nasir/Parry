@@ -1,4 +1,11 @@
 import { expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { ACCOUNT, POSITION_ID, POSITION_LABEL } from "./fixtures";
+
+/** The protected account the fixtures describe. */
+export const FIXTURE_ACCOUNT = ACCOUNT;
+
+/** The fixture's critical Rhea position, as the app links to it. */
+export const POSITION_PATH = `/app/positions/${encodeURIComponent(POSITION_ID)}`;
 
 export const WIDTHS = [375, 768, 1440] as const;
 export const THEMES = ["light", "dark"] as const;
@@ -20,7 +27,11 @@ export const PAGES = [
   { path: "/app/settings", heading: "Settings" },
   { path: "/app/status", heading: "Status" },
   { path: "/app/shock", heading: "Market shock" },
+  { path: POSITION_PATH, heading: POSITION_LABEL },
 ] as const;
+
+/** App pages (under /app) render account data; the site pages do not. */
+export const isAppPage = (path: string) => path === "/app" || path.startsWith("/app/");
 
 /** A well formed /v1/stats response for tests; never shown outside the test browser. */
 export const STATS_FIXTURE = {
@@ -41,13 +52,19 @@ export async function mockStats(page: Page, mode: "ok" | "down" = "ok"): Promise
   );
 }
 
+/**
+ * Messages only `next dev` prints (a route compiled on demand renders without its server caches);
+ * a production build never logs them, so a run against a dev server ignores them.
+ */
+const DEV_ONLY = [/cache-bypass-in-dev/];
+
 /** Collects console errors and warnings plus uncaught page errors. */
 export function watchConsole(page: Page, ignore: RegExp[] = []): () => string[] {
   const problems: string[] = [];
   const onConsole = (msg: ConsoleMessage) => {
     if (msg.type() !== "error" && msg.type() !== "warning") return;
     const text = `${msg.type()}: ${msg.text()}`;
-    if (ignore.some((r) => r.test(text))) return;
+    if ([...DEV_ONLY, ...ignore].some((r) => r.test(text))) return;
     problems.push(text);
   };
   page.on("console", onConsole);

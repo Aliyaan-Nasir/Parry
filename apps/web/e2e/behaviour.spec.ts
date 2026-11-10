@@ -39,7 +39,7 @@ test.describe("live stats", () => {
     await mockStats(page);
     await page.goto("/");
     const strip = page.getByRole("region", { name: /Live from NEAR/ });
-    await expect(strip.getByText(String(STATS_FIXTURE.positionsProtected), { exact: true })).toBeAttached();
+    await expect(strip.getByText(String(STATS_FIXTURE.positionsProtected), { exact: true }).first()).toBeAttached();
     await expect(strip.getByText("$48.3K", { exact: true })).toBeAttached();
     await expect(strip.getByText(/Updated/)).toBeVisible();
   });
@@ -91,7 +91,7 @@ test.describe("keyboard", () => {
 
     test("the app menu opens as a sheet and closes with Escape", async ({ page }) => {
       await page.goto("/app");
-      await page.getByRole("button", { name: "More" }).click();
+      await page.getByRole("button", { name: "More", exact: true }).click();
       const sheet = page.getByRole("dialog", { name: "All pages" });
       await expect(sheet).toBeVisible();
       await expect(sheet.getByRole("link", { name: /Market shock/ })).toBeVisible();

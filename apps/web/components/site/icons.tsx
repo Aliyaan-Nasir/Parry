@@ -84,6 +84,34 @@ export const PlugIcon = () => (
   </Icon>
 );
 
+export const StackIcon = () => (
+  <Icon>
+    <path d="M10 2.75 L17 6.25 L10 9.75 L3 6.25 Z" />
+    <path d="M3 10 L10 13.5 L17 10" />
+    <path d="M3 13.75 L10 17.25 L17 13.75" />
+  </Icon>
+);
+
+export const RelayIcon = () => (
+  <Icon>
+    <path d="M3 6.5 H13.5 M10.5 3.5 L13.5 6.5 L10.5 9.5" />
+    <path d="M17 13.5 H6.5 M9.5 10.5 L6.5 13.5 L9.5 16.5" />
+  </Icon>
+);
+
+export const FileIcon = () => (
+  <Icon>
+    <path d="M5 2.75 H11.5 L15 6.25 V17.25 H5 Z" />
+    <path d="M11.25 2.75 V6.5 H15 M7.75 10 H12.25 M7.75 13 H12.25" />
+  </Icon>
+);
+
+export const SparkIcon = () => (
+  <Icon>
+    <path d="M10 2.75 V6 M10 14 V17.25 M2.75 10 H6 M14 10 H17.25 M4.9 4.9 L7.2 7.2 M12.8 12.8 L15.1 15.1 M4.9 15.1 L7.2 12.8 M12.8 7.2 L15.1 4.9" />
+  </Icon>
+);
+
 export const CheckIcon = () => (
   <Icon>
     <path d="M4.5 10.5 L8.2 14 L15.5 6.5" />
@@ -126,6 +154,30 @@ export const GitHubIcon = () => (
   <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" fill="currentColor">
     <path d="M8 0.2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 .2Z" />
   </svg>
+);
+
+/** Two chains with a check between them: a transaction confirmed on another chain. */
+export const VerifiedLinkIcon = () => (
+  <Icon>
+    <rect x="2.5" y="6" width="5.5" height="8" rx="1.5" />
+    <rect x="12" y="6" width="5.5" height="8" rx="1.5" />
+    <path d="M8 10 H12 M8.6 12.8 L9.8 14 L11.6 11.8" />
+  </Icon>
+);
+
+/** A lattice: post-quantum (lattice-based) signatures. */
+export const LatticeIcon = () => (
+  <Icon>
+    <path d="M4 4 L10 7 L16 4 M4 4 V10 L10 13 V7 M16 4 V10 L10 13 M4 10 L4 16 L10 19 V13 M16 10 V16 L10 19" />
+  </Icon>
+);
+
+/** A storefront awning: a listing on a market. */
+export const MarketIcon = () => (
+  <Icon>
+    <path d="M3 8 L4.5 3.5 H15.5 L17 8 Q17 10 14.8 10 Q12.6 10 12.6 8 Q12.6 10 10 10 Q7.4 10 7.4 8 Q7.4 10 5.2 10 Q3 10 3 8 Z" />
+    <path d="M4.5 10 V16.5 H15.5 V10 M8.5 16.5 V12.5 H11.5 V16.5" />
+  </Icon>
 );
 
 export const MenuIcon = () => (
