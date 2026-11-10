@@ -7,12 +7,20 @@
 export type CspOptions = {
   /** NEXT_PUBLIC_API_URL: the Parry API the browser reads (stats, positions, alerts). */
   apiUrl?: string | undefined;
+  /** NEXT_PUBLIC_NEAR_RPC_URL: an RPC override for a local node, when set. */
+  rpcUrl?: string | undefined;
   /** Development adds 'unsafe-eval' (React rebuilds server error stacks with eval in dev only). */
   dev?: boolean;
 };
 
 /** Wallet hosts for NEAR Connect: HOT wallet and HERE wallet frames, scripts and APIs. */
 export const WALLET_HOSTS = ["https://*.hot-labs.org", "https://*.herewallet.app"] as const;
+
+/**
+ * Hosts the sandboxed NEAR Connect wallet scripts load from and talk to (Meteor and Intear). The
+ * sandbox frames inherit this policy, so their requests must be allowed here.
+ */
+export const WALLET_SCRIPT_HOSTS = ["https://*.meteorwallet.app", "https://wallet.intear.tech", "https://*.intear.tech", "wss://*.intear.tech"] as const;
 
 /** NEAR RPC: FastNEAR (testnet and mainnet) and the public testnet RPC. */
 export const NEAR_RPC_HOSTS = ["https://*.fastnear.com", "wss://*.fastnear.com", "https://rpc.testnet.near.org"] as const;
@@ -35,8 +43,9 @@ export function originOf(url: string | undefined): string | null {
   }
 }
 
-export function buildCsp({ apiUrl, dev = false }: CspOptions = {}): string {
+export function buildCsp({ apiUrl, rpcUrl, dev = false }: CspOptions = {}): string {
   const api = originOf(apiUrl);
+  const rpc = originOf(rpcUrl);
   const directives: Record<string, string[]> = {
     // Anything not listed below may only come from this site.
     "default-src": ["'self'"],
@@ -49,14 +58,17 @@ export function buildCsp({ apiUrl, dev = false }: CspOptions = {}): string {
     "font-src": ["'self'"],
     // Local images, generated charts (data and blob URLs) and wallet icons served by each wallet over https.
     "img-src": ["'self'", "data:", "blob:", "https:"],
-    // The Parry API, NEAR RPC, Hyperliquid testnet, wallet manifests and wallet APIs.
+    // The Parry API, NEAR RPC (and a local node when configured), Hyperliquid testnet, wallet
+    // manifests and wallet APIs.
     "connect-src": [
       "'self'",
       ...(api ? [api] : []),
+      ...(rpc && rpc !== api ? [rpc] : []),
       ...NEAR_RPC_HOSTS,
       ...HYPERLIQUID_HOSTS,
       ...WALLET_MANIFEST_HOSTS,
       ...WALLET_HOSTS,
+      ...WALLET_SCRIPT_HOSTS,
     ],
     // Wallet frames (HOT and HERE) used by NEAR Connect for signing.
     "frame-src": [...WALLET_HOSTS],
@@ -71,8 +83,8 @@ export function buildCsp({ apiUrl, dev = false }: CspOptions = {}): string {
     "frame-ancestors": ["'none'"],
   };
   const parts = Object.entries(directives).map(([name, values]) => `${name} ${values.join(" ")}`);
-  // Upgrade stray http requests in production, unless the API itself is plain http (a local API).
-  const upgrade = !dev && (!api || api.startsWith("https://"));
+  // Upgrade stray http requests in production, unless the API or the RPC is plain http (local).
+  const upgrade = !dev && (!api || api.startsWith("https://")) && (!rpc || rpc.startsWith("https://"));
   if (upgrade) parts.push("upgrade-insecure-requests");
   return parts.join("; ");
 }

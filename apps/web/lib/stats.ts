@@ -6,7 +6,8 @@ export type Stats = {
   positionsProtected: number;
   rescues: number;
   vaultTvlUsd: number;
-  vaultRiskScore: number;
+  /** Null until the vault has a risk report. */
+  vaultRiskScore: number | null;
   updatedAt: string;
 };
 
@@ -20,7 +21,7 @@ export function parseStats(input: unknown): Stats | null {
   const o = input as Record<string, unknown>;
   if (typeof o.network !== "string" || o.network.length === 0) return null;
   if (!isCount(o.positionsProtected) || !isCount(o.rescues) || !isCount(o.vaultTvlUsd)) return null;
-  if (!isCount(o.vaultRiskScore) || o.vaultRiskScore > 100) return null;
+  if (o.vaultRiskScore !== null && (!isCount(o.vaultRiskScore) || o.vaultRiskScore > 100)) return null;
   if (typeof o.updatedAt !== "string" || Number.isNaN(Date.parse(o.updatedAt))) return null;
   return {
     network: o.network,

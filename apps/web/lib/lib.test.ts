@@ -63,6 +63,7 @@ describe("stats parsing", () => {
     expect(parseStats(null)).toBeNull();
     expect(parseStats({ ...good, rescues: "1" })).toBeNull();
     expect(parseStats({ ...good, vaultRiskScore: 101 })).toBeNull();
+    expect(parseStats({ ...good, vaultRiskScore: null })).toEqual({ ...good, vaultRiskScore: null });
     expect(parseStats({ ...good, positionsProtected: -1 })).toBeNull();
     expect(parseStats({ ...good, updatedAt: "yesterday" })).toBeNull();
   });

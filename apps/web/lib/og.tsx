@@ -13,9 +13,8 @@ import {
   PROJECTED_HIT,
   RECOVERY,
   RECOVERY_END,
-  SABRE,
-  SABRE_SCALE,
-  SABRE_TRANSLATE,
+  GUARD_PATH,
+  GUARD_TRANSFORM,
 } from "./deflection";
 import { isTestnet } from "./env";
 
@@ -119,12 +118,7 @@ export function renderOgImage(): ImageResponse {
           />
           <path d={APPROACH} fill="none" stroke={ink.text} strokeWidth="4" strokeLinecap="round" />
           <path d={RECOVERY} fill="none" stroke={ink.safe} strokeWidth="4" strokeLinecap="round" />
-          <g transform={`translate(${SABRE_TRANSLATE.x} ${SABRE_TRANSLATE.y}) scale(${SABRE_SCALE})`}>
-            <path d={SABRE.blade} fill={ink.brass} />
-            <path d={SABRE.grip} fill="none" stroke={ink.brass} strokeWidth={SABRE.gripWidth} strokeLinecap="round" />
-            <path d={SABRE.guard} fill="none" stroke={ink.brass} strokeWidth={SABRE.guardWidth} strokeLinecap="round" />
-            <circle cx={SABRE.pommel.cx} cy={SABRE.pommel.cy} r={SABRE.pommel.r} fill={ink.brass} />
-          </g>
+          <path d={GUARD_PATH} transform={GUARD_TRANSFORM} fill={ink.mark} />
           <circle cx={RECOVERY_END.x} cy={RECOVERY_END.y} r="6" fill={ink.safe} />
         </svg>
       </div>
