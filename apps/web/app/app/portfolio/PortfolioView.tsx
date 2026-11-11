@@ -11,7 +11,46 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Stat, StatGroup } from "@/components/ui/Stat";
 import { usePortfolio } from "@/lib/queries";
+import { useSavings } from "@/lib/live";
+import Link from "next/link";
 import { formatPercent, fromUnits } from "@/lib/units";
+
+/** What picking the better rescue route has saved this account, rescue by rescue. */
+function Savings({ account }: { account: string }) {
+  const q = useSavings(account);
+  const { format } = useMoney();
+  const d = q.data;
+  return (
+    <section className="surface p-6" aria-labelledby="savings-title">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h2 id="savings-title" className="text-[15px] text-fg">
+          Rescue route savings
+        </h2>
+        <span className="num text-2xl text-fg">{d ? format(d.totalSavedUsd) : ""}</span>
+      </div>
+      <p className="mt-1 text-[13px] leading-5 text-muted">Each rescue that sells collateral compares the Rhea pool with a NEAR Intents quote and takes the better one. This is the difference, rescue by rescue.</p>
+      {!d || d.rescues.length === 0 ? (
+        <p className="mt-4 border-t border-line pt-4 text-sm text-muted">{q.isPending ? "Reading." : "No rescue has sold collateral yet, so there is nothing to compare."}</p>
+      ) : (
+        <ol className="mt-4 divide-y divide-line border-y border-line text-sm">
+          {d.rescues.map((r) => (
+            <li key={r.decision} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-0.5 py-2.5 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
+              <span className="text-[13px] text-muted">{new Date(r.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="text-fg">
+                {r.chosen ? `${r.chosen.venue === "rhea" ? "Rhea pool" : "NEAR Intents"} paid ${format(r.chosen.outUsd)}` : "No quote"}
+                {r.worst ? <span className="text-muted">, against {format(r.worst.outUsd)}</span> : null}
+                <Link href={`/app/guardian?decision=${r.decision}`} className="ml-2 text-[13px] text-brass hover:underline">
+                  Decision
+                </Link>
+              </span>
+              <span className="num text-right text-fg">+{format(r.savedUsd)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
 
 function AccountPortfolio({ account }: { account: string }) {
   const q = usePortfolio(account);
@@ -113,6 +152,7 @@ function AccountPortfolio({ account }: { account: string }) {
           </div>
         )}
       </Card>
+      <Savings account={account} />
     </div>
   );
 }

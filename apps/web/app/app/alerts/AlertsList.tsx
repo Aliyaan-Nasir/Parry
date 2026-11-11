@@ -15,6 +15,10 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { api } from "@/lib/parry";
 import { keys, useAlerts } from "@/lib/queries";
+import { useIncidents } from "@/lib/live";
+import { useNow } from "@/lib/use-now";
+import { formatRelativeTime } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 type Filter = "open" | "acknowledged" | "resolved" | "all";
 
@@ -70,6 +74,51 @@ function Actions({ alert, account, signer }: { alert: Alert; account: string; si
   );
 }
 
+/** Alerts that belong together (one fall in health raising several), grouped by the API into incidents. */
+function Incidents({ account }: { account: string }) {
+  const q = useIncidents(account);
+  const now = useNow();
+  const [open, setOpen] = useState<string | null>(null);
+  const list = q.data ?? [];
+  if (!list.length) return null;
+  return (
+    <section className="surface overflow-hidden p-0" aria-labelledby="incidents-title">
+      <div className="flex items-end justify-between gap-3 border-b border-line px-5 py-3">
+        <h2 id="incidents-title" className="text-[15px] text-fg">
+          Incidents
+        </h2>
+        <span className="text-[12.5px] text-muted">Alerts within 15 minutes of each other, grouped</span>
+      </div>
+      <ul className="divide-y divide-line">
+        {list.map((i) => (
+          <li key={i.id}>
+            <button type="button" aria-expanded={open === i.id} onClick={() => setOpen(open === i.id ? null : i.id)} className="grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-4 px-5 py-3 text-left hover:bg-hover">
+              <span className={cn("text-[13px]", i.severity === "critical" ? "text-critical" : i.severity === "warning" ? "text-caution" : "text-muted")}>{i.severity === "critical" ? "Critical" : i.severity === "warning" ? "Warning" : "Info"}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm text-fg">{i.title}</span>
+                <span className="block truncate text-[12.5px] text-muted">{i.body}</span>
+              </span>
+              <span className="text-right text-[12.5px] text-muted">
+                {i.alerts.length} {i.alerts.length === 1 ? "alert" : "alerts"}
+                <span className="block">{i.closedAt ? "closed" : now ? `open ${formatRelativeTime(i.openedAt, now)}` : "open"}</span>
+              </span>
+            </button>
+            {open === i.id ? (
+              <ul className="grid gap-3 border-t border-line bg-fg/[0.02] px-5 py-4">
+                {i.alerts.map((a) => (
+                  <li key={a.id}>
+                    <AlertRow alert={a} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function AccountAlerts({ account, signer }: { account: string; signer: Signer }) {
   const { signedIn } = useParryAccount();
   const [filter, setFilter] = useState<Filter>("open");
@@ -84,6 +133,8 @@ function AccountAlerts({ account, signer }: { account: string; signer: Signer })
         <p className="text-sm text-muted">{q.data ? `${counts.open} open of ${all.length}` : "Loading"}</p>
         <Segmented label="Show alerts" options={FILTERS} value={filter} onChange={setFilter} />
       </div>
+
+      <Incidents account={account} />
 
       {signer === "watch" ? (
         <Note>You are watching this account. Acknowledging and resolving alerts needs its owner&apos;s wallet or passkey.</Note>

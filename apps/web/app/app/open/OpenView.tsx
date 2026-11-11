@@ -12,7 +12,9 @@ import { positionHref } from "@/components/app/PositionsTable";
 import { StepList, type Step } from "@/components/app/StepList";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";
 import { useMoney } from "@/components/providers/MoneyProvider";
-import { Badge } from "@/components/ui/Badge";
+import { RatesPanel } from "@/components/app/Rates";
+import { RiskInstrument } from "@/components/instrument/RiskInstrument";
+import { useRatesLive } from "@/lib/live";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -111,6 +113,12 @@ function Opener({ account, signer }: { account: string; signer: Signer }) {
   const p = price && r && deposit > 0 ? preview(deposit, lev, price, r, existing) : null;
   const available = signer === "wallet" ? walletBalance.data : accountBalance.data;
   const hasMandate = !!summary.data?.mandate;
+  // The leverage alone sets the new deposit's health: H = a / (1 - 1/L).
+  const levHealth = r ? (r.collateral * r.debt) / (1 - 1 / lev) : null;
+  const shownHealth = p?.health ?? levHealth;
+  const rates = useRatesLive();
+  const borrowApr = rates.data?.rhea.find((x) => x.asset === "USDC")?.borrowApr ?? null;
+  const supplyApr = rates.data?.rhea.find((x) => x.asset === "wNEAR")?.supplyApr ?? null;
 
   const update = (key: string, patch: Partial<Step>) => setSteps((all) => (all ? all.map((s) => (s.key === key ? { ...s, ...patch } : s)) : all));
 
@@ -264,13 +272,13 @@ function Opener({ account, signer }: { account: string; signer: Signer }) {
         ) : null}
       </Card>
 
-      <Card as="aside" aria-labelledby="preview-title" className="grid gap-4 lg:sticky lg:top-24">
-        <div className="flex items-center justify-between gap-2">
-          <h2 id="preview-title" className="text-[15px] font-semibold text-fg">
-            Preview
-          </h2>
-          {p ? <Badge tone={p.health < 1.3 ? "danger" : p.health < 1.6 ? "caution" : "safe"}>Health {formatHealth(p.health)}</Badge> : null}
-        </div>
+      <div className="grid gap-6 lg:sticky lg:top-20">
+      <Card as="aside" aria-labelledby="preview-title" className="grid gap-4">
+        <h2 id="preview-title" className="text-[15px] text-fg">
+          Preview
+        </h2>
+        <RiskInstrument health={shownHealth} annualVol={market.data?.tremor.annual ?? null} trigger={DEFAULT_POLICY.triggerHealth} target={DEFAULT_POLICY.targetHealth} label="Health after opening" />
+        <p className="-mt-1 text-[12.5px] leading-5 text-muted">Moves with the leverage. The marks are the guardian&apos;s default trigger and target.</p>
         {!price || !r ? (
           <div className="grid gap-2" aria-busy="true">
             <Skeleton />
@@ -297,6 +305,9 @@ function Opener({ account, signer }: { account: string; signer: Signer }) {
             <DataRow label="Collateral" hint={rhea ? "Including your current position" : undefined}>
               <span className="num">{p ? format(p.collateralUsd) : <Dash />}</span>
             </DataRow>
+            <DataRow label="Net interest, a year" hint="What the collateral earns, less the borrow cost">
+              <span className="num">{p && borrowApr !== null && supplyApr !== null ? format((p.collateralUsd - existing.near * price) * supplyApr - p.borrow * borrowApr, { signed: true }) : <Dash />}</span>
+            </DataRow>
           </DataList>
         )}
         {!p && price && r ? <p className="text-[13px] text-muted">Enter an amount of NEAR to see the position before you open it.</p> : null}
@@ -305,6 +316,8 @@ function Opener({ account, signer }: { account: string; signer: Signer }) {
           {r ? ` (wNEAR counts at ${formatPercent(r.collateral, 0)}, USDC debt at 1/${formatNumber(r.debt, 2)})` : ""}. Liquidation starts below health 1.
         </p>
       </Card>
+      <RatesPanel />
+      </div>
     </div>
   );
 }

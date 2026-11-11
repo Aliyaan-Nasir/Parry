@@ -125,7 +125,9 @@ export function RiskInstrument({
   }
 
   return (
-    <div className={cn("flex w-full items-center gap-5", compact && "gap-3", className)}>
+    // In a narrow column (under 30rem) the reading sits above the scale instead of beside it.
+    <div className={cn("w-full", !compact && "@container", className)}>
+    <div className={cn("flex w-full items-center gap-5", compact ? "gap-3" : "flex-col-reverse items-stretch gap-3 @[30rem]:flex-row @[30rem]:items-center @[30rem]:gap-5")}>
       <div className="min-w-0 flex-1">
         {variant === "hero" ? <Arc health={health} reduced={!!reduced} /> : null}
         <div ref={wrapRef} className="relative w-full" style={{ height }}>
@@ -202,11 +204,13 @@ export function RiskInstrument({
         </div>
       </div>
       {!hideValue ? (
-        <div className={cn("shrink-0 text-right", compact ? "w-20" : "w-32")}>
-          <div className={cn("num leading-none tracking-tight text-fg", compact ? "text-base" : variant === "hero" ? "text-5xl" : "text-4xl")}>{format(health)}</div>
-          <div className={cn("mt-1.5 text-fg/70", compact ? "text-xs" : "text-sm")}>{word === "no debt" ? "nothing to liquidate" : word}</div>
+        <div className={cn("shrink-0", compact ? "w-20 text-right" : "flex items-end justify-between gap-4 @[30rem]:block @[30rem]:w-32 @[30rem]:text-right")}>
+          <div>
+            <div className={cn("num leading-none tracking-tight text-fg", compact ? "text-base" : variant === "hero" ? "text-5xl" : "text-4xl")}>{format(health)}</div>
+            <div className={cn("mt-1.5 text-fg/70", compact ? "text-xs" : "text-sm")}>{word === "no debt" ? "nothing to liquidate" : word}</div>
+          </div>
           {proj ? (
-            <div className="mt-3 text-xs leading-snug text-muted">
+            <div className="text-right text-xs leading-snug text-muted @[30rem]:mt-3">
               In 24 h
               <br />
               <span className="num text-fg/80">
@@ -216,6 +220,7 @@ export function RiskInstrument({
           ) : null}
         </div>
       ) : null}
+    </div>
     </div>
   );
 }
