@@ -191,7 +191,10 @@ describe("closing in rounds", () => {
       { closing: null, position: lines(0n, 0n) },
     ]);
     const seen: string[] = [];
-    const r = await closeRheaRounds({ account: "0ua.testnet", slippageBps: 300, poolId: 2939, ...chain, onRound: (x) => seen.push(`${x.kind}:${x.after.kind}`) });
+    const r = await closeRheaRounds({ account: "0ua.testnet", slippageBps: 300, poolId: 2939, ...chain, onRound: (x) => {
+        seen.push(`${x.kind}:${x.after.kind}`);
+      },
+    });
     expect(r).toMatchObject({ closed: true, stopped: null, status: { kind: "closed" } });
     expect(r.rounds.map((x) => x.txHash)).toEqual(["close1", "close2"]);
     expect(seen).toEqual(["close:open", "close:closed"]);

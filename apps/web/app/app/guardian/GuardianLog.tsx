@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { QueryError, Segmented } from "@/components/app/bits";
 import { DecisionRow } from "@/components/app/DecisionCard";
 import { useMoney } from "@/components/providers/MoneyProvider";
@@ -37,7 +37,7 @@ export function GuardianLog() {
   const [picked, setPicked] = useState<Scope | null>(null);
   const scope: Scope = picked ?? (account ? "mine" : "all");
   const q = useDecisions(scope === "mine" ? account : null, 10);
-  const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
   const params = useSearchParams();
   const wanted = params.get("decision");
   const [opened, setOpened] = useState<Record<string, boolean>>({});

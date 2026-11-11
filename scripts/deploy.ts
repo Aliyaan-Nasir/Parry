@@ -72,7 +72,7 @@ type Dep = {
   status: string;
   root: string;
   commit: string;
-  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string; migrated?: boolean; verified?: string }>;
+  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string; migrated?: boolean; verified?: string; factoryCode?: string }>;
   dexPool?: number;
   enclave?: Record<string, string>;
   services?: Record<string, string>;
@@ -508,7 +508,10 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
   if (acctCode && dep.contracts.account?.codeHash !== acctHash) {
     const o = (await client(ROOT).transaction(ROOT).publishContract(acctCode, { identifiedBy: "hash" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
     if (failure(o)) throw new Error(`publish: ${failure(o)}`);
-    dep.contracts.account = { account: "global", codeHash: acctHash, tx: hashOf(o), commit: builtFrom, source: "contracts/account" };
+    // The factory keeps the code new accounts are born with once any exist (their addresses commit
+    // to it): record it, so the check knows a newer hash is reached by `upgrade`, not by birth.
+    const born = dep.contracts.account?.factoryCode ?? dep.contracts.account?.codeHash;
+    dep.contracts.account = { account: "global", codeHash: acctHash, tx: hashOf(o), commit: builtFrom, source: "contracts/account", ...(born && born !== acctHash ? { factoryCode: born } : {}) };
     save();
     console.log(`published account code ${acctHash} (${hashOf(o)})`);
   }

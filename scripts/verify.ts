@@ -33,7 +33,7 @@ const WASM: Record<string, string> = { usdc: "token", boost: "token", factory: "
 const rebuild = process.argv.includes("--build");
 
 type Dep = {
-  contracts: Record<string, { account: string; codeHash?: string; commit?: string }>;
+  contracts: Record<string, { account: string; codeHash?: string; commit?: string; factoryCode?: string }>;
   enclave?: Record<string, string>;
   services?: Record<string, string>;
   keys?: { gasKeys?: Record<string, { account: string; lanes: number; tx?: string }>; postQuantum?: { account: string; tx?: string; signedTx?: string } };
@@ -185,8 +185,12 @@ async function main() {
 
   await check("Protected accounts are created from published global code, by hash", async () => {
     const cfg = await view<{ account_code: string; created: number }>(dep.contracts.factory?.account ?? `accounts.${NETWORK === "testnet" ? "parry.testnet" : "parryguard.near"}`, "config");
-    if (cfg.account_code !== dep.contracts.account?.codeHash) throw new Error(`factory uses ${cfg.account_code}, recorded ${dep.contracts.account?.codeHash}`);
-    return `code ${cfg.account_code}; ${cfg.created} accounts created`;
+    const acct = dep.contracts.account;
+    // New accounts are born on the factory's code; a later published hash is reached with `upgrade`.
+    if (cfg.account_code !== acct?.codeHash && cfg.account_code !== acct?.factoryCode) throw new Error(`factory uses ${cfg.account_code}, recorded ${acct?.codeHash}${acct?.factoryCode ? ` (born with ${acct.factoryCode})` : ""}`);
+    return cfg.account_code === acct?.codeHash
+      ? `code ${cfg.account_code}; ${cfg.created} accounts created`
+      : `born with ${cfg.account_code}, upgraded by hash to the published ${acct?.codeHash}; ${cfg.created} accounts created`;
   });
 
   await check("The guardian key is the enclave's key, bound to the published build", async () => {
