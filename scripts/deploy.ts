@@ -267,7 +267,8 @@ async function main() {
     const bal = await account(BOOTSTRAP);
     if (!bal) throw new Error(`fund ${BOOTSTRAP} with testnet NEAR first`);
     const k = generateKey();
-    const keep = near(0.05);
+    // Room for the transaction itself: prepaid gas is charged at a pessimistic gas price.
+    const keep = near(0.5);
     const amount = BigInt(bal.amount) - keep;
     await call(BOOTSTRAP, NETWORK, "create_account", { new_account_id: ROOT, new_public_key: k.publicKey.toString() }, amount, 100);
     storeKey(ROOT, k.publicKey.toString(), k.secretKey);
@@ -352,9 +353,10 @@ async function main() {
 async function testnetOnly(ids: Record<string, string>, wallets: Record<string, string>) {
   step("test tokens");
   await deploy("token", ids.usdc!, { method: "new", args: { owner_id: ROOT, name: "USD Coin (Parry test)", symbol: "USDC", decimals: 6, icon: null, faucet_amount: "1000000000", faucet_period_secs: 3600 } });
-  dep.contracts.usdc = dep.contracts.token!;
+  // `deploy` records the last token deploy under "token"; a rerun that finds the same code records nothing.
+  if (dep.contracts.token) dep.contracts.usdc = dep.contracts.token;
   await deploy("token", ids.boost!, { method: "new", args: { owner_id: ROOT, name: "Booster (Parry test)", symbol: "BOOST", decimals: 18, icon: null, faucet_amount: "1", faucet_period_secs: 86400 } });
-  dep.contracts.boost = { ...dep.contracts.token!, account: ids.boost! };
+  if (dep.contracts.token) dep.contracts.boost = { ...dep.contracts.token, account: ids.boost! };
   delete dep.contracts.token;
   save();
 

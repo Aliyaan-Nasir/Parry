@@ -1,0 +1,90 @@
+{
+  "network": "testnet",
+  "status": "deployed",
+  "root": "parry.testnet",
+  "commit": "c167f15b23c2eb22950d4a32ffe0e36d1c79f26c",
+  "contracts": {
+    "boost": {
+      "account": "boost.parry.testnet",
+      "tx": "FenppYjVodicXz44bN2ChN7tFS49APd3ybSnwJpubvMo"
+    },
+    "oracle": {
+      "account": "oracle.parry.testnet",
+      "codeHash": "2K81bAZJvapFWyQGQ2nPYA5tGRKPyZ4qiNFfNseqz8iM",
+      "tx": "8cvn41ivD68XY9NMAh1xM7xcNXd8Fr5eHixw3BMmLgE1",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/oracle"
+    },
+    "lending": {
+      "account": "lending.parry.testnet",
+      "codeHash": "6Nek1MZ8cwJJ2xMQAUWup9V5AToYS9rkTxJfwo6BCpFa",
+      "tx": "EoyGJoedMf222e1YjpD1Xbdy3q7fYXZcW55SYGEWeCgb",
+      "source": "Rhea lending v0.16.2, the code deployed at contract.main.burrow.near"
+    },
+    "risk": {
+      "account": "risk.parry.testnet",
+      "codeHash": "EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg",
+      "tx": "AGq9Z6vx6fo9LNq4EfyJSWJ9HVu2poNpPX3tMPHi7x6j",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/risk"
+    },
+    "vault": {
+      "account": "vault.parry.testnet",
+      "codeHash": "9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz",
+      "tx": "Hv7w1BYLhBCBbYnCxeGWXuT5TkFd2dbPRc9nS4MPhhp8",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/vault"
+    },
+    "usdc": {
+      "account": "usdc.parry.testnet",
+      "codeHash": "EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7",
+      "tx": "EuEKFymrVmpLJBZvAm1dDBgKvxJcJyFH7eTSP4Yg8cBM",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/token"
+    },
+    "account": {
+      "account": "global",
+      "codeHash": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
+      "tx": "BuMSLcZ2x13ayxe4vmBPWdZwue5xC1cK8N4yQzEGdmzT",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/account"
+    },
+    "accounts": {
+      "account": "accounts.parry.testnet",
+      "codeHash": "5UTERdVdWxYY7MMD2xojiM5m8Kv25BxdXLzFvjoFcopo",
+      "tx": "wusyGMGb5NkcHH2YaHvQM7Wp9ytwYDiD466U7k3YWTq",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/accounts"
+    },
+    "factory": {
+      "account": "accounts.parry.testnet",
+      "codeHash": "5UTERdVdWxYY7MMD2xojiM5m8Kv25BxdXLzFvjoFcopo",
+      "tx": "wusyGMGb5NkcHH2YaHvQM7Wp9ytwYDiD466U7k3YWTq",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/accounts"
+    }
+  },
+  "services": {
+    "treasury": "treasury.parry.testnet",
+    "monitor": "monitor.parry.testnet",
+    "guardian": "guardian.parry.testnet",
+    "keeper": "keeper.parry.testnet",
+    "relayer": "relayer.parry.testnet",
+    "api": "api.parry.testnet",
+    "agent": "agent.parry.testnet",
+    "enclave": "enclave.parry.testnet"
+  },
+  "updatedAt": "2026-11-11T00:31:58.888Z",
+  "dexPool": 2939,
+  "enclave": {
+    "wasmSha256": "8992e5449cadfcf7e3a8747c1e6a36fb8a23c3f1fc310094c5984ce242a86f7f",
+    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/8992e5449cadfcf7e3a8747c1e6a36fb8a23c3f1fc310094c5984ce242a86f7f.wasm",
+    "secretsProfile": "parry",
+    "secretsOwner": "enclave.parry.testnet",
+    "publicKey": "ed25519:DNb5n7sF4tBHENAMjedxystEeQpLUY9V34CGU16WBwQF",
+    "sealingPublicKey": "d7cea43743b922f86f498c57288add9488862a766f223019963dc9e44979616f",
+    "keysRun": "Fi14H8QFgMGEay3u5n8ZD9P9vnUgrVG1BZkP1GgYpQG6",
+    "sealingReport": "{\"at\":1794356975,\"kind\":\"sealing_key\",\"public_key\":\"d7cea43743b922f86f498c57288add9488862a766f223019963dc9e44979616f\",\"run_id\":1794356975000}",
+    "sealingSignature": "BvLhzZuaaehnJXKiisE9lJx/Lt0PRyuVmZ3Gi2Cl40RLvMY5T/vxq0SccF1xOvUo5oHQySY/N8Se1mohsG+hAg=="
+  }
+}
