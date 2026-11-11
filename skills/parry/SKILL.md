@@ -32,6 +32,7 @@ args = ["-y", "@parry/mcp"]
 env = { PARRY_NETWORK = "testnet", PARRY_API_URL = "http://localhost:4000" }
 ```
 
+From a clone (to run local changes, or before the package is on npm): `pnpm install && pnpm -F @parry/mcp build`, then use `node packages/mcp/dist/bin.js` as the command.
 Any client that speaks streamable HTTP can use the hosted server at `/mcp` on the Parry API instead.
 Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_KEY` (a testnet account's own full-access key) are set; they act only for that account and are capped per call and per UTC day.
 

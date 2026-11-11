@@ -1,7 +1,7 @@
 # Mainnet
 
 Parry runs on NEAR testnet.
-Nothing is deployed on mainnet yet; the steps below are the launch, run once mainnet launch is decided.
+Nothing is deployed on mainnet yet: the steps below are the whole launch, run once the owner decides to go live.
 This file says what is ready, how it was tested, and the exact go-live steps and costs.
 
 ## What is ready
@@ -75,7 +75,7 @@ None of these steps has been run.
 
 1. **Register the root.**
    Register `parryguard.near` (or another free name, set in `deployments/mainnet.json` and the `#mainnet` ids in `services/src/lib/config.ts` and `packages/sdk/src/networks.ts`) with a mainnet wallet, fund it with at least 70 NEAR, and put its full-access key at `~/.near-credentials/mainnet/<root>.json`.
-2. **Build reproducibly** at the tagged commit: `contracts/scripts/build.sh --reproducible <commit>`.
+2. **Build reproducibly** at the commit to launch (the release commit on the main branch): `contracts/scripts/build.sh --reproducible <commit>`.
 3. **Check the plan**: `bun scripts/deploy.ts --network mainnet --wasm-dir contracts/target/near-reproducible/<commit>`.
 4. **Create the accounts and wallets**: run the same command with `--confirm-mainnet`.
    It stops at the risk board until the enclave's key exists, and writes the service keys to `.env.services.mainnet` (gitignored).

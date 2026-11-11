@@ -11,7 +11,7 @@ Every guardian action carries the SHA-256 hash of the AI review that approved it
 
 ## Use it from an agent
 
-- [MCP server](https://github.com/Aliyaan-Nasir/Parry/blob/main/packages/mcp/README.md): `npx -y @parry/mcp`, or Streamable HTTP at `/mcp` on the Parry API. Read tools: risk_check, get_position_risk, get_market, get_vault, get_reserves, get_guardian_log, verify_guardian_decision, simulate_rescue, get_rescue_route, get_status. Capped testnet write tools: create_protected_account, set_mandate, vault_deposit, vault_withdraw, paid_risk_check (pays over x402 on NEAR).
+- [MCP server](https://github.com/Aliyaan-Nasir/Parry/blob/main/packages/mcp/README.md): `npx -y @parry/mcp` (from a clone: `pnpm -F @parry/mcp build && node packages/mcp/dist/bin.js`), or Streamable HTTP at `/mcp` on the Parry API. Read tools: risk_check, get_position_risk, get_market, get_vault, get_reserves, get_guardian_log, verify_guardian_decision, simulate_rescue, get_rescue_route, get_status. Capped testnet write tools: create_protected_account, set_mandate, vault_deposit, vault_withdraw, paid_risk_check (pays over x402 on NEAR).
 - [Agent skill](https://github.com/Aliyaan-Nasir/Parry/blob/main/skills/parry/SKILL.md): teaches Claude Code and Codex to use and extend Parry (`npx skills add Aliyaan-Nasir/Parry`).
 
 ## Use it from code
@@ -22,7 +22,7 @@ Every guardian action carries the SHA-256 hash of the AI review that approved it
 ## How it works
 
 - [Risk model](https://github.com/Aliyaan-Nasir/Parry/blob/main/docs/risk-model.md): health, liquidation price, the Tremor volatility index, first-passage liquidation probability, time to liquidation, cascade pressure and the 0 to 100 score with its tiers.
-- [Architecture and NEAR primitives](https://github.com/Aliyaan-Nasir/Parry/blob/main/AGENTS.md): where each primitive lives in the code (universal accounts, global contracts, passkeys on chain, Chain Signatures, OutLayer, NEAR AI Cloud, gas keys, NEP-366 relaying, x402).
+- [Architecture and NEAR primitives](https://github.com/Aliyaan-Nasir/Parry/blob/main/AGENTS.md): where each primitive lives in the code (universal accounts, global contracts, passkeys on chain, Chain Signatures, MPC foreign-transaction verification, OutLayer, NEAR AI Cloud, gas keys, post-quantum ML-DSA-65 keys, NEP-366 relaying, x402, NEAR Intents, the Agent Market).
 - [Security](https://github.com/Aliyaan-Nasir/Parry/blob/main/SECURITY.md): the trust model and every review finding.
 
 ## Optional

@@ -85,3 +85,6 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 - The account refuses an envelope relayed with less gas than its whole chain needs: a deleverage takes at least 650 + 30 per priced token Tgas (the guardian sends 900), a perp order 140, `retry_deleverage` 260 + 30 per token.
 - Contract refusals in callbacks are `guardian_refused` events, not failed transactions: read the receipts' logs.
 - The testnet MPC network verifies Base, not Ethereum, transactions, so the EVM rescue runs on Base Sepolia (84532); `scripts/evm-position.ts` opens a loan there from an account's derived address.
+- Vault withdrawals pay out in LiNEAR, and protected accounts are not registered with it at creation: send `linearStorageAction` before `request_withdraw` or `claim` (the app does), or the payout waits as a claim.
+- `rpc.testnet.near.org` and `rpc.mainnet.near.org` refuse calls; the default RPC list is FastNEAR, Intea and dRPC, and dRPC lacks the `EXPERIMENTAL_*` methods (the RPC helper falls through to the next provider).
+- A 300 Tgas call is checked against the pessimistic gas price: an account needs about 0.35 NEAR up front to send one, even though most of it is refunded.

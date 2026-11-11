@@ -24,6 +24,13 @@ As an MCP client entry:
 }
 ```
 
+From a clone of the repository, build it and point the client at the built entry instead:
+
+```bash
+pnpm install && pnpm -F @parry/mcp build
+PARRY_NETWORK=testnet PARRY_API_URL=http://localhost:4000 node packages/mcp/dist/bin.js
+```
+
 ## Configuration
 
 - `PARRY_NETWORK`: `testnet` (default) or `mainnet`.
