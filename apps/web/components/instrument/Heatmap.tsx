@@ -19,6 +19,7 @@ export function Heatmap({
   price,
   mine,
   height = 260,
+  floor = 0.35,
   className,
 }: {
   buckets: readonly HeatBucket[];
@@ -26,6 +27,8 @@ export function Heatmap({
   price: number;
   mine?: { liqPrice?: number | null; triggerPrice?: number | null };
   height?: number;
+  /** The deepest price shown, as a fraction of today's (the right edge). */
+  floor?: number;
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -40,8 +43,8 @@ export function Heatmap({
     return () => ro.disconnect();
   }, []);
 
-  const sorted = [...buckets].filter((b) => b.price > 0).sort((a, b) => b.price - a.price);
-  const lo = Math.min(price * 0.35, ...sorted.map((b) => b.price));
+  const lo = price * floor;
+  const sorted = [...buckets].filter((b) => b.price >= lo && b.price > 0).sort((a, b) => b.price - a.price);
   const hi = price * 1.04;
   const padL = 8;
   const padR = 8;
@@ -55,7 +58,9 @@ export function Heatmap({
   const cumulative = sorted.reduce<{ p: number; c: number }[]>((acc, b) => [...acc, { p: b.price, c: (acc[acc.length - 1]?.c ?? 0) + b.collateralUsd }], []);
   const total = Math.max(1, cumulative[cumulative.length - 1]?.c ?? 0);
   const yBar = (c: number) => bottom - (c / maxC) * (bottom - top) * 0.78;
-  const yCum = (c: number) => bottom - (c / total) * (bottom - top);
+  // The top band belongs to the cascade arcs; the running total stays under it.
+  const arcBase = top + 30;
+  const yCum = (c: number) => bottom - (c / total) * (bottom - arcBase - 8);
   const hovered = hover !== null ? sorted[hover] : null;
 
   return (
@@ -63,7 +68,7 @@ export function Heatmap({
       {width > 0 ? (
         <svg width={width} height={height} className="block" role="img" aria-label={`Collateral liquidated by NEAR price: ${formatUsdCompact(total)} in total below ${price.toFixed(2)} dollars`}>
           {/* Guides every 10 % below today's price. */}
-          {[0.9, 0.8, 0.7, 0.6, 0.5, 0.4].map((f) => (
+          {[0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2].filter((f) => f > floor).map((f) => (
             <g key={f}>
               <line x1={x(price * f)} x2={x(price * f)} y1={top} y2={bottom} style={{ stroke: "var(--parry-line)" }} />
               <text x={x(price * f)} y={height - 10} textAnchor="middle" className="num" style={{ fill: "var(--parry-muted)", fontSize: 10.5 }}>
@@ -91,11 +96,19 @@ export function Heatmap({
             );
           })}
           {/* Cascades: one level's liquidations pushing the price into the next. */}
-          {cascades.map((c, i) => {
+          {cascades.filter((c) => c.to >= lo).map((c, i) => {
             const x1 = x(c.from);
-            const x2 = x(c.to);
-            const lift = 24 + Math.min(40, (c.collateralUsd / maxC) * 30);
-            return <path key={i} d={`M${x1} ${top + 18} Q ${(x1 + x2) / 2} ${top + 18 - lift} ${x2} ${top + 18}`} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={1.5} opacity={0.85} />;
+            const x2 = Math.max(x(c.to), x1 + 6);
+            const y = arcBase - 6 - Math.min(14, (c.collateralUsd / maxC) * 14);
+            return (
+              <g key={i}>
+                <title>{`A chain from $${c.from.toFixed(3)} to $${c.to.toFixed(3)}: ${formatUsdCompact(c.collateralUsd)} liquidated`}</title>
+                <line x1={x1} x2={x1} y1={y} y2={bottom} style={{ stroke: "var(--parry-brass-fill)" }} strokeOpacity={0.25} strokeDasharray="2 3" />
+                <line x1={x1} x2={x2} y1={y} y2={y} style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2} strokeLinecap="round" />
+                <path d={`M${x2 - 4} ${y - 3} L${x2} ${y} L${x2 - 4} ${y + 3}`} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={1.5} />
+                <circle cx={x1} cy={y} r={2.5} style={{ fill: "var(--parry-brass-fill)" }} />
+              </g>
+            );
           })}
           {/* The running total as the price falls. */}
           <path
