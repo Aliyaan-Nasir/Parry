@@ -97,7 +97,8 @@ The square root is deliberate: weighted linearly, a 21 % chance of liquidation w
 ## 9. What acts on the score
 
 - The risk engine raises alerts at the person's thresholds (score 50 and health 1.25 by default) and resolves them when the condition clears.
-- Protected accounts in caution or worse are queued for the guardian enclave, which decides with the person's sealed thresholds (by default: act at score 60 or health 1.15, aim for health 1.45).
+- Protected accounts in caution or worse, or under health 1.5 (the highest trigger health a sealed policy may hold), are queued for the guardian enclave, which decides with the person's sealed thresholds (by default: act at score 60 or health 1.15, aim for health 1.45).
+  A position queued only for its health is looked at every 5 minutes rather than every minute.
 - The planner (`packages/core/src/strategy.ts`, `enclave/src/plan.rs`) sizes one step at a time. A deleverage can only withdraw collateral while health stays at or above 1 (the lending contract refuses otherwise), so near health 1 each step is small; that is why the guardian acts early.
 
 ## 10. Limits of the model

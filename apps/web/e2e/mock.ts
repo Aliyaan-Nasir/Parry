@@ -385,9 +385,9 @@ function view(state: MockState, now: number, accountId: string, method: string, 
     const owner = (args.near_account as string | null) ?? (args.passkey as string | null) ?? "";
     return state.created.get(owner) ?? protectedAccountFor(owner);
   }
-  if (accountId === C.risk && method === "get_enclave") {
-    return { index: 0, public_key: fx.ENCLAVE_PUBLIC_KEY, wasm_sha256: fx.config().enclave.wasmSha256, since: Math.floor(now / 1000) - 30 * 86_400, note: "initial key" };
-  }
+  const enclaveKey = { index: 0, public_key: fx.ENCLAVE_PUBLIC_KEY, wasm_sha256: fx.config().enclave.wasmSha256, since: Math.floor(now / 1000) - 30 * 86_400, note: "initial key" };
+  if (accountId === C.risk && method === "get_enclave") return enclaveKey;
+  if (accountId === C.risk && method === "enclave_history") return [enclaveKey];
   if (accountId === C.risk && method === "sealing_key") return { public_key: fx.SEALING_PUBLIC_KEY, run_id: 412, at: Math.floor(now / 1000) - 3_600, key_index: 0 };
   if (accountId === C.vault && method === "vault_state") return fx.vaultChainState(now);
   if (accountId === C.vault && method === "ft_balance_of") return (args.account_id as string) === fx.ACCOUNT && !isEmpty ? "1500000000000000000000000000" : "0";

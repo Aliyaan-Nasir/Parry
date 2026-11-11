@@ -56,7 +56,7 @@ Agents pay per check over x402 on NEAR, or use the MCP server.
 <img src="assets/readme/pipeline.png" alt="How a rescue happens: the services watch and score every protected position, the guardian in the TEE plans, has the AI review and signs, and the account contract checks the envelope and acts inside the mandate" width="960">
 
 1. The monitor reads each position (Rhea every 10 seconds, Hyperliquid every 15, Aave every 60); the risk engine scores it with the model in [`docs/risk-model.md`](docs/risk-model.md).
-2. At caution or worse, the guardian runs in the OutLayer TEE: it opens the sealed policy, plans one step inside the mandate, and asks a NEAR AI Cloud verifiable model to review it.
+2. At caution or worse, or under health 1.5 (the highest trigger an owner may seal), the guardian runs in the OutLayer TEE: it opens the sealed policy, plans one step inside the mandate, and asks a NEAR AI Cloud verifiable model to review it.
 3. The model's TEE signs the exact request and response; the enclave checks that signature and signs an envelope with its own key, which OutLayer derives from the enclave's build.
 4. The account contract checks the envelope's key, nonce, age, powers and caps, acts, and emits the review's hash with the action; the risk board records the decision.
 5. Anyone can re-check a decision: the app's **Verify**, `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server, and `pnpm verify`.
