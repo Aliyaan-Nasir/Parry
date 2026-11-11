@@ -69,14 +69,19 @@ export async function scoreAll(sql: Sql): Promise<number> {
   const oracleHistory = await history(sql, "oracle");
   const hlHistory = await history(sql, "hyperliquid");
   const rows = await sql<Row[]>`SELECT id, account, venue, label, raw, collateral_usd, debt_usd FROM positions`;
-  const tr = tremor(oracleHistory, now);
   const price = oracleHistory[oracleHistory.length - 1]?.price ?? 0;
+  // Volatility comes from the market (Hyperliquid's prices, rescaled onto the oracle's level, as the
+  // enclave does); the oracle sets the price positions are valued at. A testnet market shock then
+  // moves health without passing for market volatility. Without market prices, the oracle's own.
+  const lastHl = hlHistory[hlHistory.length - 1]?.price;
+  const marketHistory = lastHl && price ? hlHistory.map((s) => ({ t: s.t, price: (s.price * price) / lastHl })) : oracleHistory;
+  const tr = tremor(marketHistory, now);
 
   // Cascade pressure across every lending position on the same driver.
   const lending = rows.filter((r) => r.venue === "rhea");
   const liquidity = intEnv("CASCADE_LIQUIDITY_USD", 250_000);
   const cascadeInputs = lending.map((r) => {
-    const a = assess(r.raw.position as never, price, oracleHistory, now);
+    const a = assess(r.raw.position as never, price, marketHistory, now);
     return { owner: r.account, venue: "rhea", liqPrice: a.liqPrice, collateralUsd: r.collateral_usd };
   });
   const c = cascade(cascadeInputs, price, tr.sigmaHourly, liquidity);
@@ -84,7 +89,7 @@ export async function scoreAll(sql: Sql): Promise<number> {
   for (const r of rows) {
     let a;
     if (r.venue === "rhea") {
-      a = assess(r.raw.position as never, price, oracleHistory, now, c.pressure);
+      a = assess(r.raw.position as never, price, marketHistory, now, c.pressure);
     } else if (r.venue === "hyperliquid") {
       const perp = r.raw.perp as { size: number; liquidation: number | null } | null;
       const mark = Number(r.raw.mark ?? 0);
