@@ -87,8 +87,11 @@ describe.skipIf(!url)("routes on a database", () => {
     expect(s.thresholds.score).toBe(50);
   });
 
-  test("an unknown account is a 404 and a bad id a 400 or 500 with a message", async () => {
+  test("an unknown account is a 404 and a malformed id a 400 with a message", async () => {
     expect((await app.request("/v1/accounts/0unknown.testnet")).status).toBe(404);
+    const bad = await app.request("/v1/risk/not_an_account!!");
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toContain("not a NEAR account id");
   });
 });
 

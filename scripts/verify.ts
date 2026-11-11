@@ -1,6 +1,7 @@
 /**
- * `pnpm verify`: checks every claim the README makes, against the live testnet deployment and
- * the code, and prints PASS or FAIL per claim.
+ * `pnpm verify`: checks the README's claims against the live testnet deployment and the code,
+ * and prints PASS or FAIL per claim, or WAIT with what a claim still needs when its proof is not
+ * recorded yet.
  *
  *   pnpm verify                 everything (runs every test suite first; about 5 minutes)
  *   pnpm verify --quick         skip the test suites
@@ -29,13 +30,33 @@ const SITE = process.env.PARRY_SITE_URL ?? "http://localhost:3000";
 const quick = process.argv.includes("--quick");
 const rebuild = process.argv.includes("--build");
 
-type Dep = { contracts: Record<string, { account: string; codeHash?: string; commit?: string }>; enclave?: Record<string, string>; services?: Record<string, string>; dexPool?: number };
+type Dep = {
+  contracts: Record<string, { account: string; codeHash?: string; commit?: string }>;
+  enclave?: Record<string, string>;
+  services?: Record<string, string>;
+  keys?: { gasKeys?: Record<string, { account: string; lanes: number; tx?: string }>; postQuantum?: { account: string; tx?: string; signedTx?: string } };
+  dexPool?: number;
+};
+type Step = { step?: string; tx?: string; digest?: string; payment?: { transaction?: string } };
 const depFile = join(ROOT, "deployments", `${NETWORK}.json`);
 const dep: Dep | null = existsSync(depFile) ? JSON.parse(readFileSync(depFile, "utf8")) : null;
 const proofsFile = join(ROOT, "deployments", `${NETWORK}-proofs.json`);
-const proofs: Record<string, Record<string, string>> = existsSync(proofsFile) ? JSON.parse(readFileSync(proofsFile, "utf8")) : {};
+const proofs: Record<string, Record<string, string>> & { scenarios?: Record<string, { ok: boolean; steps: Step[] }> } = existsSync(proofsFile) ? JSON.parse(readFileSync(proofsFile, "utf8")) : {};
+/** The transaction hash of the first step of scenario `n` whose text matches `pattern`. */
+const stepTx = (n: number, pattern: RegExp): string | null => {
+  const hit = proofs.scenarios?.[String(n)]?.steps.find((x) => pattern.test(x.step ?? "") && x.tx);
+  return hit?.tx?.split("/").pop() ?? null;
+};
 
 const results: { claim: string; ok: boolean; detail: string }[] = [];
+const waiting: { claim: string; needs: string }[] = [];
+
+/** A claim whose proof is not recorded yet: printed with what it needs, never silently skipped. */
+function wait(claim: string, needs: string) {
+  waiting.push({ claim, needs });
+  console.log(`\x1b[33mWAIT\x1b[0m ${claim}\n     needs ${needs}`);
+}
+
 async function check(claim: string, f: () => Promise<string>) {
   try {
     const detail = await f();
@@ -87,9 +108,15 @@ function run(cmd: string[], cwd = ROOT, env: Record<string, string> = {}): strin
   return out;
 }
 
+type TxOutcome = {
+  transaction: { signer_id: string; receiver_id: string; public_key: string; actions: unknown[] };
+  receipts_outcome: { outcome: { logs: string[]; executor_id: string; status: unknown } }[];
+  status: unknown;
+};
 async function txOutcome(hash: string, sender: string) {
-  return rpc<{ receipts_outcome: { outcome: { logs: string[]; executor_id: string } }[]; status: unknown }>("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" });
+  return rpc<TxOutcome>("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" });
 }
+const failed = (o: TxOutcome) => [o.status, ...o.receipts_outcome.map((r) => r.outcome.status)].some((x) => !!x && typeof x === "object" && "Failure" in x);
 const events = (o: { receipts_outcome: { outcome: { logs: string[] } }[] }) =>
   o.receipts_outcome.flatMap((r) => r.outcome.logs).filter((l) => l.startsWith("EVENT_JSON:")).map((l) => JSON.parse(l.slice(11)) as { standard: string; event: string; data: Record<string, unknown> });
 
@@ -193,6 +220,8 @@ async function main() {
       if (v.status && typeof v.status === "object" && "Failure" in v.status) throw new Error(`verification failed in ${d.txs.evmVerify}`);
       return `${d.txs.evm} from ${own}, verified on NEAR in ${d.txs.evmVerify}`;
     });
+  } else {
+    wait("An Aave rescue on Base Sepolia, signed by Chain Signatures and verified by the MPC network", "Base Sepolia ETH at the account's derived address, then `bun scripts/scenarios.ts --only 9`");
   }
 
   const rescue = proofs.rescue;
@@ -219,6 +248,8 @@ async function main() {
       if (att && !att.ok) throw new Error(att.detail);
       return `review ${hash.slice(0, 16)}... by ${r.model} (${addr}${att ? ", attested" : ""}), action ${d.txs.action}`;
     });
+  } else {
+    wait("A recorded rescue: the model's signature, the review hash on chain and the enclave's signature", "the NEAR AI Cloud key in the enclave's secrets, then `bun scripts/scenarios.ts --only 2,3,4,5,6`");
   }
 
   if (proofs.hedge) {
@@ -234,6 +265,87 @@ async function main() {
       if (Buffer.compare(Buffer.from(recovered.subarray(1)), Buffer.from(point.length === 65 ? point.subarray(1) : point)) !== 0) throw new Error("signature does not recover to the vault's derived key");
       return `digest ${String(ev.data.digest).slice(0, 16)}... signed for ${dep.contracts.vault!.account} at parry-vault-hedge`;
     });
+  } else {
+    wait("The vault's Hyperliquid short, signed by Chain Signatures", "Hyperliquid testnet USDC at the vault's derived address (the keeper signs the short once it has margin)");
+  }
+
+  const hlTx = stepTx(8, /signs a Hyperliquid order/);
+  if (hlTx) {
+    await check("A protected account signs a Hyperliquid order through Chain Signatures, for its own derived address", async () => {
+      const owner = proofs.scenarios!["8"]!.steps[0]!.step!.match(/ for (\S+),/)?.[1] ?? "";
+      const o = await txOutcome(hlTx, owner);
+      const ev = events(o).find((e) => e.event === "hyperliquid_signed");
+      const sv = (o.status as { SuccessValue?: string }).SuccessValue;
+      if (!ev || !sv) throw new Error("no hyperliquid_signed event or signature");
+      const sig = JSON.parse(Buffer.from(sv, "base64").toString()) as { r: string; s: string; v: number };
+      const acct = o.transaction.receiver_id;
+      const pk = await view<string>(NETWORK === "testnet" ? "v1.signer-prod.testnet" : "v1.signer", "derived_public_key", { path: "parry-hyperliquid", predecessor: acct, domain_id: 0 });
+      const point = unb58(pk.replace(/^secp256k1:/, ""));
+      const recovered = secp256k1.Signature.fromBytes(Buffer.from(sig.r + sig.s, "hex"), "compact").addRecoveryBit(sig.v >= 27 ? sig.v - 27 : sig.v).recoverPublicKey(Buffer.from(String(ev.data.digest), "hex")).toBytes(false);
+      if (Buffer.compare(Buffer.from(recovered.subarray(1)), Buffer.from(point.length === 65 ? point.subarray(1) : point)) !== 0) throw new Error("the signature does not recover to the account's derived key");
+      const address = `0x${bytesToHex(keccak_256(point.length === 65 ? point.subarray(1) : point).slice(12))}`;
+      return `${hlTx}: digest ${String(ev.data.digest).slice(0, 16)}... signed for ${address}, ${acct.slice(0, 12)}...'s Hyperliquid address`;
+    });
+  } else {
+    wait("A protected account signs a Hyperliquid order through Chain Signatures", "`bun scripts/scenarios.ts --only 8`");
+  }
+
+  const created = stepTx(2, /relayer creates/);
+  if (created) {
+    await check("The relayer creates a protected account as a NEP-655 universal account on the global code", async () => {
+      const id = proofs.scenarios!["2"]!.steps.find((x) => /relayer creates/.test(x.step ?? ""))!.step!.split(" ")[2]!;
+      const a = (await account(id)) as { code_hash: string; global_contract_hash?: string };
+      if (a.global_contract_hash !== dep.contracts.account?.codeHash) throw new Error(`${id} runs global code ${a.global_contract_hash}, recorded ${dep.contracts.account?.codeHash}`);
+      const o = await txOutcome(created, dep.services!.relayer!);
+      if (failed(o)) throw new Error(`${created} failed`);
+      return `${id.slice(0, 12)}... uses global code ${a.global_contract_hash}, created by ${o.transaction.signer_id} in ${created}`;
+    });
+  }
+
+  const borrow = stepTx(3, /borrow/);
+  if (borrow) {
+    await check("A leveraged position on Rhea lending's mainnet code, opened from a protected account", async () => {
+      const owner = proofs.scenarios!["2"]!.steps.find((x) => /relayer creates/.test(x.step ?? ""))!.step!.match(/ for (\S+),/)?.[1] ?? "";
+      const o = await txOutcome(borrow, owner);
+      if (failed(o)) throw new Error(`${borrow} failed`);
+      if (!o.receipts_outcome.some((r) => r.outcome.executor_id === dep.contracts.lending!.account)) throw new Error(`${borrow} never reached ${dep.contracts.lending!.account}`);
+      return `borrow ${borrow} executed on ${dep.contracts.lending!.account}`;
+    });
+  }
+
+  const paid = proofs.scenarios?.["12"]?.steps.find((x) => x.payment?.transaction)?.payment?.transaction;
+  if (paid) {
+    await check("A risk check paid over x402 on NEAR: a signed delegate ft_transfer of test USDC, relayed and settled", async () => {
+      const o = await txOutcome(paid, dep.services!.api ?? dep.services!.relayer!);
+      if (failed(o)) throw new Error(`${paid} failed`);
+      const delegate = JSON.stringify(o.transaction.actions).includes("Delegate");
+      const transfer = o.receipts_outcome.some((r) => r.outcome.executor_id === dep.contracts.usdc!.account && r.outcome.logs.some((l) => l.includes("ft_transfer")));
+      if (!delegate || !transfer) throw new Error(`${paid} is not a delegate ft_transfer on ${dep.contracts.usdc!.account}`);
+      return `${paid}: NEP-366 delegate, ft_transfer on ${dep.contracts.usdc!.account}`;
+    });
+  }
+
+  for (const [svc, k] of Object.entries(dep.keys?.gasKeys ?? {})) {
+    await check(`The ${svc} sends on a gas key with ${k.lanes} nonce lanes (NEP-611)`, async () => {
+      const keys = await rpc<{ keys: { public_key: string; access_key: { permission: unknown } }[] }>("query", { request_type: "view_access_key_list", finality: "final", account_id: k.account });
+      const gas = keys.keys.find((x) => typeof x.access_key.permission === "object" && x.access_key.permission !== null && "GasKeyFullAccess" in x.access_key.permission);
+      const p = (gas?.access_key.permission as { GasKeyFullAccess?: { num_nonces: number; balance: string } } | undefined)?.GasKeyFullAccess;
+      if (!p) throw new Error(`${k.account} has no gas key`);
+      if (p.num_nonces !== k.lanes) throw new Error(`${p.num_nonces} lanes, recorded ${k.lanes}`);
+      return `${k.account}: ${p.num_nonces} lanes, ${(Number(BigInt(p.balance) / 10n ** 21n) / 1000).toFixed(2)} NEAR prepaid${k.tx ? `, added in ${k.tx}` : ""}`;
+    });
+  }
+
+  const pq = dep.keys?.postQuantum;
+  if (pq) {
+    await check("The treasury signs with a post-quantum ML-DSA-65 key", async () => {
+      const keys = await rpc<{ keys: { public_key: string }[] }>("query", { request_type: "view_access_key_list", finality: "final", account_id: pq.account });
+      if (!keys.keys.some((x) => x.public_key.startsWith("ml-dsa-65"))) throw new Error(`${pq.account} has no ML-DSA-65 key`);
+      if (!pq.signedTx) return `${pq.account} holds an ML-DSA-65 key`;
+      const o = await txOutcome(pq.signedTx, pq.account);
+      if (!o.transaction.public_key.startsWith("ml-dsa-65")) throw new Error(`${pq.signedTx} is signed with ${o.transaction.public_key.slice(0, 20)}...`);
+      return `${pq.account} holds an ML-DSA-65 key and signed ${pq.signedTx} with it`;
+    });
   }
 
   await check("The vault's hedge matches its collateral and its latest proof of reserves", async () => {
@@ -244,7 +356,9 @@ async function main() {
     const target = Number(s.hedge.target_e8 ?? 0);
     const current = Number(s.hedge.current_e8 ?? 0);
     const off = target > 0 ? Math.abs(current - target) / target : 0;
-    return `reserves ${s.reserves.ratio_bps / 100}% of liabilities, root ${s.reserves.root.slice(0, 16)}...; short ${current / 1e8} NEAR against a target of ${target / 1e8} (${(off * 100).toFixed(1)}% off)`;
+    if (off > 0.2) throw new Error(`short ${current / 1e8} NEAR against a target of ${target / 1e8}`);
+    const margin = BigInt(s.hedge.account_value_e6 ?? "0") === 0n && BigInt((s as { staked_linear?: string }).staked_linear ?? "0") > 0n;
+    return `reserves ${s.reserves.ratio_bps / 100}% of liabilities, root ${s.reserves.root.slice(0, 16)}...; short ${current / 1e8} NEAR against a target of ${target / 1e8}${margin ? " (the target is zero until the hedge account holds margin)" : ` (${(off * 100).toFixed(1)}% off)`}`;
   });
 
   await check("The oracle feeder is fresh", async () => {
@@ -255,7 +369,13 @@ async function main() {
   });
 
   await check("The API answers and the indexer is caught up", async () => {
-    const s = (await (await fetch(`${API}/v1/status`)).json()) as { indexer: { lagBlocks: number | null } };
+    // One retry: a stack that just restarted takes a few seconds to listen.
+    const get = () => fetch(`${API}/v1/status`, { signal: AbortSignal.timeout(15_000) });
+    const res = await get().catch(async () => {
+      await new Promise((r) => setTimeout(r, 5_000));
+      return get();
+    });
+    const s = (await res.json()) as { indexer: { lagBlocks: number | null } };
     if (s.indexer.lagBlocks === null || s.indexer.lagBlocks > 600) throw new Error(`indexer ${s.indexer.lagBlocks} blocks behind`);
     return `${API} up, indexer ${s.indexer.lagBlocks} blocks behind`;
   });
@@ -264,11 +384,12 @@ async function main() {
     const r = await fetch(SITE);
     if (!r.ok) throw new Error(`${SITE} answered ${r.status}`);
     const llms = await fetch(`${SITE}/llms.txt`);
+    if (!llms.ok) throw new Error(`${SITE}/llms.txt answered ${llms.status}`);
     return `${SITE} ${r.status}, llms.txt ${llms.status}`;
   });
 }
 
 await main();
-const failed = results.filter((r) => !r.ok).length;
-console.log(`\n${results.length - failed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+const failures = results.filter((r) => !r.ok).length;
+console.log(`\n${results.length - failures} passed, ${failures} failed, ${waiting.length} waiting on a recorded proof`);
+process.exit(failures ? 1 : 0);

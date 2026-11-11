@@ -194,6 +194,12 @@ describe("vault calls and networks", () => {
     });
     expect(parry.requestWithdrawAction(5n)).toMatchObject({ receiverId: "vault.parry.testnet", methodName: "request_withdraw", args: { shares: "5" }, deposit: "1" });
     expect(parry.claimAction()).toMatchObject({ receiverId: "vault.parry.testnet", methodName: "claim", args: {}, deposit: "0", gas: "150000000000000" });
+    expect(parry.linearStorageAction("0ua.testnet")).toMatchObject({
+      receiverId: "linear-protocol.testnet",
+      methodName: "storage_deposit",
+      args: { account_id: "0ua.testnet", registration_only: true },
+      deposit: "1250000000000000000000",
+    });
     expect(deposit.actions[0]).toEqual({ type: "FunctionCall", params: { methodName: "deposit", args: {}, gas: "150000000000000", deposit: "1000000000000000000000000" } });
   });
 

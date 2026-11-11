@@ -6,6 +6,9 @@
 import type { Near } from "near-kit";
 import { apiMethods, ParryApi, ParryApiError, type ApiMethods, type FetchLike } from "./api.js";
 import { contractCall, ONE_YOCTO, type ContractCall } from "./calls.js";
+
+/** LiNEAR's NEP-145 storage bound, in yoctoNEAR (0.00125 NEAR). */
+const LINEAR_STORAGE = "1250000000000000000000";
 import { chainReads, nearClient, sendCall, type ChainReads, type SentCall } from "./chain.js";
 import { u128 } from "./encoding.js";
 import { NETWORKS, isNetwork, type ContractIds, type Network } from "./networks.js";
@@ -79,6 +82,12 @@ export interface Parry extends ApiMethods, ChainReads {
   requestWithdrawAction(shares: string | bigint): ContractCall;
   /** `claim()` on the vault: pays failed transfers and owed USDC, 150 Tgas. */
   claimAction(): ContractCall;
+  /**
+   * NEP-145 registration of `accountId` with the LiNEAR token, which vault withdrawals pay out in
+   * (0.00125 NEAR, refunded when already registered). Send it before `request_withdraw` and
+   * `claim`: an unregistered account's payout waits as a claim.
+   */
+  linearStorageAction(accountId: string): ContractCall;
   /** Signs a call with a full-access key and sends it, waiting for optimistic execution. */
   sendCall(call: ContractCall, signer: NearSigner): Promise<SentCall>;
   /**
@@ -155,6 +164,7 @@ export function createParry(options: ParryOptions): Parry {
       contractCall(contracts.wnear, "ft_transfer_call", { receiver_id: contract("vault"), amount: u128(amountYocto, "amountYocto"), msg: "deposit" }, { tgas: 300, deposit: ONE_YOCTO }),
     requestWithdrawAction: (shares) => contractCall(contract("vault"), "request_withdraw", { shares: u128(shares, "shares") }, { tgas: 30, deposit: ONE_YOCTO }),
     claimAction: () => contractCall(contract("vault"), "claim", {}, { tgas: 150 }),
+    linearStorageAction: (accountId) => contractCall(contracts.linear, "storage_deposit", { account_id: accountId, registration_only: true }, { tgas: 10, deposit: LINEAR_STORAGE }),
     sendCall: (call, signer) => sendCall(signerClient(signer), signer.accountId, call),
     verifyDecision: async (decision, opts = {}) => {
       const d = typeof decision === "string" ? await reads.decision(decision) : decision;

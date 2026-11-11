@@ -402,7 +402,8 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
     setBusy("withdraw");
     try {
       const c = await chain();
-      await acct.runOwnerActions([asOwnerCall(c.requestWithdrawAction(units))], { title: "Withdrawal requested" });
+      // The payout is LiNEAR: register the account with it first, or the payout waits as a claim.
+      await acct.runOwnerActions([asOwnerCall(c.linearStorageAction(acct.account!)), asOwnerCall(c.requestWithdrawAction(units))], { title: "Withdrawal requested" });
       setShares("");
       refresh();
     } catch (e2) {
@@ -417,7 +418,7 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
     setBusy("claim");
     try {
       const c = await chain();
-      await acct.runOwnerActions([asOwnerCall(c.claimAction())], { title: "Claim sent" });
+      await acct.runOwnerActions([asOwnerCall(c.linearStorageAction(acct.account!)), asOwnerCall(c.claimAction())], { title: "Claim sent" });
       refresh();
     } catch (e2) {
       setError(errorMessage(e2));

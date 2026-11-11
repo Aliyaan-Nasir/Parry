@@ -22,7 +22,11 @@ const RELAYER = process.env.RELAYER_URL ?? "http://localhost:4500";
 export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Response> } = {}) {
   const app = new Hono();
   app.use("*", cors({ origin: (o) => o ?? "*", allowHeaders: ["content-type", "authorization", "x-payment"], exposeHeaders: ["x-payment-response"] }));
-  app.onError((e, c) => c.json({ error: errorText(e) }, 500));
+  // A request error (a malformed account id, say) carries its 4xx status; anything else is a 500.
+  app.onError((e, c) => {
+    const status = (e as { status?: number }).status;
+    return c.json({ error: errorText(e) }, status !== undefined && status >= 400 && status < 500 ? (status as 400) : 500);
+  });
 
   const account = (id: string) => {
     if (!ACCOUNT.test(id)) throw Object.assign(new Error("not a NEAR account id"), { status: 400 });

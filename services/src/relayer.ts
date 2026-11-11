@@ -108,5 +108,7 @@ export async function main() {
     }
   };
   every(600_000, "gas-key", () => tendGasKey(sql, "relayer", relayer));
+  // An idle relayer still reports, so the status page does not count it as down between requests.
+  every(60_000, "status", () => setStatus(sql, "relayer", !!relayer, relayer ? `${last}; ${relayer.inFlight} in flight on ${relayer.lanes} lanes` : "RELAYER wallet is not configured"));
   serveHealth("relayer", intEnv("PORT", 4500), async () => ({ ok: !!relayer, detail: relayer ? last : "RELAYER wallet is not configured", lanes: relayer?.lanes ?? 0, inFlight: relayer?.inFlight ?? 0 }), handle);
 }
