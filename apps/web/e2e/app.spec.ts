@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { openPolicy } from "@parry/sdk";
 import * as fx from "./fixtures";
 import { addVirtualAuthenticator, asPasskeyOwner, mockApi, relayedActions, seedAccount } from "./mock";

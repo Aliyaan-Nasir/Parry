@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { STATS_FIXTURE, mockStats, watchConsole } from "./support";
+import { mockStats, watchConsole } from "./support";
 
 test.describe("theme", () => {
   test.use({ colorScheme: "light" });
@@ -57,13 +57,14 @@ test.describe("live stats", () => {
 test.describe("motion", () => {
   test.use({ reducedMotion: "reduce" });
 
-  test("the hero shows its full still frame under reduced motion", async ({ page }) => {
+  test("the hero shows its settled frame under reduced motion", async ({ page }) => {
     await mockStats(page);
     await page.goto("/");
-    const svg = page.locator("svg.hero-deflection");
-    await expect(svg).toHaveAttribute("data-anim", "still");
-    const opacity = await svg.locator('[data-part="recovery"]').evaluate((el) => getComputedStyle(el).opacity);
-    expect(opacity).toBe("1");
+    // The product view never plays its beat: it shows the settled frame, the rescue already in.
+    const view = page.locator(".hero-product");
+    await expect(view).toHaveAttribute("data-anim", "still");
+    await expect(view.getByText("Repaid 54.40 USDC from the reserve")).toBeVisible();
+    await expect(view.locator('[role="img"][aria-label^="Health 1.45"]')).toBeAttached();
   });
 });
 

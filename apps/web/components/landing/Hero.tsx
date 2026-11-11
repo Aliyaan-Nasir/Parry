@@ -1,73 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { MARK } from "@/components/brand/paths";
+import { useEffect, useRef, useState } from "react";
+import { Mark } from "@/components/brand/Logo";
 import { DitherField } from "@/components/fx/Dither";
 import { Magnetic } from "@/components/fx/Magnetic";
+import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { ButtonLink } from "@/components/ui/Button";
+import { cn } from "@/lib/cn";
 
 /**
- * The hero: a position's health runs across a live chart toward the liquidation line. Left alone
- * it falls on its own; dragged, it follows the visitor's hand. When it crosses the owner's
- * trigger, Parry's guard swings in like a blade, the strike is turned aside, and health recovers
- * to the target. Server render and reduced motion show one finished deflection.
+ * The hero: the headline, the two ways in, and under them a still view of the app itself: a
+ * protected position on its risk instrument, the sealed mandate, and the guardian's log. One quiet
+ * beat plays once: a rescue lands in the log and the needle settles from 1.18 up to the 1.45
+ * target. Reduced motion shows the settled frame at once.
  */
-
-const W = 1000;
-const H = 420;
-const SAMPLES = 220;
-const LIQ = 1.0;
-const TRIGGER = 1.2;
-const TARGET = 1.5;
-const TOP = 1.95;
-const BOTTOM = 0.86;
-const y = (h: number) => Math.round((40 + ((TOP - h) / (TOP - BOTTOM)) * (H - 80)) * 10) / 10;
-const fromY = (py: number) => TOP - ((py - 40) / (H - 80)) * (TOP - BOTTOM);
-const xAt = (i: number) => Math.round((i / (SAMPLES - 1)) * (W - 40) * 10) / 10;
-
-type Sample = { h: number; rescued: boolean };
-type Phase = "calm" | "fall" | "strike" | "deflect";
-
-/** A deterministic noise so the first frame is the same on the server and the client. */
-function noise(i: number) {
-  const s = Math.sin(i * 12.9898) * 43758.5453;
-  return s - Math.floor(s) - 0.5;
-}
-
-/** The still: a fall toward liquidation, the turn at the trigger, the recovery. */
-function stillSeries(): Sample[] {
-  const out: Sample[] = [];
-  const strike = 150;
-  for (let i = 0; i < SAMPLES; i++) {
-    if (i < strike) {
-      const t = i / strike;
-      out.push({ h: 1.62 - 0.42 * t ** 1.7 + noise(i) * 0.012, rescued: false });
-    } else {
-      const t = Math.min(1, (i - strike) / 40);
-      out.push({ h: TRIGGER + (TARGET - TRIGGER) * (1 - (1 - t) ** 3) + noise(i) * 0.008, rescued: true });
-    }
-  }
-  return out;
-}
-
-/** One stroke per kind: the plain fall, and the rescued recovery (joined at the turn). */
-function pathOf(series: readonly Sample[], rescued: boolean): string {
-  let d = "";
-  let pen = false;
-  for (let i = 0; i < series.length; i++) {
-    const s = series[i]!;
-    const next = series[i + 1];
-    // A point belongs to its own stroke, and also to the other stroke where that one starts, so
-    // the two meet without a gap.
-    const prev = series[i - 1];
-    const include = s.rescued === rescued || (next !== undefined && next.rescued === rescued) || (prev !== undefined && prev.rescued === rescued);
-    if (include) {
-      d += `${pen ? "L" : "M"}${xAt(i)} ${y(s.h)}`;
-      pen = true;
-    } else pen = false;
-  }
-  return d;
-}
 
 export function Hero() {
   return (
@@ -90,227 +36,113 @@ export function Hero() {
             Check any account
           </ButtonLink>
         </div>
-        <Deflection />
+        <HeroProduct />
       </div>
     </section>
   );
 }
 
-const MARK_SCALE = 2.2;
-const STILL = stillSeries();
-const STILL_STRIKE = 150;
+const BEFORE = 1.18;
+const AFTER = 1.45;
 
-/** The ghost: where health was heading without Parry, from the strike down through liquidation. */
-const ghostOf = (x: number, h: number) => `M${x} ${y(h)} Q ${x + 70} ${y(h - 0.08)} ${x + 130} ${y(LIQ - 0.05)}`;
+const LOG = [
+  { when: "now", what: "Repaid 54.40 USDC from the reserve", detail: "health 1.18 to 1.45, reviewed by a verifiable model, signed in the enclave" },
+  { when: "2 d ago", what: "Mandate sealed to the enclave", detail: "trigger and target private; reserve 100 USDC, 60 a day" },
+  { when: "3 d ago", what: "Position opened on Rhea", detail: "40 wNEAR supplied, 61 USDC borrowed" },
+];
 
-function Deflection() {
-  const [hint, setHint] = useState(true);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ active: boolean; want: number | null }>({ active: false, want: null });
-  // The scene redraws 45 times a second straight into these nodes: React renders only the still frame.
-  const plainRef = useRef<SVGPathElement>(null);
-  const rescueRef = useRef<SVGPathElement>(null);
-  const ghostRef = useRef<SVGPathElement>(null);
-  const strikeRef = useRef<SVGGElement>(null);
-  const guardRef = useRef<SVGGElement>(null);
-  const dotRef = useRef<SVGCircleElement>(null);
-  const healthRef = useRef<HTMLSpanElement>(null);
+function Glyph({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
 
+/** A still view of the app, drawn with its own components; decorative, so it is hidden from assistive tech. */
+function HeroProduct() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [rescued, setRescued] = useState(false);
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let strikeI: number | null = STILL_STRIKE;
-    const draw = (buf: readonly Sample[], h: number) => {
-      plainRef.current?.setAttribute("d", pathOf(buf, false));
-      rescueRef.current?.setAttribute("d", pathOf(buf, true));
-      const last = buf[buf.length - 1]!;
-      dotRef.current?.setAttribute("cy", String(y(last.h)));
-      dotRef.current?.style.setProperty("fill", last.rescued ? "var(--parry-brass-fill)" : "var(--parry-text)");
-      if (healthRef.current) healthRef.current.textContent = h.toFixed(2);
-      const on = strikeI !== null && strikeI >= 0;
-      strikeRef.current?.setAttribute("display", on ? "inline" : "none");
-      ghostRef.current?.setAttribute("display", on ? "inline" : "none");
-      if (on) {
-        const x = xAt(strikeI!);
-        strikeRef.current?.setAttribute("transform", `translate(${x} ${y(TRIGGER)})`);
-        ghostRef.current?.setAttribute("d", ghostOf(x, buf[strikeI!]?.h ?? TRIGGER));
-      }
-    };
-    const swing = () => {
-      // Restart the guard's swing: drop the class, force a style pass, put it back.
-      const g = guardRef.current;
-      if (!g) return;
-      g.classList.remove("hero-guard");
-      void g.getBoundingClientRect();
-      g.classList.add("hero-guard");
-    };
-    // The still frame stays under reduced motion; otherwise the scene plays.
-    svg.dataset.anim = "play";
-    let raf = 0;
-    let visible = true;
-    let phase: Phase = "calm";
-    let phaseAt = performance.now();
-    let h = TARGET;
-    let v = 0;
-    let from = TARGET;
-    let i = 0;
-    let buf = stillSeries();
-    let lastStep = performance.now();
-    const step = (now: number) => {
-      raf = requestAnimationFrame(step);
-      if (!visible || document.hidden) {
-        lastStep = now;
-        return;
-      }
-      if (now - lastStep < 1000 / 45) return; // 45 samples a second across a 220 sample window
-      lastStep = now;
-      i += 1;
-      const t = (now - phaseAt) / 1000;
-      const want = drag.current.active ? drag.current.want : null;
-      if (phase === "calm") {
-        h += (TARGET - 0.02 - h) * 0.02 + noise(i) * 0.01;
-        if (want !== null) h += (want - h) * 0.18;
-        if ((want === null && t > 2.2) || (want !== null && h < TRIGGER + 0.08)) {
-          phase = "fall";
-          phaseAt = now;
-          v = 0;
-        }
-      } else if (phase === "fall") {
-        if (want !== null) h += (want - h) * 0.18;
-        else {
-          v += 0.00045;
-          h -= v + Math.abs(noise(i)) * 0.004;
-        }
-        h += noise(i * 3) * 0.006;
-        if (h <= TRIGGER) {
-          phase = "strike";
-          phaseAt = now;
-          from = h;
-          strikeI = SAMPLES - 1;
-          swing();
-        } else if (want !== null && h > TRIGGER + 0.25) {
-          phase = "calm";
-          phaseAt = now;
-        }
-      } else if (phase === "strike") {
-        h -= 0.002;
-        if (t > 0.35) {
-          phase = "deflect";
-          phaseAt = now;
-          from = h;
-        }
-      } else {
-        const k = Math.min(1, t / 0.9);
-        h = from + (TARGET - from) * (1 - (1 - k) ** 3) + noise(i) * 0.004;
-        if (k >= 1) {
-          phase = "calm";
-          phaseAt = now;
-        }
-      }
-      h = Math.max(LIQ + 0.02, Math.min(TOP - 0.05, h));
-      const rescued = phase === "deflect" || (phase === "calm" && buf[buf.length - 1]!.rescued && t < 1.2);
-      buf = [...buf.slice(1), { h, rescued }];
-      if (strikeI !== null) strikeI -= 1;
-      draw(buf, h);
-    };
-    raf = requestAnimationFrame(step);
-    const io = new IntersectionObserver(([e]) => (visible = !!e?.isIntersecting));
-    io.observe(svg);
+    const el = ref.current;
+    if (!el) return;
+    // Under reduced motion the settled frame shows at once; otherwise the rescue lands once,
+    // shortly after the view is first on screen. Nothing ever falls: health only settles upward.
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const raf = requestAnimationFrame(() => setRescued(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (!e?.isIntersecting) return;
+        io.disconnect();
+        el.dataset.anim = "play";
+        timer = setTimeout(() => setRescued(true), 900);
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(el);
     return () => {
-      cancelAnimationFrame(raf);
       io.disconnect();
+      if (timer) clearTimeout(timer);
     };
   }, []);
-
-  const pointer = (e: ReactPointerEvent<SVGSVGElement>) => {
-    const svg = svgRef.current;
-    if (!svg || !drag.current.active) return;
-    const r = svg.getBoundingClientRect();
-    drag.current.want = Math.max(BOTTOM + 0.04, Math.min(TOP - 0.05, fromY(((e.clientY - r.top) / r.height) * H)));
-  };
-
-  const last = STILL[STILL.length - 1]!;
-  const stillX = xAt(STILL_STRIKE);
+  const health = rescued ? AFTER : BEFORE;
 
   return (
-    <div className="relative mx-auto mt-16 max-w-[1100px]">
-      <div className="surface-glass overflow-hidden p-0 [--edge-angle:180deg]">
-        <div className="flex items-center justify-between gap-4 px-5 pt-4 text-[13px] sm:px-7 sm:pt-5">
-          <span className="text-muted">A protected position on Rhea</span>
-          <span className="text-muted">
-            Health{" "}
-            <span ref={healthRef} className="num ml-1 text-base text-fg">
-              {TARGET.toFixed(2)}
-            </span>
-          </span>
+    <div ref={ref} data-anim="still" aria-hidden="true" className="hero-product relative mx-auto mt-16 max-w-[1100px] [mask-image:linear-gradient(#000_72%,transparent)]">
+      <div className="surface-glass overflow-hidden p-0 text-left [--edge-angle:180deg]">
+        <div className="grid min-h-[380px] md:grid-cols-[3.25rem_minmax(0,1fr)_minmax(0,19rem)]">
+          {/* The rail. */}
+          <div className="hidden flex-col items-center gap-5 border-r border-line py-5 text-muted md:flex">
+            <Mark size={20} />
+            {["M3 10.5 10 4l7 6.5M5 9v7h10V9", "M10 2.5 16.5 5v4.5c0 4-2.7 6.8-6.5 8-3.8-1.2-6.5-4-6.5-8V5Z", "M5 3.5h10v13H5zM7.5 7h5M7.5 10h5M7.5 13h3", "M3 16h14M5 16v-3M8 16V8M11 16v-6M14 16V5"].map((d, i) => (
+              <span key={d} className={cn("grid size-8 place-items-center rounded-lg", i === 1 && "bg-fg/[0.06] text-fg")}>
+                <Glyph d={d} />
+              </span>
+            ))}
+          </div>
+          {/* The position. */}
+          <div className="p-5 sm:p-7">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-[15px] text-fg">Rhea wNEAR / USDC</div>
+                <div className="text-[12.5px] text-muted">alice.near, guarding, trigger sealed</div>
+              </div>
+              <span className="num text-[12.5px] text-muted">NEAR $3.62</span>
+            </div>
+            <RiskInstrument className="mt-6" health={health} annualVol={0.85} trigger={1.2} target={AFTER} marks={rescued ? [{ health: BEFORE, label: "Repaid 54.40 USDC" }] : []} />
+            <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-line pt-4 text-[12.5px]">
+              {[
+                ["Liquidation price", rescued ? "$2.49" : "$3.07"],
+                ["Liquidation in 24 h", rescued ? "under 1%" : "18%"],
+                ["Reserve left today", rescued ? "5.60 USDC" : "60.00 USDC"],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-muted">{k}</dt>
+                  <dd className="num mt-1 text-[15px] text-fg transition-colors duration-[var(--dur-2)]">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          {/* The guardian's log. */}
+          <div className="hidden border-l border-line p-5 lg:block">
+            <div className="label">Guardian log</div>
+            <ol className="mt-4 grid gap-4">
+              {LOG.map((e, i) => (
+                <li key={e.what} className={cn("grid gap-0.5 transition-[opacity,translate] duration-[var(--dur-2)] ease-[var(--ease-out)]", i === 0 && !rescued && "-translate-y-2 opacity-0")}>
+                  <span className="flex items-end justify-between gap-3 text-[13px]">
+                    <span className={cn(i === 0 ? "text-fg" : "text-fg/80")}>{e.what}</span>
+                    <span className="shrink-0 text-[11.5px] text-muted">{e.when}</span>
+                  </span>
+                  <span className="text-[12px] leading-5 text-muted">{e.detail}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
-          className="hero-deflection block h-auto w-full cursor-ns-resize touch-none select-none"
-          data-anim="still"
-          role="img"
-          aria-label="Health falls toward liquidation; at the trigger Parry steps in and health recovers to the target."
-          onPointerDown={(e) => {
-            drag.current.active = true;
-            setHint(false);
-            (e.target as Element).setPointerCapture?.(e.pointerId);
-            pointer(e);
-          }}
-          onPointerMove={pointer}
-          onPointerUp={() => (drag.current = { active: false, want: null })}
-          onPointerCancel={() => (drag.current = { active: false, want: null })}
-        >
-          <defs>
-            <pattern id="hero-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <line x1="0" y1="0" x2="0" y2="7" style={{ stroke: "var(--parry-critical)" }} strokeWidth="1.4" />
-            </pattern>
-            <linearGradient id="hero-fade" x1="0" x2="1">
-              <stop offset="0" stopColor="#fff" stopOpacity="0" />
-              <stop offset="0.12" stopColor="#fff" stopOpacity="1" />
-            </linearGradient>
-            <mask id="hero-mask">
-              <rect width={W} height={H} fill="url(#hero-fade)" />
-            </mask>
-          </defs>
-          {/* Guides. */}
-          {[1.2, 1.4, 1.6, 1.8].map((g) => (
-            <line key={g} x1={0} x2={W} y1={y(g)} y2={y(g)} style={{ stroke: "var(--parry-line)" }} strokeWidth={1} />
-          ))}
-          {/* Liquidation: a hatched floor. */}
-          <rect x={0} y={y(LIQ)} width={W} height={H - y(LIQ)} fill="url(#hero-hatch)" opacity={0.28} />
-          <line x1={0} x2={W} y1={y(LIQ)} y2={y(LIQ)} style={{ stroke: "var(--parry-critical)" }} strokeWidth={1.5} />
-          <text x={12} y={y(LIQ) - 8} style={{ fill: "var(--parry-critical)", fontSize: 13 }}>
-            Liquidation 1.00
-          </text>
-          {/* Trigger and target. */}
-          <line x1={0} x2={W} y1={y(TRIGGER)} y2={y(TRIGGER)} style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={1.2} strokeDasharray="5 6" />
-          <text x={12} y={y(TRIGGER) - 8} style={{ fill: "var(--parry-brass)", fontSize: 13 }}>
-            Your trigger 1.20
-          </text>
-          <line x1={0} x2={W} y1={y(TARGET)} y2={y(TARGET)} style={{ stroke: "var(--parry-text)" }} strokeOpacity={0.25} strokeWidth={1} strokeDasharray="2 6" />
-          <text x={12} y={y(TARGET) - 8} style={{ fill: "var(--parry-muted)", fontSize: 13 }}>
-            Target 1.50
-          </text>
-
-          <g mask="url(#hero-mask)">
-            <path ref={ghostRef} d={ghostOf(stillX, STILL[STILL_STRIKE]?.h ?? TRIGGER)} fill="none" style={{ stroke: "var(--parry-muted)" }} strokeWidth={1.6} strokeDasharray="4 6" opacity={0.75} />
-            <path ref={plainRef} d={pathOf(STILL, false)} fill="none" style={{ stroke: "var(--parry-text)" }} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
-            <path ref={rescueRef} data-part="recovery" d={pathOf(STILL, true)} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
-          </g>
-          {/* The guard turning the strike aside. */}
-          <g ref={strikeRef} transform={`translate(${stillX} ${y(TRIGGER)})`}>
-            <circle r={26} style={{ fill: "var(--parry-brass-fill)" }} opacity={0.12} />
-            <g ref={guardRef} transform={`translate(${-14.25 * MARK_SCALE} ${-12.5 * MARK_SCALE}) scale(${MARK_SCALE})`} className="hero-guard">
-              <path d={MARK.guard} style={{ fill: "var(--parry-brass-fill)" }} />
-            </g>
-          </g>
-          <circle ref={dotRef} cx={xAt(SAMPLES - 1)} cy={y(last.h)} r={5} style={{ fill: last.rescued ? "var(--parry-brass-fill)" : "var(--parry-text)" }} />
-        </svg>
       </div>
-      <p className={`mt-4 text-center text-sm text-muted transition-opacity duration-500 ${hint ? "opacity-100" : "opacity-0"}`}>
-        Drag the chart to push the price. Parry steps in at your trigger.
-      </p>
     </div>
   );
 }
