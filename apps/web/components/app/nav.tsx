@@ -28,7 +28,7 @@ const ALL: NavItem[] = [
   { href: "/app/watched", label: "Watched accounts", group: "Overview", key: "w", icon: <Glyph><path d="M2.5 10s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5-7.5-5-7.5-5Z" /><circle cx="10" cy="10" r="2.2" /></Glyph> },
   { href: "/app/open", label: "Open position", group: "Protect", key: "o", icon: <Glyph><circle cx="10" cy="10" r="7" /><path d="M10 6.5v7M6.5 10h7" /></Glyph> },
   { href: "/app/protect", label: "Protect", group: "Protect", primary: true, key: "m", icon: <Glyph><path d="M10 2.5 16.5 5v4.5c0 4-2.7 6.8-6.5 8-3.8-1.2-6.5-4-6.5-8V5Z" /></Glyph> },
-  { href: "/app/guardian", label: "Guardian log", group: "Protect", primary: true, key: "g", icon: <Glyph><path d="M5 3.5h10v13H5zM7.5 7h5M7.5 10h5M7.5 13h3" /></Glyph> },
+  { href: "/app/guardian", label: "Guardian log", group: "Protect", primary: true, key: "l", icon: <Glyph><path d="M5 3.5h10v13H5zM7.5 7h5M7.5 10h5M7.5 13h3" /></Glyph> },
   { href: "/app/certificates", label: "Certificates", group: "Protect", key: "c", icon: <Glyph><path d="M4 3.5h12v9H4z" /><path d="m7.5 15.5 2.5-1.5 2.5 1.5v-3h-5z" /></Glyph> },
   { href: "/app/alerts", label: "Alerts", group: "Protect", primary: true, key: "a", icon: <Glyph><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5H4z" /><path d="M8.5 17h3" /></Glyph> },
   { href: "/app/vault", label: "Vault", group: "Earn", primary: true, key: "v", icon: <Glyph><rect x="3" y="4" width="14" height="12" rx="1.75" /><circle cx="10" cy="10" r="2.75" /></Glyph> },

@@ -16,12 +16,7 @@ const paddings = { none: "", sm: "p-4", md: "p-5 sm:p-6", lg: "p-6 sm:p-8" } as 
 export function Card({ as: Tag = "div", padding = "md", tone = "raised", className, children, ...rest }: CardProps) {
   return (
     <Tag
-      className={cn(
-        "rounded-xl border border-line",
-        tone === "raised" ? "bg-raised" : "bg-surface",
-        paddings[padding],
-        className,
-      )}
+      className={cn(tone === "raised" ? "surface-raised !shadow-[var(--highlight),var(--shadow-soft)]" : "surface", paddings[padding], className)}
       {...rest}
     >
       {children}
@@ -43,7 +38,7 @@ export function CardHeader({ title, description, actions, titleAs: Title = "h3",
     <div className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2", className)}>
       {/* The title block shares the line with the actions until the card gets narrow. */}
       <div className="min-w-0 flex-1 basis-64">
-        <Title className="text-[15px] font-semibold tracking-[-0.01em] text-fg">{title}</Title>
+        <Title className="text-[15px] font-medium tracking-[-0.01em] text-fg">{title}</Title>
         {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}

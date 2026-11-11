@@ -62,9 +62,9 @@ export function Earn() {
   const share = (history.data ?? []).map((p) => p.sharePriceUsd);
   const r = rates.data;
   const bars = [
-    r?.vault ? { label: "Parry vault, net", value: r.vault.netApr, source: r.vault.source, strong: true } : null,
-    r?.vault ? { label: "of which LiNEAR staking", value: r.vault.stakingApr, source: r.vault.source } : null,
-    r?.hyperliquid ? { label: "Hyperliquid NEAR funding, 24 h", value: r.hyperliquid.funding24hApr, source: r.hyperliquid.source } : null,
+    r?.vault?.netApr != null ? { label: "Parry vault, net", value: r.vault.netApr, source: r.vault.source, strong: true } : null,
+    r?.vault?.stakingApr != null ? { label: "of which LiNEAR staking", value: r.vault.stakingApr, source: r.vault.source } : null,
+    r?.hyperliquid?.funding24hApr != null ? { label: "Hyperliquid NEAR funding, 24 h", value: r.hyperliquid.funding24hApr, source: r.hyperliquid.source } : null,
     ...(r?.rhea ?? [])
       .filter((a) => ["NEAR", "wNEAR", "USDC"].includes(a.asset))
       .map((a) => ({ label: `Rhea supply, ${a.asset}`, value: a.supplyApr, source: a.source })),

@@ -16,6 +16,7 @@ import { useEnclave, useHedgeMarket } from "@/lib/queries";
 import { formatBps, fromUnits, toUnits } from "@/lib/units";
 import { network } from "@/lib/env";
 import { cn } from "@/lib/cn";
+import { rememberPolicy } from "@/lib/policy-memory";
 
 /**
  * The Aave market EVM rescues run on: Base Sepolia on testnet (the MPC network verifies Base),
@@ -210,6 +211,7 @@ export function MandateBuilder({
         : null;
       const final: Mandate = { ...mandate, sealed: sealed ? toBase64(sealed) : null };
       await acct.runOwnerActions([ownerActions.setMandate(final)], { title: sealed ? "Mandate set, policy sealed" : "Mandate set" });
+      rememberPolicy(account, { triggerScore: d.triggerScore, triggerHealth: d.triggerHealth, targetHealth: d.targetHealth, strategy: d.strategy });
     } catch (e2) {
       setError(errorMessage(e2).replace(/^mandate: /, ""));
     } finally {

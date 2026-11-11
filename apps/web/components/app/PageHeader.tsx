@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui/Badge";
 
 export type PageHeaderProps = {
   title: string;
@@ -11,11 +10,11 @@ export type PageHeaderProps = {
 
 export function PageHeader({ title, description, tag, actions }: PageHeaderProps) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-line pb-6">
+    <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 pb-2">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-[30px] font-semibold leading-tight tracking-[-0.02em] text-fg sm:text-[34px]">{title}</h1>
-          {tag ? <Badge tone="caution">{tag}</Badge> : null}
+          <h1 className="display-sm text-gradient text-[2.25rem] sm:text-[2.75rem]">{title}</h1>
+          {tag ? <span className="text-sm text-muted">{tag}</span> : null}
         </div>
         {description ? <p className="mt-2 max-w-2xl text-[15px] leading-7 text-muted">{description}</p> : null}
       </div>

@@ -32,8 +32,8 @@ export type StatsLive = {
 
 export type RatesLive = {
   rhea: { asset: string; tokenId: string; supplyApr: number; borrowApr: number; utilization?: number; source: string }[];
-  hyperliquid: { fundingHourly: number; funding24hApr: number; source: string } | null;
-  vault: { stakingApr: number; fundingApr: number; netApr: number; insuranceShareBps: number; source: string } | null;
+  hyperliquid: { fundingHourly: number | null; funding24hApr: number | null; source: string } | null;
+  vault: { stakingApr: number | null; fundingApr: number | null; netApr: number | null; insuranceShareBps: number | null; source: string } | null;
   readAt: string;
 };
 

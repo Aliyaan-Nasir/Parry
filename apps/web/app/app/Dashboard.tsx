@@ -8,19 +8,15 @@ import { QueryError } from "@/components/app/bits";
 import { AlertRow, DecisionRow, FeedLink, newestFirst } from "@/components/app/Feeds";
 import { MarketStrip } from "@/components/app/MarketStrip";
 import { mandateStatus } from "@/components/app/mandate";
-import { PositionsTable } from "@/components/app/PositionsTable";
+import { PositionCard } from "@/components/app/PositionCard";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";
 import { useMoney } from "@/components/providers/MoneyProvider";
 import { Mark } from "@/components/brand/Logo";
-import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { RiskGauge } from "@/components/ui/RiskGauge";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Stat, StatGroup } from "@/components/ui/Stat";
 import { useAccountSummary, useAlerts, useDecisions } from "@/lib/queries";
-import { formatHealth } from "@/lib/units";
 import { useNow } from "@/lib/use-now";
 
 function ListSkeleton({ rows = 3 }: { rows?: number }) {
@@ -94,6 +90,7 @@ function GuardianCard({ account }: { account: string }) {
 function AccountDashboard({ account, signer }: { account: string; signer: Signer }) {
   const acct = useParryAccount();
   const summary = useAccountSummary(account);
+  const decisions = useDecisions(account, 10);
   const { format } = useMoney();
   const now = useNow();
   const s = summary.data;
@@ -119,82 +116,75 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
   }
 
   const positions = s?.positions ?? [];
-  const worst = positions.reduce<number | null>((m, p) => (m === null || p.score > m ? p.score : m), null);
-  const lowestHealth = positions.reduce<number | null>((m, p) => (p.health !== null && (m === null || p.health < m) ? p.health : m), null);
   const collateral = positions.reduce((t, p) => t + p.collateralUsd, 0);
   const debt = positions.reduce((t, p) => t + p.debtUsd, 0);
   const status = s && now ? mandateStatus(s.mandate, now / 1000) : null;
+  const recent = decisions.data?.pages[0]?.items ?? [];
+  const lastFor = (venue: string) => recent.find((d) => d.venue === venue || (venue === "aave" && (d.venue as string) === "evm")) ?? null;
 
   return (
-    <div className="grid gap-6" data-stagger>
-      <Card as="section" aria-labelledby="account-title" className="grid content-start gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="account-title" className="text-[15px] font-semibold text-fg">
-            Protected account
+    <div className="grid gap-8" data-stagger>
+      <section aria-labelledby="account-title" className="flex flex-wrap items-end justify-between gap-6">
+        <div className="min-w-0">
+          <h2 id="account-title" className="label">
+            {SIGNER_LABEL[signer]} protected account
           </h2>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge tone={signer === "watch" ? "neutral" : "brass"}>{SIGNER_LABEL[signer]}</Badge>
-            {status ? <Badge tone={status.tone}>{status.label}</Badge> : <Skeleton width="9ch" />}
+          <div className="mt-1">
+            <AccountAddress id={account} label="protected account address" />
           </div>
+          <p className="mt-2 text-sm text-fg/80">{status ? `${status.label}. ${status.detail}` : <Skeleton width="30ch" />}</p>
         </div>
-        <AccountAddress id={account} label="protected account address" />
-        {status ? <p className="text-[13px] text-muted">{status.detail}</p> : null}
-      </Card>
+        <dl className="flex gap-10">
+          <div>
+            <dt className="label">Collateral</dt>
+            <dd className="num mt-1 text-2xl text-fg">{s ? format(collateral) : <Skeleton width="7ch" />}</dd>
+          </div>
+          <div>
+            <dt className="label">Debt</dt>
+            <dd className="num mt-1 text-2xl text-fg">{s ? format(debt) : <Skeleton width="7ch" />}</dd>
+          </div>
+          <div>
+            <dt className="label">Guardian actions</dt>
+            <dd className="num mt-1 text-2xl text-fg">{s ? s.stats.guardianActions : <Skeleton width="3ch" />}</dd>
+          </div>
+        </dl>
+      </section>
 
-      <Card as="section" aria-labelledby="risk-title" className="grid gap-6 md:grid-cols-[auto_1fr] md:items-center md:gap-10">
-        <h2 id="risk-title" className="sr-only">
-          Risk overview
-        </h2>
-        <div className="flex justify-center md:justify-start">
-          <RiskGauge score={s ? worst : null} label="Account risk score: the riskiest position's score" />
-        </div>
-        <StatGroup className="grid-cols-2 gap-y-5 sm:grid-cols-4 md:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Collateral" value={format(collateral)} loading={!s} />
-          <Stat label="Debt" value={format(debt)} loading={!s} />
-          <Stat label="Lowest health" value={formatHealth(lowestHealth)} loading={!s} hint="Liquidation below 1.00" />
-          <Stat label="Guardian actions" value={s ? String(s.stats.guardianActions) : ""} loading={!s} hint={s ? `${s.stats.deleverages} deleverages` : undefined} />
-        </StatGroup>
-      </Card>
-
-      <Card as="section" padding="none" aria-labelledby="positions-title">
-        <div className="px-5 pb-4 pt-5 sm:px-6">
-          <CardHeader
-            titleAs="h2"
-            title={<span id="positions-title">Positions</span>}
-            description="Refreshed every 10 seconds. Select one for its history and the risk copilot."
-            actions={
-              <ButtonLink href="/app/open" size="sm" variant="secondary">
-                Open position
-              </ButtonLink>
-            }
-          />
+      <section aria-labelledby="positions-title">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <h2 id="positions-title" className="text-[15px] text-fg">
+            Positions
+          </h2>
+          <ButtonLink href="/app/open" size="sm" variant="secondary">
+            Open position
+          </ButtonLink>
         </div>
         {!s ? (
-          <div className="grid gap-3 border-t border-line px-5 py-5 sm:px-6" aria-busy="true">
-            <Skeleton height="2.25rem" shape="block" />
-            <Skeleton height="2.25rem" shape="block" />
+          <div className="grid gap-4 md:grid-cols-2" aria-busy="true">
+            <Skeleton height="13rem" shape="block" />
+            <Skeleton height="13rem" shape="block" />
           </div>
         ) : positions.length === 0 ? (
-          <div className="border-t border-line p-5 sm:p-6">
-            <EmptyState
-              compact
-              titleAs="h3"
-              icon={<Mark size={22} />}
-              title="No positions yet"
-              description="Open a leveraged position from this account, and Parry starts scoring it within seconds."
-              action={<ButtonLink href="/app/open">Open a protected position</ButtonLink>}
-            />
-          </div>
+          <EmptyState
+            compact
+            titleAs="h3"
+            icon={<Mark size={22} />}
+            title="No positions yet"
+            description="Open a leveraged position from this account, and Parry starts scoring it within seconds."
+            action={<ButtonLink href="/app/open">Open a protected position</ButtonLink>}
+          />
         ) : (
-          <div className="border-t border-line">
-            <PositionsTable positions={positions} caption="Positions of this account" />
+          <div className="grid gap-4 md:grid-cols-2">
+            {positions.map((p) => (
+              <PositionCard key={p.id} position={p} mandate={s.mandate} lastDecision={lastFor(p.venue)} />
+            ))}
           </div>
         )}
-      </Card>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <AlertsCard account={account} />
         <GuardianCard account={account} />
+        <AlertsCard account={account} />
       </div>
     </div>
   );

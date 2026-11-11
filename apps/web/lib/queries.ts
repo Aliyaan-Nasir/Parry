@@ -4,7 +4,7 @@
 // changes (positions 10 s, status 15 s, vault 30 s).
 
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import type { AccountSummary, Alert, DecisionPage, HistoryPoint, Market, MandateView, Position, Rate, Reserves, RouteComparison } from "@parry/sdk";
+import type { AccountSummary, Alert, DecisionPage, HistoryPoint, Market, MandateView, Position, Rates, Reserves, RouteComparison } from "@parry/sdk";
 import { api, chain, parry } from "./parry";
 import { apiUrl } from "./env";
 
@@ -116,7 +116,7 @@ export function useReserves() {
 }
 
 export function useRates() {
-  return useQuery<Rate[]>({ queryKey: keys.rates, queryFn: () => parry().rates(), enabled: hasApi, staleTime: 120 * SECOND });
+  return useQuery<Rates>({ queryKey: keys.rates, queryFn: () => parry().rates(), enabled: hasApi, staleTime: 120 * SECOND });
 }
 
 export function useStatus() {

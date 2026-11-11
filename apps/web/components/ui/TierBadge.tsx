@@ -1,4 +1,3 @@
-import { Badge } from "./Badge";
 import { TIER_LABEL, type Tier } from "@/lib/risk";
 import { cn } from "@/lib/cn";
 
@@ -43,17 +42,17 @@ export type TierBadgeProps = {
   className?: string;
 };
 
+/** The tier as a plain word in the text color (the instrument carries the color). */
 export function TierBadge({ tier, score, size = "sm", className }: TierBadgeProps) {
   return (
-    <Badge tone={tier} size={size} className={className}>
-      <TierGlyph tier={tier} size={size === "sm" ? 9 : 10} />
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-fg/80", size === "sm" ? "text-[12.5px]" : "text-[13.5px]", className)}>
       <span>{TIER_LABEL[tier]}</span>
       {typeof score === "number" ? (
-        <span className="num font-medium opacity-90">
+        <span className="num text-muted">
           <span className="sr-only">, score </span>
           {Math.round(score)}
         </span>
       ) : null}
-    </Badge>
+    </span>
   );
 }

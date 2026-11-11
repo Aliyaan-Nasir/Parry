@@ -161,8 +161,8 @@ export function CommandPalette() {
                 </span>
                 {c.keys ? (
                   <span className="flex gap-1">
-                    {c.keys.split(" ").map((k) => (
-                      <span key={k} className="kbd">
+                    {c.keys.split(" ").map((k, ki) => (
+                      <span key={ki} className="kbd">
                         {k}
                       </span>
                     ))}
