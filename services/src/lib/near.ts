@@ -210,6 +210,11 @@ export class Sender {
             return o;
           } catch (e) {
             if (e instanceof TxError) throw e;
+            // A transaction the RPC rejected (not enough balance, a bad nonce, an invalid action)
+            // never landed: say so at once rather than looking for it.
+            if ((e as { code?: string }).code === "INVALID_TRANSACTION" || /InvalidTx|NotEnoughBalance|LackBalance|InvalidNonce|InvalidAccessKey/i.test(String((e as Error)?.message ?? e))) {
+              throw new TxError(String((e as Error)?.message ?? e), hash);
+            }
             last = e;
             // Signed bytes may have landed even when the response did not: look the hash up.
             if (hash) {
@@ -245,7 +250,7 @@ export class Sender {
   }
 
   private async lookup(hash: string): Promise<FinalExecutionOutcome | null> {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 3; i++) {
       try {
         return await rpc<FinalExecutionOutcome>("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: this.accountId, wait_until: "EXECUTED_OPTIMISTIC" });
       } catch {

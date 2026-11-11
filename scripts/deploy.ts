@@ -330,7 +330,9 @@ async function main() {
   }
   env.push(`TREASURY_ACCOUNT_ID=${wallets.treasury}`, `TREASURY_PRIVATE_KEY=${(JSON.parse(readFileSync(pqFile, "utf8")) as { private_key: string }).private_key}`);
   // The top-up service refills each wallet from the treasury to its opening balance.
-  env.push(`TOPUP_WALLETS=${WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal}`).join(",")}`);
+  // Each target is the account's own opening balance: what is left after its gas key's prepaid NEAR.
+  const prepaid = (n: string) => GAS_KEYS.find(([k]) => k === n)?.[2] ?? 0;
+  env.push(`TOPUP_WALLETS=${WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal - prepaid(n)}`).join(",")}`);
   const envFile = MAINNET ? ".env.services.mainnet" : ".env.services";
   writeFileSync(join(ROOT_DIR, envFile), `${env.join("\n")}\n`, { mode: 0o600 });
   console.log(`wrote ${envFile} (gitignored)`);

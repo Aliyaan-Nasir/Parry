@@ -33,8 +33,12 @@ async function pass(sql: Sql): Promise<string> {
     // Refill to the target when a wallet falls under half of it.
     if (near < w.target / 2) {
       try {
-        await treasury.transfer(w.account, yocto(w.target - near));
-        notes.push(`${w.name} +${(w.target - near).toFixed(2)}`);
+        // Never more than the treasury can spare: it keeps 0.5 NEAR for its own transactions.
+        const spare = toNear((await balanceOf(treasury.accountId)) ?? 0n) - 0.5;
+        const amount = Math.min(w.target - near, spare);
+        if (amount <= 0) throw new Error("the treasury is empty");
+        await treasury.transfer(w.account, yocto(amount));
+        notes.push(`${w.name} +${amount.toFixed(2)}`);
       } catch (e) {
         notes.push(`${w.name} refill failed: ${errorText(e)}`);
       }

@@ -106,6 +106,14 @@ function failureOf(o: FinalExecutionOutcome): string | null {
 }
 
 /** Sends one call; a refusal comes back as `failure` with the transaction's hash, not as a throw. */
+/** NEP-297 events in an outcome. */
+function eventsOf(o: FinalExecutionOutcome): { event: string; data: unknown }[] {
+  return (o.receipts_outcome ?? [])
+    .flatMap((r) => r.outcome.logs)
+    .filter((l) => l.startsWith("EVENT_JSON:"))
+    .map((l) => JSON.parse(l.slice(11)) as { event: string; data: unknown });
+}
+
 async function send(n: Near, from: string, to: string, method: string, args: object, deposit = 0n, tgas = 300): Promise<Outcome> {
   const tx = n.transaction(from).functionCall(to, method, args, { gas: `${tgas} Tgas` as never, attachedDeposit: `${deposit} yocto` as never });
   await tx.sign();
@@ -342,6 +350,8 @@ async function vault() {
   const amount = Number(process.env.SCENARIO_VAULT_NEAR ?? 1);
   const dep1 = await call(p.n, p.owner, c("vault"), "deposit", {}, near(amount), 150);
   steps.push({ step: `deposit ${amount} NEAR into the vault (staked into LiNEAR, EARN minted at NAV)`, tx: explorer(dep1.hash) });
+  const refund = dep1.o ? (eventsOf(dep1.o).find((e) => e.event === "deposit_refunded")?.data as { reason?: string } | undefined) : undefined;
+  if (refund) return save(10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", false, [...steps, { step: "the vault refused the deposit and refunded it", reason: refund.reason }]);
   const shares = await view<string>(c("vault"), "ft_balance_of", { account_id: p.owner });
   steps.push({ step: `EARN balance ${Number(BigInt(shares) / 10n ** 18n) / 1e6}`, totalSharesBefore: before?.total_shares });
   const hedge = await until("a hedge report after the deposit", 10 * 60_000, async () => {
