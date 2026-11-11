@@ -16,7 +16,7 @@ async function verify(id: string): Promise<VerifyLive | null> {
   if (general) return general;
   // Decision ids also verify through the guardian log's own route.
   const decision = await getJson<{ ok: boolean; checks: Check[] }>(`/v1/guardian/decisions/${encodeURIComponent(id)}/verify`).catch(() => null);
-  return decision ? { kind: "decision", ok: decision.ok, checks: decision.checks, subject: null } : null;
+  return decision ? { kind: "decision", ok: decision.ok, checks: decision.checks, subject: {} } : null;
 }
 
 export function VerifyView() {

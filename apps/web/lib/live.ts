@@ -18,93 +18,22 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T | 
   return (await res.json()) as T;
 }
 
-export type StatsLive = {
-  network: string;
-  positionsProtected: number;
-  positionsWatched?: number;
-  rescues: number;
-  vaultTvlUsd: number;
-  vaultRiskScore: number | null;
-  valueProtectedUsd?: number;
-  insuranceUsd?: number;
-  updatedAt: string;
-};
+export type { Certificate as CertificateLive, Heatmap as HeatmapLive, Incident as IncidentLive, Prices as PricesLive, Rates as RatesLive, Replay as ReplayLive, ReplayCrash, RouteSavings as SavingsLive, Stats as StatsLive, VaultInsurance as InsuranceLive, VerifyResult as VerifyLive } from "@parry/sdk";
+import type { Certificate, Heatmap, Incident, Prices, Rates, Replay, RouteSavings, Stats, VaultInsurance, VerifyResult } from "@parry/sdk";
 
-export type RatesLive = {
-  rhea: { asset: string; tokenId: string; supplyApr: number; borrowApr: number; utilization?: number; source: string }[];
-  hyperliquid: { fundingHourly: number | null; funding24hApr: number | null; source: string } | null;
-  vault: { stakingApr: number | null; fundingApr: number | null; netApr: number | null; insuranceShareBps: number | null; source: string } | null;
-  readAt: string;
-};
-
-export type ReplayPoint = { t: number; h: number };
-export type ReplayCrash = {
-  id: string;
-  name: string;
-  start: string;
-  end: string;
-  dropPct: number;
-  candles: { t: number; price: number }[];
-  position: {
-    startHealth: number;
-    warningHours: number | null;
-    liquidatedAt: number | null;
-    steps: { t: number; action: string; plan: string; healthBefore: number; healthAfter: number }[];
-    healthWith: ReplayPoint[];
-    healthWithout: ReplayPoint[];
-  };
-  vault: { navWith: { t: number; v: number }[]; navUnhedged: { t: number; v: number }[]; maxDrawdownPct: number; marginMin: number; insurancePaidUsd: number };
-};
-export type ReplayLive = { source: string; crashes: ReplayCrash[]; summary: { medianWarningHours: number; liquidationsAvoided: number; crashes: number } };
-
-export type HeatmapLive = {
-  network: string;
-  price: number;
-  buckets: { price: number; collateralUsd: number; debtUsd: number; accounts: number }[];
-  cascades: { from: number; to: number; collateralUsd: number }[];
-  readAt: string;
-  accounts: number;
-};
-
-export type PricesLive = { tokens: { id: string; symbol: string; priceUsd: number; change24h: number | null; source: string }[]; readAt: string };
-
-export type InsuranceLive = {
-  shareBps: number;
-  valueUsd: number;
-  paidTotalUsd: number;
-  paidTodayUsd: number;
-  capPerDayBps: number;
-  marginReservedUsd: number;
-  events: { kind: string; amountUsd: number; reason?: string; at: string; tx?: string | null }[];
-};
-
-export type Check = { name: string; ok: boolean; detail: string };
-export type VerifyLive = { kind: "decision" | "certificate" | "transaction"; ok: boolean; checks: Check[]; subject: unknown };
-
-export type CertificateLive = {
-  hash: string;
-  certificate: { account: string; reader: string; venue: string; threshold: number; block_height: number; issued_at: number; expires_at: number; statement: string };
-  signature: string;
-  enclavePublicKey: string;
-  anchorTx: string | null;
-  createdAt: string;
-};
-
-export type SavingsLive = { totalSavedUsd: number; rescues: { decision: string; chosen: string; worst: string; savedUsd: number; at: string }[] };
-
-export type IncidentLive = { id: string; title: string; body: string; severity: string; alerts: unknown[]; openedAt: string; closedAt: string | null };
+export type Check = VerifyResult["checks"][number];
 
 export const live = {
-  stats: () => getJson<StatsLive>("/v1/stats"),
-  rates: () => getJson<RatesLive>("/v1/rates"),
-  replay: () => getJson<ReplayLive>("/v1/replay"),
-  heatmap: (network: "testnet" | "mainnet") => getJson<HeatmapLive>(`/v1/heatmap?network=${network}`),
-  prices: (tokens?: readonly string[]) => getJson<PricesLive>(`/v1/prices${tokens?.length ? `?tokens=${tokens.join(",")}` : ""}`),
-  insurance: () => getJson<InsuranceLive>("/v1/vault/insurance"),
-  verify: (id: string) => getJson<VerifyLive>(`/v1/verify/${encodeURIComponent(id)}`),
-  certificates: (account?: string) => getJson<CertificateLive[]>(`/v1/certificates${account ? `?account=${account}` : ""}`),
-  savings: (account?: string) => getJson<SavingsLive>(`/v1/routes/savings${account ? `?account=${account}` : ""}`),
-  incidents: (account: string) => getJson<IncidentLive[]>(`/v1/incidents?account=${account}`),
+  stats: () => getJson<Stats>("/v1/stats"),
+  rates: () => getJson<Rates>("/v1/rates"),
+  replay: () => getJson<Replay>("/v1/replay"),
+  heatmap: (network: "testnet" | "mainnet") => getJson<Heatmap>(`/v1/heatmap?network=${network}`),
+  prices: (tokens?: readonly string[]) => getJson<Prices>(`/v1/prices${tokens?.length ? `?tokens=${tokens.join(",")}` : ""}`),
+  insurance: () => getJson<VaultInsurance>("/v1/vault/insurance"),
+  verify: (id: string) => getJson<VerifyResult>(`/v1/verify/${encodeURIComponent(id)}`),
+  certificates: (account?: string) => getJson<Certificate[]>(`/v1/certificates${account ? `?account=${account}` : ""}`),
+  savings: (account?: string) => getJson<RouteSavings>(`/v1/routes/savings${account ? `?account=${account}` : ""}`),
+  incidents: (account: string) => getJson<Incident[]>(`/v1/incidents?account=${account}`),
 };
 
 const minute = 60_000;

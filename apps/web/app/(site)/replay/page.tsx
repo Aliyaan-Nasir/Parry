@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function ReplayPage() {
   return (
-    <PublicShell title="Replayed through real crashes." lead="Real hourly NEAR prices from a public exchange, run through Parry's own risk model and guardian logic: how many hours of warning it gave, what the guardian would have done step by step, and health with and without it. The vault runs through the same crashes. Every number is computed by `pnpm replay`.">
+    <PublicShell title="Replayed through real crashes." lead="Real hourly NEAR prices from Binance, run through Parry's own risk model and guardian logic: how many hours of warning it gave, what the guardian would have done step by step, and health with and without it. The vault runs through the same crashes. Every number is computed by pnpm replay.">
       <ReplayView />
     </PublicShell>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CertificateBody } from "@parry/sdk";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import proofs from "@/lib/proofs.generated.json";
@@ -76,7 +77,7 @@ export function Earn() {
         <SectionHead title={["Earn without", "liquidation risk at all."]} lead="A delta-neutral vault for NEAR. Your deposit is staked into LiNEAR, and the vault shorts the same NEAR on Hyperliquid, so a share holds its dollar value while it earns staking yield and funding. Nobody in it can be liquidated." />
         <div className="mt-14 grid gap-6 lg:grid-cols-[1.25fr_1fr]">
           <div className="surface relative overflow-hidden p-6 sm:p-8">
-            <VaultDiagram ratio={ratio} insuranceUsd={insurance.data?.valueUsd ?? null} shareBps={insurance.data?.shareBps ?? r?.vault?.insuranceShareBps ?? 1000} />
+            <VaultDiagram ratio={ratio} insuranceUsd={insurance.data?.available ? Number(insurance.data.valueUsdE6) / 1e6 : null} shareBps={insurance.data?.shareBps ?? r?.vault?.insuranceShareBps ?? 1000} />
           </div>
           <div className="grid gap-6">
             <div className="surface p-6">
@@ -196,6 +197,8 @@ export function ReviewProof() {
   const ref = useRevealed<HTMLDivElement>();
   const certs = useCertificates();
   const cert = certs.data?.[0] ?? null;
+  // The certificate is the exact JSON text the enclave signed.
+  const body = cert ? (JSON.parse(cert.certificate) as CertificateBody) : null;
   useEffect(() => {
     if (!decision) return;
     let cancelled = false;
@@ -263,10 +266,10 @@ export function ReviewProof() {
             {cert ? (
               <dl className="mt-6 divide-y divide-line border-t border-line text-sm">
                 {[
-                  ["Statement", cert.certificate.statement],
-                  ["For", cert.certificate.reader],
-                  ["Block", cert.certificate.block_height.toLocaleString()],
-                  ["Expires", new Date(cert.certificate.expires_at * 1000).toUTCString().slice(5, 22)],
+                  ["Statement", body!.statement],
+                  ["For", body!.reader],
+                  ["Block", body!.block_height.toLocaleString()],
+                  ["Expires", new Date(body!.expires_at * 1000).toUTCString().slice(5, 22)],
                   ["Signed by", `${cert.enclavePublicKey.slice(0, 18)}...`],
                 ].map(([k, val]) => (
                   <div key={k} className="flex justify-between gap-6 py-3">
@@ -342,10 +345,10 @@ export function ReplayHeadline() {
     <section className="py-24 sm:py-32">
       <div className="mx-auto max-w-[1180px] px-4 sm:px-6">
         <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-end">
-          <SectionHead title={["Replayed through", "NEAR's worst crashes."]} lead={`Real hourly NEAR prices from ${data?.source ?? "a public exchange"}, run through Parry's risk model and guardian. Every number is computed, not claimed.`} />
+          <SectionHead title={["Replayed through", "NEAR's worst crashes."]} lead="Real hourly NEAR prices from Binance's public market data, run through Parry's risk model, guardian and vault. Every number is computed by a script anyone can run, not claimed." />
           <div className="grid grid-cols-2 gap-8">
             <div>
-              <div className="display text-[4.5rem] leading-none text-fg sm:text-[5.5rem]">{s ? `${s.medianWarningHours.toFixed(0)}h` : "..."}</div>
+              <div className="display text-[4.5rem] leading-none text-fg sm:text-[5.5rem]">{s ? `${(s.medianWarningHours ?? 0).toFixed(0)}h` : "..."}</div>
               <div className="label mt-3">median warning before liquidation</div>
             </div>
             <div>
