@@ -1,17 +1,15 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useMemo, useState, type FormEvent } from "react";
-import { verifyReserves, type ReservesVerification } from "@parry/sdk";
+import { useLayoutEffect, useState, type FormEvent } from "react";
+import { verifyReserves, type ReservesVerification, type VaultPoint } from "@parry/sdk";
 import { AmountField } from "@/components/app/AmountField";
-import { DataList, DataRow, errorMessage, ExternalLink, Note, QueryError, Segmented } from "@/components/app/bits";
+import { DataList, DataRow, errorMessage, ExternalLink, Note, QueryError } from "@/components/app/bits";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";
 import { useMoney } from "@/components/providers/MoneyProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Chart, type ChartSeries } from "@/components/ui/Chart";
-import { RiskGauge } from "@/components/ui/RiskGauge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Stat, StatGroup } from "@/components/ui/Stat";
 import { Tabs } from "@/components/ui/Tabs";
@@ -24,49 +22,8 @@ import { keys, usePortfolio, useReserves, useVault, useVaultChainState, useVault
 import { formatRelativeTime } from "@/lib/format";
 import { formatBps, formatNumber, formatPercent, fromUnits, shortId, toUnits } from "@/lib/units";
 import { useNow } from "@/lib/use-now";
+import { Insurance, ReserveRoots, VaultBalance, VaultHistory, YieldSources } from "./VaultParts";
 import { network } from "@/lib/env";
-import { cn } from "@/lib/cn";
-
-const DAYS = [
-  { value: 7, label: "7 days" },
-  { value: 30, label: "30 days" },
-  { value: 90, label: "90 days" },
-] as const;
-
-function SharePrice() {
-  const [days, setDays] = useState<number>(7);
-  const q = useVaultHistory(days);
-  const { rate, shown } = useMoney();
-  const k = rate ?? 1;
-  const series = useMemo<ChartSeries[]>(() => {
-    const data: { time: number; value: number }[] = [];
-    for (const p of q.data ?? []) {
-      const time = Math.floor(Date.parse(p.t) / 1000);
-      const value = p.sharePriceUsd * k;
-      const prev = data[data.length - 1];
-      if (Number.isFinite(time) && Number.isFinite(value) && (!prev || time > prev.time)) data.push({ time, value });
-    }
-    return [{ id: "share", kind: "area", tone: "brass", title: "Share", data }];
-  }, [q.data, k]);
-  const label = DAYS.find((d) => d.value === days)?.label ?? `${days} days`;
-  return (
-    <Card as="section" aria-labelledby="share-title" className="grid content-start gap-4">
-      <CardHeader
-        titleAs="h2"
-        title={<span id="share-title">Share price</span>}
-        description="One share was worth one dollar at the first deposit; it grows with staking yield and funding."
-        actions={<Segmented label="Time range" options={DAYS} value={days as 7 | 30 | 90} onChange={setDays} />}
-      />
-      {q.isError && !q.data ? (
-        <QueryError title="The share price history could not be loaded" error={q.error} onRetry={() => void q.refetch()} />
-      ) : q.isPending ? (
-        <Skeleton height="260px" shape="block" />
-      ) : (
-        <Chart series={series} label={`Vault share price, last ${label}`} height={260} valueFormat="usd" currency={shown} precision={4} minSpan={0.02} />
-      )}
-    </Card>
-  );
-}
 
 function Hedge({ v }: { v: Vault }) {
   const h = v.hedge;
@@ -75,6 +32,8 @@ function Hedge({ v }: { v: Vault }) {
   // With no margin in its Hyperliquid account the vault cannot open the short at all.
   const unfunded = !h.needsMargin && h.accountValueUsd <= 0 && Number(v.stakedLinear) > 0;
   const addressUrl = h.address ? hyperliquidAddressUrl(h.address) : null;
+  const history = useVaultHistory(7);
+  const last = ((history.data ?? []) as unknown as VaultPoint[]).at(-1);
   return (
     <Card as="section" aria-labelledby="hedge-title" className="grid content-start gap-4">
       <CardHeader
@@ -95,6 +54,18 @@ function Hedge({ v }: { v: Vault }) {
         </div>
         {unfunded ? <p className="text-[13px] text-muted">The hedge account holds no margin yet, so the short is not open. It opens once USDC reaches the hedge address on Hyperliquid.</p> : null}
       </div>
+      <dl className="ruled grid-cols-3">
+        {[
+          ["Margin ratio", last?.marginRatio != null ? last.marginRatio.toFixed(2) : "n/a", "Account value over the short's size"],
+          ["Basis, a year", last?.basisApr != null ? formatPercent(last.basisApr, 1) : "n/a", "Staking plus funding"],
+          ["Drawdown", last?.drawdown != null ? formatPercent(last.drawdown, 2) : "n/a", "Under the best share price"],
+        ].map(([k, val, hint]) => (
+          <div key={k} className="p-3.5" title={hint}>
+            <dt className="label">{k}</dt>
+            <dd className="num mt-1 text-[15px] text-fg">{val}</dd>
+          </div>
+        ))}
+      </dl>
       <DataList>
         <DataRow label="Leverage">
           <span className="num">
@@ -187,32 +158,6 @@ function LastOrder({ order }: { order: Vault["hedge"]["lastOrder"] }) {
   );
 }
 
-function Yield({ v }: { v: Vault }) {
-  const { format } = useMoney();
-  return (
-    <Card as="section" aria-labelledby="yield-title" className="grid content-start gap-4">
-      <CardHeader titleAs="h2" title={<span id="yield-title">Yield</span>} description="Where the share price growth comes from." />
-      <DataList>
-        <DataRow label="Staking yield" hint="LiNEAR rate growth, annualized">
-          <span className="num">{v.yield.stakingApr !== null ? formatPercent(v.yield.stakingApr, 2) : "Not enough history"}</span>
-        </DataRow>
-        <DataRow label="Funding received" hint="Paid to the short by longs">
-          <span className={cn("num", v.yield.fundingUsd < 0 && "text-critical")}>{format(v.yield.fundingUsd, { signed: true })}</span>
-        </DataRow>
-        <DataRow label="Hedge profit and loss" hint="Offsets the staked NEAR's price moves">
-          <span className="num">{format(v.yield.hedgePnlUsd, { signed: true })}</span>
-        </DataRow>
-        <DataRow label="LiNEAR rate">
-          <span className="num">{formatNumber(v.linearRate, 4)} NEAR</span>
-        </DataRow>
-        <DataRow label="Staked">
-          <span className="num">{fromUnits(v.stakedLinear, 24, 2)} LiNEAR</span>
-        </DataRow>
-      </DataList>
-    </Card>
-  );
-}
-
 type ReservesResult = ReservesVerification & { chainNote: string | null };
 
 function Reserves({ v }: { v: Vault }) {
@@ -273,7 +218,7 @@ function Reserves({ v }: { v: Vault }) {
             <table className="w-full border-collapse text-left text-[13px]">
               <caption className="sr-only">Reserve leaves</caption>
               <thead>
-                <tr className="border-b border-line text-[12px] uppercase tracking-[0.06em] text-muted">
+                <tr className="border-b border-line text-[12.5px] text-muted">
                   <th scope="col" className="px-4 py-2.5 font-semibold">
                     Asset
                   </th>
@@ -338,6 +283,7 @@ function Reserves({ v }: { v: Vault }) {
               </div>
             ) : null}
           </div>
+          <ReserveRoots />
         </>
       )}
     </Card>
@@ -521,22 +467,35 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
 function Overview({ v }: { v: Vault }) {
   const { format } = useMoney();
   const now = useNow();
+  const word = v.riskScore >= 80 ? "high" : v.riskScore >= 50 ? "elevated" : v.riskScore >= 25 ? "moderate" : "low";
   return (
-    <Card as="section" aria-labelledby="overview-title" className="grid gap-6 md:grid-cols-[auto_1fr] md:items-center md:gap-10">
+    <section aria-labelledby="overview-title" className="surface relative overflow-hidden p-6 sm:p-8">
       <h2 id="overview-title" className="sr-only">
         Overview
       </h2>
-      <div className="flex flex-col items-center gap-2">
-        <RiskGauge score={v.riskScore} label="Vault risk score" />
-        <Badge tone={v.paused ? "caution" : "safe"}>{v.paused ? "Deposits paused" : "Open for deposits"}</Badge>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center">
+        <div>
+          <div className="label">Share price</div>
+          <div className="display mt-2 text-6xl text-fg sm:text-7xl">{format(v.sharePriceUsd, { digits: 4 })}</div>
+          <p className="mt-3 text-sm text-muted">{v.paused ? "Deposits are paused." : "Open for deposits."} One share was worth one dollar at the first deposit.</p>
+          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-5">
+            {[
+              ["Net asset value", format(v.navUsd)],
+              ["Risk score", `${v.riskScore} of 100, ${word}`],
+              ["NEAR price", format(v.nearPriceUsd)],
+              ["Last report", v.reportAt && now ? formatRelativeTime(v.reportAt, now) : v.reportAt ? "" : "none yet"],
+            ].map(([k, val]) => (
+              <div key={k}>
+                <dt className="label">{k}</dt>
+                <dd className="num mt-1 text-[15px] text-fg">{val}</dd>
+              </div>
+            ))}
+          </dl>
+          {v.queueLength ? <p className="mt-3 text-[13px] text-muted">{v.queueLength} {v.queueLength === 1 ? "withdrawal" : "withdrawals"} queued.</p> : null}
+        </div>
+        <VaultBalance v={v} />
       </div>
-      <StatGroup className="grid-cols-2 gap-y-5 lg:grid-cols-4">
-        <Stat label="Net asset value" value={format(v.navUsd)} />
-        <Stat label="Share price" value={format(v.sharePriceUsd, { digits: 4 })} />
-        <Stat label="NEAR price" value={format(v.nearPriceUsd)} hint="As the last report priced it" />
-        <Stat label="Last report" value={v.reportAt && now ? formatRelativeTime(v.reportAt, now) : v.reportAt ? "" : "None yet"} hint={`${v.queueLength} ${v.queueLength === 1 ? "withdrawal" : "withdrawals"} queued`} />
-      </StatGroup>
-    </Card>
+    </section>
   );
 }
 
@@ -556,11 +515,12 @@ function VaultBody({ v }: { v: Vault }) {
           <Button onClick={() => setConnectOpen(true)}>Connect</Button>
         </Card>
       ) : null}
-      <SharePrice />
-      <div className="grid gap-6 lg:grid-cols-2">
+      <VaultHistory />
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <Hedge v={v} />
-        <Yield v={v} />
+        <YieldSources v={v} />
       </div>
+      <Insurance />
       <Reserves v={v} />
       {network === "testnet" ? (
         <Note tone="brass">
