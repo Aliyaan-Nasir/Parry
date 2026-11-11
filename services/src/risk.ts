@@ -107,8 +107,8 @@ export async function scoreAll(sql: Sql): Promise<number> {
   const fromHeatmap = borrowers.length > 0 ? heatmapPressure(borrowers, price, tr.sigmaHourly, cascadeParams()) : null;
   const c = fromHeatmap ? { ...own, pressure: fromHeatmap.pressure, atRiskUsd: fromHeatmap.atRiskUsd } : own;
   const cascadeSource = fromHeatmap
-    ? { source: "heatmap" as const, network: "mainnet" as Network, accounts: borrowers.length, cascadeTo: fromHeatmap.to }
-    : { source: "positions" as const, network: null, accounts: lending.length, cascadeTo: null };
+    ? { source: "heatmap" as const, network: "mainnet" as Network, accounts: borrowers.length, cascadeTo: fromHeatmap.to, soldUsd: fromHeatmap.soldUsd, sigmaHourly: tr.sigmaHourly }
+    : { source: "positions" as const, network: null, accounts: lending.length, cascadeTo: null, soldUsd: null, sigmaHourly: tr.sigmaHourly };
 
   for (const r of rows) {
     let a;

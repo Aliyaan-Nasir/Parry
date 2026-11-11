@@ -46,7 +46,9 @@ export class StreamHub {
   private readonly clients = new Set<Client>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
-  private cursor: Record<string, Date> = {};
+  /** Per event, the database time (text, microseconds) of the newest item sent. */
+  private cursor: Record<string, string> = {};
+  private ready: Promise<void> = Promise.resolve();
   private polling = false;
 
   constructor(
@@ -58,10 +60,15 @@ export class StreamHub {
     return this.clients.size;
   }
 
-  /** Starts the cursors at now: a client gets what changes after it connects. */
+  /**
+   * Starts the cursors at the database's now (its clock, not this process's, so no change is lost
+   * to clock skew): a client gets what changes after it connects.
+   */
   private start() {
-    const now = new Date();
-    this.cursor = { alert: now, decision: now, position: now, price: now, vault: now, status: now };
+    this.ready = this.sql<{ t: string }[]>`SELECT now()::text AS t`.then(([r]) => {
+      const now = r!.t;
+      this.cursor = { alert: now, decision: now, position: now, price: now, vault: now, status: now };
+    });
     this.timer = setInterval(() => void this.poll(), this.opts.pollMs ?? 2000);
     this.heartbeat = setInterval(() => this.broadcastRaw(": heartbeat\n\n"), this.opts.heartbeatMs ?? 15_000);
   }
@@ -106,42 +113,44 @@ export class StreamHub {
 
   private async changes(): Promise<StreamItem[]> {
     const sql = this.sql;
-    // Cursors are JavaScript dates (milliseconds); Postgres keeps microseconds, so compare truncated.
+    await this.ready;
+    // Cursors are the database's own timestamps as text, so comparisons keep its microseconds; the
+    // parameter goes in as text (postgres.js would round a timestamptz parameter to milliseconds).
     const c = this.cursor;
     const out: StreamItem[] = [];
-    const advance = (k: string, t: Date | undefined) => {
-      if (t && t > c[k]!) c[k] = t;
+    const advance = (k: string, t: string | null | undefined) => {
+      if (t) c[k] = t;
     };
-    const alerts = await sql<AlertRow[]>`SELECT * FROM alerts WHERE date_trunc('milliseconds', updated_at) > ${c.alert!} ORDER BY updated_at LIMIT 200`;
+    const alerts = await sql<(AlertRow & { cur: string })[]>`SELECT *, updated_at::text AS cur FROM alerts WHERE updated_at > ${c.alert!}::text::timestamptz ORDER BY updated_at LIMIT 200`;
     for (const a of alerts) out.push({ event: "alert", account: a.account, data: alertView(a) });
-    advance("alert", alerts.at(-1)?.updated_at);
-    const decisions = await sql<DecisionRow[]>`SELECT * FROM decisions WHERE date_trunc('milliseconds', created_at) > ${c.decision!} ORDER BY created_at LIMIT 100`;
+    advance("alert", alerts.at(-1)?.cur);
+    const decisions = await sql<(DecisionRow & { cur: string })[]>`SELECT *, created_at::text AS cur FROM decisions WHERE created_at > ${c.decision!}::text::timestamptz ORDER BY created_at LIMIT 100`;
     for (const d of decisions) out.push({ event: "decision", account: d.account, data: decision(d) });
-    advance("decision", decisions.at(-1)?.created_at);
-    const positions = await sql<PositionRow[]>`SELECT * FROM positions WHERE date_trunc('milliseconds', scored_at) > ${c.position!} ORDER BY scored_at LIMIT 500`;
+    advance("decision", decisions.at(-1)?.cur);
+    const positions = await sql<(PositionRow & { cur: string })[]>`SELECT *, scored_at::text AS cur FROM positions WHERE scored_at > ${c.position!}::text::timestamptz ORDER BY scored_at LIMIT 500`;
     for (const p of positions) out.push({ event: "position", account: p.account, data: position(p) });
-    advance("position", positions.at(-1)?.scored_at ?? undefined);
-    const [price] = await sql<{ t: Date; price: number; old: number | null }[]>`
-      SELECT t, price, (SELECT price FROM prices WHERE asset = 'NEAR' AND source = 'oracle' AND t < now() - interval '24 hours' ORDER BY t DESC LIMIT 1) AS old
-      FROM prices WHERE asset = 'NEAR' AND source = 'oracle' AND date_trunc('milliseconds', t) > ${c.price!} ORDER BY t DESC LIMIT 1`;
+    advance("position", positions.at(-1)?.cur);
+    const [price] = await sql<{ cur: string; price: number; old: number | null }[]>`
+      SELECT t::text AS cur, price, (SELECT price FROM prices WHERE asset = 'NEAR' AND source = 'oracle' AND t < now() - interval '24 hours' ORDER BY t DESC LIMIT 1) AS old
+      FROM prices WHERE asset = 'NEAR' AND source = 'oracle' AND t > ${c.price!}::text::timestamptz ORDER BY t DESC LIMIT 1`;
     if (price) {
       out.push({
         event: "price",
         account: null,
         data: { id: "wrap.near", symbol: "NEAR", priceUsd: price.price, change24h: price.old ? price.price / price.old - 1 : null, source: "lending oracle (the monitor's sample)" },
       });
-      advance("price", price.t);
+      advance("price", price.cur);
     }
-    const [vault] = await sql<{ t: Date }[]>`SELECT t FROM vault_history WHERE date_trunc('milliseconds', t) > ${c.vault!} ORDER BY t DESC LIMIT 1`;
+    const [vault] = await sql<{ cur: string }[]>`SELECT t::text AS cur FROM vault_history WHERE t > ${c.vault!}::text::timestamptz ORDER BY t DESC LIMIT 1`;
     if (vault) {
-      advance("vault", vault.t);
+      advance("vault", vault.cur);
       // One chain read per vault report, shared by every client.
       const state = await (this.opts.vault ?? vaultState)(sql).catch(() => null);
       if (state) out.push({ event: "vault", account: null, data: state });
     }
-    const status = await sql<{ name: string; ok: boolean; detail: string; checked_at: Date }[]>`SELECT * FROM service_status WHERE date_trunc('milliseconds', checked_at) > ${c.status!} ORDER BY checked_at LIMIT 50`;
+    const status = await sql<{ name: string; ok: boolean; detail: string; checked_at: Date; cur: string }[]>`SELECT *, checked_at::text AS cur FROM service_status WHERE checked_at > ${c.status!}::text::timestamptz ORDER BY checked_at LIMIT 50`;
     for (const s of status) out.push({ event: "status", account: null, data: { name: s.name, ok: s.ok, detail: s.detail, checkedAt: s.checked_at.toISOString() } });
-    advance("status", status.at(-1)?.checked_at);
+    advance("status", status.at(-1)?.cur);
     return out;
   }
 

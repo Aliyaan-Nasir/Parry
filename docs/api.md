@@ -100,7 +100,7 @@ interface Market {
   cascade: {
     pressure: number; atRiskUsd: number; correlatedOwners: number;
     source: "heatmap" | "positions";   // heatmap: every mainnet Rhea lending borrower; positions: the positions Parry monitors, until the heatmap has data
-    network?: "mainnet" | null; accounts?: number; cascadeTo?: number | null;
+    network?: "mainnet" | null; accounts?: number; cascadeTo?: number | null; soldUsd?: number | null; sigmaHourly?: number;
   };
 }
 
@@ -335,10 +335,11 @@ interface Replay {
 interface Heatmap {
   network: "testnet" | "mainnet";
   lending: string;
-  price: number;                       // NEAR, as mainnet lending prices it
-  buckets: { price: number; collateralUsd: number; debtUsd: number; accounts: number }[]; // non-empty buckets 2 % of the price wide; `price` is the bucket's top
-  cascades: { from: number; to: number; collateralUsd: number; accounts: number; rounds: number }[]; // chained: the liquidations' sales reach further buckets
-  pressure: { atRiskUsd: number; pressure: number; to: number; accounts: number };          // what a 2σ daily fall sets off
+  price: number;                       // NEAR: the latest market report's price (the one /v1/market shows), else mainnet lending's
+  buckets: { price: number; collateralUsd: number; debtUsd: number; accounts: number }[]; // non-empty buckets 2 % of the price wide below today's price; `price` is the bucket's top
+  cascades: { from: number; to: number; collateralUsd: number; soldUsd: number; accounts: number; rounds: number }[]; // chained: the liquidations' sales reach further buckets
+  pressure: { atRiskUsd: number; soldUsd: number; pressure: number; to: number; accounts: number }; // what a 2σ daily fall sets off; the same figure as /v1/market's cascade
+  underwater: { accounts: number; collateralUsd: number; debtUsd: number }; // already under health 1 today: not bucketed, not cascaded
   accounts: number;                    // borrowers stored
   sweep: { totalAccounts: number; nextIndex: number; lastFullSweepAt: string | null } | null;
   readAt: string;
@@ -477,7 +478,7 @@ Prices are the Pyth feeds mainnet Rhea lending prices with (`get_all_token_pyth_
 The 24 hour change is Binance's public 24 hour ticker for the feed's market (NEAR, BTC, ETH, ZEC, USDC); a liquid staking token takes NEAR's change, and a token without such a market has `null`.
 Hyperliquid funding is its info API (`metaAndAssetCtxs` for the live rate, `fundingHistory` for the last 24 hours).
 The heatmap pages every Rhea lending account read-only (`get_accounts_paged`, 100 at a time, a pause between calls) on testnet and on mainnet (`contract.main.burrow.near`), in the risk service, about 3000 accounts every 2 minutes per network; it keeps borrowers in Postgres and drops the accounts a whole sweep did not see.
-Its cascades assume a market depth of `CASCADE_DEPTH_2PCT_USD` (1.5 million USD moves NEAR 2 %), a configured figure, and the source field says so.
+Its cascades size each liquidation by Rhea's own rule (only back to health 1, docs/risk-model.md section 5) and assume a market depth of `CASCADE_DEPTH_2PCT_USD` (1.5 million USD moves NEAR 2 %), a configured figure, and the source field says so.
 
 ## Verification
 

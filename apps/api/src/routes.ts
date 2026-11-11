@@ -154,9 +154,10 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
     if (net !== "testnet" && net !== "mainnet") throw h.bad("network is testnet or mainnet");
     const asset = (c.req.query("asset") ?? "NEAR").toUpperCase();
     if (asset !== "NEAR" && asset !== "WNEAR") throw h.bad("asset: the heatmap's driver is NEAR (wNEAR and the liquid staking tokens move with it)");
-    const price = (await tokenPrices()).get("wrap.near")?.priceUsd;
+    // The market report's price and volatility, so this pressure is the one /v1/market shows.
+    const [m] = await sql<{ payload: { price?: number; tremor?: { sigmaHourly?: number } } }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
+    const price = m?.payload.price || (await tokenPrices()).get("wrap.near")?.priceUsd;
     if (!price) throw h.bad("no NEAR price from the lending oracle", 503);
-    const [m] = await sql<{ payload: { tremor?: { sigmaHourly?: number } } }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
     const sigma = m?.payload.tremor?.sigmaHourly ?? DEFAULT_ANNUAL_VOL / Math.sqrt(8760);
     return c.json(await heatmapView(sql, net, price, sigma));
   });

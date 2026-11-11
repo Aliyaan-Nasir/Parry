@@ -6,6 +6,8 @@ import {
   heatBuckets,
   heatmapPressure,
   incidentSummary,
+  liquidationSaleUsd,
+  underwater,
   joinsIncident,
   INCIDENT_WINDOW_MS,
   REGIME_THRESHOLDS,
@@ -125,37 +127,73 @@ describe("regimes", () => {
 });
 
 describe("heatmap", () => {
-  const accounts: HeatmapAccount[] = [
-    { account: "a", liqPrice: 2.9, driverCollateralUsd: 1_000_000, collateralUsd: 1_000_000, debtUsd: 700_000 },
-    { account: "b", liqPrice: 2.87, driverCollateralUsd: 2_000_000, collateralUsd: 2_000_000, debtUsd: 1_500_000 },
-    { account: "c", liqPrice: 2.0, driverCollateralUsd: 500_000, collateralUsd: 500_000, debtUsd: 200_000 },
-    { account: "d", liqPrice: null, driverCollateralUsd: 0, collateralUsd: 10_000, debtUsd: 5_000 },
-  ];
+  /**
+   * A real mainnet borrower as the heatmap read it on 11 Nov 2026 (thickdish7375.near): 1 214 937
+   * wNEAR (ratio 0.75) and 1.97 M USD of ZEC (0.70) against 4.19 M USD of USDT and USDC (0.95),
+   * NEAR at 3.585, health 1.054, liquidation at 3.327, 7.2 % away.
+   */
+  const NEAR = 3.585;
+  const whale: HeatmapAccount = {
+    account: "whale.near",
+    liqPrice: (4_190_000 / 0.95 - 0.7 * 1_970_000) / (0.75 * 1_214_937),
+    driverCollateralUsd: 1_214_937 * NEAR,
+    collateralUsd: 1_214_937 * NEAR + 1_970_000,
+    debtUsd: 4_190_000,
+    exposure: 0.75 * 1_214_937,
+    collateralRatio: 0.73,
+    debtRatio: 0.95,
+  };
+  const underwaterAccount: HeatmapAccount = { account: "bad.near", liqPrice: 18_664, driverCollateralUsd: 0, collateralUsd: 92_000, debtUsd: 62_000, exposure: 1e-6 };
 
-  test("buckets collateral by liquidation price", () => {
-    const b = heatBuckets(accounts, 3, { width: 0.1 });
-    expect(b[0]!.price).toBe(3);
-    expect(b.reduce((s, x) => s + x.accounts, 0)).toBe(3);
-    const at = b.find((x) => x.accounts === 2)!;
-    expect(at.collateralUsd).toBe(3_000_000);
+  test("a liquidation takes only what brings health back to 1, as Rhea allows", () => {
+    expect(whale.liqPrice!).toBeCloseTo(3.327, 3);
+    expect(liquidationSaleUsd(whale, NEAR, 3.4)).toBe(0);
+    const p = 3.25;
+    const sold = liquidationSaleUsd(whale, NEAR, p);
+    // Rebuild the account after the sale: health is back at 1 (within rounding of the ratios).
+    const gap = whale.exposure! * (whale.liqPrice! - p);
+    const d = gap / (whale.debtUsd / 0.95) / 2;
+    const seized = sold / (whale.driverCollateralUsd / whale.collateralUsd);
+    const repaid = seized * (1 - d);
+    const weightedDebt = whale.debtUsd / 0.95 - repaid / 0.95;
+    const weightedCollateral = whale.debtUsd / 0.95 - gap - seized * 0.73;
+    expect(weightedCollateral / weightedDebt).toBeCloseTo(1, 9);
+    // A slice, not the whole position: about 154 K USD of NEAR for a 2.3 % fall past the liquidation price.
+    expect(sold).toBeGreaterThan(100_000);
+    expect(sold).toBeLessThan(400_000);
   });
 
-  test("a liquidation's sale reaches the next account: a chained cascade", () => {
-    const r = runCascade(accounts, 3, 2.9, { depth2pctUsd: 1_000_000, bonus: 0.05 });
+  test("the realistic case: one whale 7 % away barely adds to a 2σ day", () => {
+    const sigma = 0.0101; // 95 % annual
+    const p = heatmapPressure([whale, underwaterAccount], NEAR, sigma);
+    expect(p.accounts).toBe(1);
+    expect(p.atRiskUsd).toBeCloseTo(whale.collateralUsd, 0);
+    // Liquidators sell about 175 K USD of NEAR: 0.23 % more fall on a 9.9 % move, pressure 0.024,
+    // not the 0.57 that selling the whole position at once gave.
+    expect(p.soldUsd).toBeGreaterThan(150_000);
+    expect(p.soldUsd).toBeLessThan(200_000);
+    expect(p.pressure).toBeGreaterThan(0.02);
+    expect(p.pressure).toBeLessThan(0.03);
+  });
+
+  test("accounts already under water are counted apart, not bucketed or cascaded", () => {
+    const b = heatBuckets([whale, underwaterAccount], NEAR);
+    expect(b.reduce((s, x) => s + x.accounts, 0)).toBe(1);
+    expect(underwater([whale, underwaterAccount], NEAR)).toEqual({ accounts: 1, collateralUsd: 92_000, debtUsd: 62_000 });
+    expect(heatmapPressure([underwaterAccount], NEAR, 0.0101).pressure).toBe(0);
+  });
+
+  test("a thin market chains: one liquidation's sales reach the next account", () => {
+    const next: HeatmapAccount = { ...whale, account: "next.near", liqPrice: 3.2 };
+    const thin = { depth2pctUsd: 100_000 };
+    const r = runCascade([whale, next], NEAR, 3.3, thin);
     expect(r.rounds).toBe(2);
     expect(r.accounts).toBe(2);
-    expect(r.to).toBeLessThan(2.87);
-    const chains = chainedCascades(accounts, 3, heatBuckets(accounts, 3), { depth2pctUsd: 1_000_000, bonus: 0.05 });
-    expect(chains.length).toBeGreaterThan(0);
+    expect(r.to).toBeLessThan(3.2);
+    const chains = chainedCascades([whale, next], NEAR, heatBuckets([whale, next], NEAR), thin);
     expect(chains[0]!.from).toBeGreaterThan(chains[0]!.to);
-  });
-
-  test("pressure is the extra fall over a 2σ day, zero without accounts in reach", () => {
-    expect(heatmapPressure([], 3, 0.01).pressure).toBe(0);
-    const p = heatmapPressure(accounts, 3, 0.01, { depth2pctUsd: 1_000_000, bonus: 0.05 });
-    expect(p.atRiskUsd).toBe(3_000_000);
-    expect(p.pressure).toBeGreaterThan(0);
-    expect(p.pressure).toBeLessThanOrEqual(1);
+    expect(heatmapPressure([], NEAR, 0.01).pressure).toBe(0);
+    expect(heatmapPressure([whale, next], NEAR, 0.0101, thin).pressure).toBeLessThanOrEqual(1);
   });
 });
 

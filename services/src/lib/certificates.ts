@@ -82,7 +82,10 @@ export async function issueCertificate(sql: Sql, input: CertificateInput, issued
     throw new CertificateError("health certificates need the enclave build with the certificate mode, which is not deployed on this network yet", 503);
   }
   const run = deps.run ?? ((fields) => runEnclave<CertificateOutput>("certificate", [], fields));
-  const r = await run({ account: input.account, reader: input.reader, threshold: input.threshold, ttl_secs: input.ttlSecs, venue: input.venue });
+  // A run that cannot start or fails (no enclave caller configured, OutLayer down) is a dependency failure.
+  const r = await run({ account: input.account, reader: input.reader, threshold: input.threshold, ttl_secs: input.ttlSecs, venue: input.venue }).catch((e: unknown) => {
+    throw new CertificateError(`the enclave run failed: ${(e as Error).message ?? String(e)}`, 503);
+  });
   if ("refused" in r.output) throw new CertificateError(`the enclave refused: ${r.output.refused}`, 422);
   const out = r.output;
   const hash = certificateHash(out.certificate_json);

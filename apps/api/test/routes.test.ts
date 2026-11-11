@@ -68,9 +68,24 @@ describe.skipIf(!url)("new routes on a database", () => {
       app.request("/v1/certificates", { method: "POST", headers, body: JSON.stringify({ account, reader: "lender.testnet", threshold: 1.2, ttlSecs: 3600 }) });
     expect((await req("0uwatcher.testnet", {})).status).toBe(401);
     expect((await req("0ua.testnet")).status).toBe(401);
-    const r = await req("0uwatcher.testnet");
-    expect(r.status).toBe(503);
-    expect(((await r.json()) as { error: string }).error).toContain("certificate mode");
+    const modes = process.env.ENCLAVE_MODES;
+    const enclave = process.env.ENCLAVE_ACCOUNT_ID;
+    try {
+      process.env.ENCLAVE_MODES = "keys,risk_update,guardian,vault_report";
+      const r = await req("0uwatcher.testnet");
+      expect(r.status).toBe(503);
+      expect(((await r.json()) as { error: string }).error).toContain("certificate mode");
+      // Deployed, but this API cannot call the enclave: still a 503 that says why.
+      process.env.ENCLAVE_MODES = "certificate";
+      delete process.env.ENCLAVE_ACCOUNT_ID;
+      const run = await req("0uwatcher.testnet");
+      expect(run.status).toBe(503);
+      expect(((await run.json()) as { error: string }).error).toContain("enclave run failed");
+    } finally {
+      if (modes === undefined) delete process.env.ENCLAVE_MODES;
+      else process.env.ENCLAVE_MODES = modes;
+      if (enclave !== undefined) process.env.ENCLAVE_ACCOUNT_ID = enclave;
+    }
     expect(await (await app.request("/v1/certificates?account=0uwatcher.testnet")).json()).toEqual([]);
     expect((await app.request(`/v1/certificates/${"ab".repeat(32)}`)).status).toBe(404);
   });

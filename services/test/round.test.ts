@@ -45,6 +45,10 @@ describe("heatmap accounts", () => {
     expect(row.health).toBeCloseTo(1.5675, 4);
     expect(row.liqPrice!).toBeCloseTo(3 / 1.5675, 4);
     expect(row.driverCollateralUsd).toBeCloseTo(330, 6);
+    // Weighted exposure in NEAR: 110 × 0.75; the ratios are value-weighted.
+    expect(row.exposure!).toBeCloseTo(82.5, 6);
+    expect(row.collateralRatio).toBeCloseTo(0.75, 9);
+    expect(row.debtRatio).toBeCloseTo(0.95, 9);
   });
 
   test("an account without debt, or with only unknown assets, is not a borrower", () => {

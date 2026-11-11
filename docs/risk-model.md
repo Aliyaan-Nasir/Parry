@@ -76,13 +76,22 @@ It also flags an owner whose positions on two or more venues would liquidate in 
 
 Once the liquidation heatmap has data, the pressure comes from the whole market instead (`cascade.source: "heatmap"`).
 The risk service pages every Rhea lending account on mainnet (`contract.main.burrow.near`, read-only view calls) and keeps each borrower's liquidation price on NEAR, the driver of wNEAR and the liquid staking tokens (`packages/core/src/heatmap.ts`).
-A cascade starts at the 2σ daily fall: every borrower whose liquidation price is reached is liquidated, its liquidator sells the seized NEAR-linked collateral (the debt plus a 5 % bonus, at most the collateral), the sale moves the price down 2 % per `CASCADE_DEPTH_2PCT_USD` (1.5 million USD by default, a configured market depth), and the lower price may reach more borrowers, round after round until none is reached.
+A cascade starts at the 2σ daily fall, and liquidations are sized the way Rhea lending allows them (`internal_liquidate`): only while health is under 1, and only as far as leaves it under 1, at a discount of d = (weighted debt − weighted collateral) / weighted debt / 2.
+So at a price p under an account's liquidation price, the most liquidators can repay is what brings its health back to 1,
+
+    X = (D_w − C_w) / (1 / v_d − v_c / (1 − d)),   with D_w − C_w = exposure × (P_liq − p)
+
+where exposure is the account's risk-weighted NEAR (collateral × ratio minus debt / ratio, in NEAR) and v_c, v_d its value-weighted ratios; they seize X / (1 − d) of collateral and sell the NEAR-linked share of it.
+Those sales move the price down 2 % per `CASCADE_DEPTH_2PCT_USD` (1.5 million USD by default, a configured market depth); the lower price deepens those liquidations and may reach more accounts, and the price settles where the sales stop moving it (a fixed point).
+Accounts already under health 1 at today's price (bad debt, or collateral nobody liquidates) are counted apart (`underwater`) and left out: a fall does not set them off.
 The pressure is the extra fall the liquidations add over the 2σ fall itself, in log terms, capped at 1:
 
     C = min(1, ln(P_2σ / P_end) / (2 σ √24))
 
 so 1 means the liquidations alone would double the move.
-`atRiskUsd` is the collateral of every borrower the chain reaches.
+`atRiskUsd` is the collateral of every borrower the chain puts under health 1, and `soldUsd` what their liquidators sell.
+`/v1/market` and `/v1/heatmap` compute it with the same function, borrowers, price and volatility.
+Example (the test "the realistic case"): one mainnet borrower with 1.21 million wNEAR and 1.97 million USD of ZEC against 4.19 million USD of stablecoins, 7.2 % from liquidation, with NEAR at 3.585 and Tremor at 95 % annual: a 2σ day reaches it, liquidators may sell about 175 000 USD of NEAR, which adds 0.23 % to a 9.9 % fall, and the pressure is 0.024.
 The heatmap view lists the chained cascades that start at each bucket's price and reach further buckets.
 
 ## 6. Value at risk
