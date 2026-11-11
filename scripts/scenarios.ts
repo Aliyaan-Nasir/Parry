@@ -494,6 +494,8 @@ async function evmRescue() {
     const account = await view<string>(c("factory"), "account_id_of", { near_account: ownerId });
     p = { owner: ownerId, key, n: client(ownerId, key), account, steps: [] };
   }
+  // SCENARIO_EVM_REUSE keeps the loan and the mandate an earlier run opened, and only waits for the guardian.
+  if (!process.env.SCENARIO_EVM_REUSE) {
   const open = Bun.spawnSync(["bun", "scripts/evm-position.ts", p.account, "--eth", "0.003", "--health", "1.15"], {
     cwd: ROOT_DIR,
     env: { ...process.env, OWNER_ACCOUNT_ID: p.owner, OWNER_PRIVATE_KEY: p.key, PARRY_NETWORK: "testnet" },
@@ -512,6 +514,22 @@ async function evmRescue() {
   });
   const set = await ownerCall(p, [{ set_mandate: { mandate: m } }]);
   p.steps.push({ step: "mandate: evm_repay on the Aave pool for the account's own address", tx: explorer(set.hash) });
+  } else {
+    // The earlier run's record holds the loan's transactions; the mandate is set again (with the
+    // current guardian key) from the EVM guard already on chain.
+    p.steps.push(...((proofs.scenarios["9"]?.steps ?? []) as { step?: string }[]).filter((x) => /protected account|basescan|Aave:/.test(x.step ?? "")));
+    const onChain = await view<{ mandate: { evm: { chain_id: number; pool: string; asset: string; address: string; max_amount: string } } }>(p.account, "mandate");
+    const g = onChain.mandate.evm;
+    const { key, sealingKey } = await parry.enclave();
+    const m = buildMandate({
+      account: p.account, guardianKey: key.public_key, powers: ["evm_repay"], limits: [], maxActionsPerDay: 10, minHealthAfterBps: 10500, maxSlippageBps: 300,
+      evm: { chainId: g.chain_id, pool: g.pool, asset: g.asset, address: g.address, maxAmount: g.max_amount },
+      expiresAt: Math.floor(Date.now() / 1000) + 7 * 86400, policy: { ...policy("repay-first"), evmTriggerHealth: 1.2 },
+      ...(sealingKey ? { sealingPublicKey: sealingKey.public_key } : {}),
+    });
+    const set = await ownerCall(p, [{ set_mandate: { mandate: m } }]);
+    p.steps.push({ step: "mandate: evm_repay on the Aave pool for the account's own address", tx: explorer(set.hash) });
+  }
   const wait = Number(process.env.SCENARIO_DECISION_MS ?? 8 * 60_000);
   for (const action of ["evm_approve", "evm_repay"]) {
     const d = await until(`${action} for ${p.account}`, wait, async () => {

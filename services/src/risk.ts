@@ -18,6 +18,7 @@ import {
   timeToLiquidation,
   tremor,
   valueAtRisk99,
+  MAX_TRIGGER_HEALTH,
   type Assessment,
 } from "@parry/core";
 import { contract, intEnv } from "./lib/config";
@@ -105,9 +106,10 @@ export async function scoreAll(sql: Sql): Promise<number> {
     await sql`UPDATE alerts SET status = 'resolved', updated_at = now() WHERE account = ${r.account} AND status <> 'resolved'
       AND kind IN ('risk', 'health') AND key LIKE ${`%:${r.id}`} AND NOT (key = ANY(${keys}))`;
 
-    // Protected accounts in caution or worse go to the guardian (it decides with the sealed
-    // policy); the queue keeps each account's last run, so the guardian's cooldown holds.
-    if (r.raw.protected !== false && a.score.tier !== "safe") {
+    // Protected accounts in caution or worse, or under the highest trigger health a sealed policy
+    // may hold, go to the guardian (it decides with the policy); the queue keeps each account's
+    // last run, so the guardian's cooldown holds.
+    if (r.raw.protected !== false && (a.score.tier !== "safe" || a.health < MAX_TRIGGER_HEALTH)) {
       await sql`INSERT INTO guardian_queue (account, reason) VALUES (${r.account}, ${`${r.venue} ${a.score.tier} ${a.score.score}`})
         ON CONFLICT (account) DO UPDATE SET reason = excluded.reason`;
     } else {

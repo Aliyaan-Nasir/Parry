@@ -469,9 +469,10 @@ fn evm_step(
         });
     }
     let approved = evm::allowance(io, asset, address, pool)?;
+    // Approve the repay plus 1 % for interest that accrues before it lands, never past the cap.
+    let allowance = (amount + amount / 100).min(cap);
     let (kind, to, data, value) = if approved < amount {
-        // Approve the guard's whole per-action cap once, so later repays need no new approval.
-        ("evm_approve", asset, evm::approve_data(pool, cap), cap)
+        ("evm_approve", asset, evm::approve_data(pool, allowance), allowance)
     } else {
         (
             "evm_repay",
@@ -501,13 +502,13 @@ fn evm_step(
     };
     let plan = if kind == "evm_approve" {
         format!(
-            "Approve the Aave pool to take up to {:.2} of the debt asset from the person's own address, so the next run can repay {:.2} (health {:.3}, target {:.2}).",
-            units(cap), units(amount), aave.health, policy.target_health
+            "Approve the Aave pool to take up to {:.2} of the debt asset (${:.2}) from the person's own address (the repay plus 1% for interest), so the next run can repay {:.2} (${:.2}): health {:.3}, target {:.2}.",
+            units(allowance), units(allowance) * price, units(amount), units(amount) * price, aave.health, policy.target_health
         )
     } else {
         format!(
-            "Repay {:.2} of the Aave debt from the person's own address: health {:.3} to {:.3} (target {:.2}).",
-            units(amount), aave.health, after(units(amount) * price), policy.target_health
+            "Repay {:.2} of the Aave debt asset (${:.2}) from the person's own address: health {:.3} to {:.3} (target {:.2}).",
+            units(amount), units(amount) * price, aave.health, after(units(amount) * price), policy.target_health
         )
     };
     Ok(Some((
@@ -518,7 +519,9 @@ fn evm_step(
             plan,
             position: Some(json!({
                 "venue": "aave", "chain_id": config::evm_chain_id(), "collateral_usd": aave.collateral_usd, "debt_usd": aave.debt_usd,
-                "liquidation_threshold": aave.liquidation_threshold, "health": aave.health, "asset_price_usd": price, "balance": units(balance),
+                "liquidation_threshold": aave.liquidation_threshold, "health": aave.health,
+                // The debt asset (the one repaid): amounts in the plan and the action are in it, not NEAR.
+                "debt_asset": { "address": asset, "decimals": decimals, "price_usd": price, "balance": units(balance) },
             })),
         },
         a,
@@ -597,6 +600,8 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
                 "risk": { "score": a.score, "tier": risk::tier(a.score), "health": if a.health.is_finite() { json!(a.health) } else { Value::Null },
                           "liquidation_price": a.liq_price, "p_liquidation_24h": a.p24, "median_hours_to_liquidation": a.ttl_hours, "annual_volatility": a.annual },
                 "target_health": policy.target_health,
+                // The owner's own trigger, from the sealed policy: the guardian acts at or past it.
+                "owner_trigger": { "score": policy.trigger_score, "health": if decided.venue == "evm" { policy.evm_trigger_health } else { policy.trigger_health } },
                 "mandate_limits": m["mandate"]["limits"], "max_slippage_bps": m["mandate"]["max_slippage_bps"],
                 "proposed_action": decided.action, "plan": decided.plan,
             });
@@ -1103,8 +1108,9 @@ mod tests {
         let w = evm_world(0, None);
         let e = approved_envelope(w);
         let a = &e["action"]["evm_approve"];
-        // The guard's whole cap, once, at the next nonce, with fees inside the contract's caps.
-        assert_eq!(a["amount"], "500000000");
+        // The repay (227.586207 USDC, see the test below) plus 1 % for interest, under the guard's
+        // 500 cap, at the next nonce, with fees inside the contract's caps.
+        assert_eq!(a["amount"], "229862069");
         assert_eq!(a["params"]["nonce"], 7);
         assert_eq!(a["params"]["max_priority_fee_per_gas"], "100000000");
         assert_eq!(a["params"]["max_fee_per_gas"], "2100000000");

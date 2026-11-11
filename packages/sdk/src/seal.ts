@@ -12,6 +12,7 @@ import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
+import { MAX_TRIGGER_HEALTH } from "@parry/core";
 import { concatBytes, fromBase64, fromHex, fromUtf8, utf8 } from "./encoding.js";
 
 export type Strategy = "repay-first" | "keep-exposure" | "deleverage-only";
@@ -68,6 +69,8 @@ function assertPolicy(p: Policy): Required<Policy> {
   };
   for (const [name, v] of Object.entries(full)) if (name !== "strategy" && !Number.isFinite(v)) throw new Error(`${name} must be a finite number`);
   if (full.triggerHealth <= 0 || full.targetHealth <= 0 || full.evmTriggerHealth <= 0) throw new Error("health values must be positive");
+  // The risk engine hands the guardian positions under this health; a higher trigger would never fire.
+  if (full.triggerHealth > MAX_TRIGGER_HEALTH || full.evmTriggerHealth > MAX_TRIGGER_HEALTH) throw new Error(`trigger health values must be at most ${MAX_TRIGGER_HEALTH}`);
   if (full.hlReduceFraction < 0 || full.hlReduceFraction > 1) throw new Error("hlReduceFraction must be from 0 to 1");
   return full;
 }

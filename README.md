@@ -73,7 +73,7 @@ Agents pay per check over x402 on NEAR, or use the MCP server.
 
 - Sealed: your trigger thresholds, target health and strategy (X25519 and ChaCha20-Poly1305 to the enclave's key, bound to your account id).
 - Public: your positions, your mandate's powers and caps, and every action the guardian takes, because they are on chain.
-- The review model sees the facts of one decision (the position, the plan and the limits) inside its TEE.
+- The review model sees the facts of one decision (the position, the plan, the limits and the owner's trigger) inside its TEE.
   The verdict and reasoning are shown in the guardian log; on chain there is only the review's hash.
 
 ## Only on NEAR

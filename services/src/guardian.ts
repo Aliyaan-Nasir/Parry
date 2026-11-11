@@ -180,8 +180,12 @@ export async function verifyEvm(sql: Sql): Promise<number> {
 }
 
 export async function tick(sql: Sql) {
+  // A position queued only because it is under the highest trigger health (scored safe) is looked
+  // at less often than one scored caution or worse.
   const due = await sql<{ account: string }[]>`SELECT account FROM guardian_queue
-    WHERE last_run_at IS NULL OR last_run_at < now() - make_interval(secs => ${intEnv("GUARDIAN_COOLDOWN_S", 60)}) ORDER BY queued_at LIMIT 10`;
+    WHERE last_run_at IS NULL
+      OR last_run_at < now() - make_interval(secs => CASE WHEN reason LIKE '% safe %' THEN ${intEnv("GUARDIAN_WATCH_COOLDOWN_S", 300)}::int ELSE ${intEnv("GUARDIAN_COOLDOWN_S", 60)}::int END)
+    ORDER BY queued_at LIMIT 10`;
   if (due.length === 0) return;
   const accounts = due.map((d) => d.account);
   const run = await runEnclave<GuardianOutput>("guardian", accounts);

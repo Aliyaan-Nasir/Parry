@@ -40,6 +40,8 @@ describe("sealed policies", () => {
       '{"trigger_score":60,"trigger_health":1.15,"target_health":2.0,"strategy":"repay-first","hl_reduce_fraction":0.5,"evm_trigger_health":1.3}',
     );
     expect(() => policyJson({ ...policy, triggerScore: 101 })).toThrow("0 to 100");
+    expect(() => policyJson({ ...policy, triggerHealth: 1.6 })).toThrow("at most 1.5");
+    expect(() => policyJson({ ...policy, evmTriggerHealth: 1.6 })).toThrow("at most 1.5");
     expect(() => policyJson({ ...policy, strategy: "yolo" as never })).toThrow("strategy");
     expect(() => policyJson({ ...policy, hlReduceFraction: 2 })).toThrow("0 to 1");
     expect(() => policyJson({ ...policy, targetHealth: Number.NaN })).toThrow("finite");

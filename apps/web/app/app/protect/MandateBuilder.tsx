@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
+import { MAX_TRIGGER_HEALTH } from "@parry/core";
 import { buildMandate, MANDATE_LIMITS, ownerActions, POWERS, sealPolicy, STRATEGIES, toBase64, type ContractIds, type Mandate, type Power, type Strategy } from "@parry/sdk";
 import { AmountField } from "@/components/app/AmountField";
 import { errorMessage, Note, Segmented } from "@/components/app/bits";
@@ -340,7 +341,7 @@ export function MandateBuilder({
               label="Act at health"
               description="Or below, whatever the score."
               min={1.05}
-              max={2}
+              max={MAX_TRIGGER_HEALTH}
               step={0.05}
               value={d.triggerHealth}
               formatValue={(v) => v.toFixed(2)}

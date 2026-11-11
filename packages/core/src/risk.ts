@@ -252,6 +252,13 @@ export interface Score {
   components: { liquidation: number; volatility: number; cascade: number };
 }
 
+/**
+ * The highest trigger health an owner may seal into a policy. The risk engine cannot read sealed
+ * triggers, so it hands the guardian every protected position under this health (and any scored
+ * caution or worse, the lowest trigger score allowed): the guardian then decides with the policy.
+ */
+export const MAX_TRIGGER_HEALTH = 1.5;
+
 export function tierOf(score: number): Tier {
   if (score >= 75) return "critical";
   if (score >= 50) return "danger";
