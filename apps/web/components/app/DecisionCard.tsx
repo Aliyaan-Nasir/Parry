@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import Link from "next/link";
 import { useLayoutEffect, type ReactNode } from "react";
 import { verifyDecision, type Decision, type DecisionCheck, type DecisionVerification } from "@parry/sdk";
 import { CopyButton, DataList, DataRow, Eyebrow, ExternalLink, QueryError } from "./bits";
@@ -10,7 +11,7 @@ import { VENUE_LABEL } from "./PositionsTable";
 import { RouteComparison } from "./RouteComparison";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { useMoney } from "@/components/providers/MoneyProvider";
 import { TierBadge } from "@/components/ui/TierBadge";
 import { explorerLabel, explorerUrl, type ExplorerKind } from "@/lib/explorer";
 import { chain } from "@/lib/parry";
@@ -120,8 +121,55 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** One guardian decision in full: trigger, plan, outcome, the AI review, transactions and checks. */
-export function DecisionCard({ decision }: { decision: Decision }) {
+/** What the rescue route earned against the other quote, in dollars (null without both quotes). */
+export function routeSaving(routes: Decision["routes"]): number | null {
+  if (!routes || !routes.rhea || "unavailable" in routes.intents) return null;
+  const chosen = routes.chosen === "rhea" ? routes.rhea.outUsd : routes.intents.outUsd;
+  const other = routes.chosen === "rhea" ? routes.intents.outUsd : routes.rhea.outUsd;
+  return chosen - other;
+}
+
+/** One guardian decision as a dense row that opens into its full record. */
+export function DecisionRow({ decision, open, onToggle }: { decision: Decision; open: boolean; onToggle: () => void }) {
+  const { format } = useMoney();
+  const outcome = OUTCOME[decision.outcome] ?? { label: decision.outcome, tone: "neutral" as const };
+  const before = decision.healthBefore ?? decision.trigger.healthBps / 10_000;
+  const saving = routeSaving(decision.routes);
+  const tone = outcome.tone === "safe" ? "text-fg" : outcome.tone === "neutral" ? "text-muted" : "text-critical";
+  return (
+    <article id={`d-${decision.id}`} aria-labelledby={`decision-${decision.id}`} className={cn("scroll-mt-24 border-b border-line last:border-0", open && "bg-fg/[0.02]")}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 text-left transition-colors duration-[var(--dur-1)] hover:bg-hover sm:grid-cols-[5.5rem_minmax(0,1fr)_7rem_8rem_7rem]">
+        <span className="text-[12.5px] text-muted">
+          <TimeAgo iso={decision.createdAt} />
+        </span>
+        <span className="min-w-0">
+          <h2 id={`decision-${decision.id}`} className="truncate text-sm text-fg">
+            {ACTION_LABEL[decision.action] ?? decision.action}
+            <span className="text-muted"> on {VENUE_LABEL[decision.venue] ?? decision.venue}</span>
+          </h2>
+          <span className="num block truncate text-[12px] text-muted" title={decision.account}>
+            {shortId(decision.account, 8, 6)}
+          </span>
+        </span>
+        <span className="num hidden text-[13px] text-fg sm:block">
+          {formatHealth(before)}
+          <span className="text-muted"> to </span>
+          {decision.healthAfter !== null ? formatHealth(decision.healthAfter) : <span className="text-muted">n/a</span>}
+        </span>
+        <span className="num hidden text-right text-[13px] text-muted sm:block">{saving !== null && saving > 0 ? <span className="text-fg">+{format(saving)} route</span> : ""}</span>
+        <span className={cn("text-right text-[13px]", tone)}>{outcome.label}</span>
+      </button>
+      {open ? (
+        <div className="grid gap-5 px-4 pb-6 pt-2">
+          <DecisionDetail decision={decision} />
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/** One guardian decision in full: trigger, plan, why this step, the AI review, transactions, the route and checks. */
+export function DecisionDetail({ decision }: { decision: Decision }) {
   const config = useConfig();
   const verify = useMutation({ mutationFn: () => verifyHere(decision) });
   const { reset } = verify;
@@ -133,28 +181,10 @@ export function DecisionCard({ decision }: { decision: Decision }) {
   const evmChain = network === "testnet" ? "Base Sepolia" : "Base";
   const verifyHref = decision.txs.evmVerify ? explorerUrl("nearblocks", decision.txs.evmVerify) : null;
   const detail = (decision as Decision & { detail?: string | null }).detail;
+  const { format } = useMoney();
 
   return (
-    <Card as="article" aria-labelledby={`decision-${decision.id}`} className="grid content-start gap-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id={`decision-${decision.id}`} className="text-[17px] font-semibold tracking-[-0.01em] text-fg">
-            {ACTION_LABEL[decision.action] ?? decision.action}
-            <span className="font-normal text-muted"> on {VENUE_LABEL[decision.venue] ?? decision.venue}</span>
-          </h2>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
-            <TimeAgo iso={decision.createdAt} />
-            <span aria-hidden="true">·</span>
-            <span className="num" title={decision.account}>
-              {shortId(decision.account, 8, 6)}
-            </span>
-          </p>
-        </div>
-        <Badge tone={outcome.tone} size="md">
-          {outcome.label}
-        </Badge>
-      </header>
-
+    <>
       <div className="grid gap-5 md:grid-cols-2">
         <Block title="Trigger">
           <div className="flex flex-wrap items-center gap-2">
@@ -181,7 +211,32 @@ export function DecisionCard({ decision }: { decision: Decision }) {
             {detail ? <p className="text-[13px] leading-5 text-muted">{detail}</p> : null}
           </Block>
         </div>
+        {decision.explanation ? (
+          <div className="md:col-span-2">
+            <Block title="Why this step">
+              <p className="text-sm leading-6 text-fg">{decision.explanation.why}</p>
+              {decision.explanation.skipped.length ? (
+                <ul className="grid gap-1 text-[13px] leading-5 text-muted">
+                  {decision.explanation.skipped.map((k) => (
+                    <li key={k.step}>
+                      Skipped {(ACTION_LABEL[k.step] ?? k.step).toLowerCase()}: {k.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </Block>
+          </div>
+        ) : null}
       </div>
+      <p className="text-[13px] text-muted">
+        <span className="num" title={decision.account}>
+          {decision.account}
+        </span>
+        , <span className="text-fg">{outcome.label.toLowerCase()}</span>, decision{" "}
+        <Link href={`/verify?id=${decision.id}`} className="num text-brass hover:underline">
+          {shortId(decision.id, 8, 6)}
+        </Link>
+      </p>
 
       <section aria-label="AI review" className="grid gap-3 rounded-xl border border-line bg-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -264,6 +319,17 @@ export function DecisionCard({ decision }: { decision: Decision }) {
       {decision.routes ? (
         <Block title="Route comparison">
           <RouteComparison routes={decision.routes} />
+          {routeSaving(decision.routes) !== null ? (
+            <p className="text-[13px] text-muted">
+              {routeSaving(decision.routes)! > 0 ? (
+                <>
+                  The chosen route paid <span className="num text-fg">{format(routeSaving(decision.routes)!)}</span> more than the other quote.
+                </>
+              ) : (
+                "The chosen route paid no more than the other quote: on testnet the account settles on the Rhea pool whatever the quotes say."
+              )}
+            </p>
+          ) : null}
         </Block>
       ) : null}
 
@@ -277,6 +343,6 @@ export function DecisionCard({ decision }: { decision: Decision }) {
         {verify.isError ? <QueryError title="Verification could not run" error={verify.error} /> : null}
         {verify.data ? <Verification result={verify.data} /> : null}
       </div>
-    </Card>
+    </>
   );
 }

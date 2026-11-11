@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { GuardianLog } from "./GuardianLog";
 import { PageHeader } from "@/components/app/PageHeader";
 
@@ -11,7 +12,9 @@ export default function GuardianPage() {
         title="Guardian log"
         description="Every action the guardian took or was refused, with its AI review, its transactions and checks you can run here."
       />
-      <GuardianLog />
+      <Suspense>
+        <GuardianLog />
+      </Suspense>
     </div>
   );
 }

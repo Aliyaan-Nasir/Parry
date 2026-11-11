@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { QueryError, Segmented } from "@/components/app/bits";
-import { DecisionCard } from "@/components/app/DecisionCard";
+import { DecisionRow } from "@/components/app/DecisionCard";
+import { useMoney } from "@/components/providers/MoneyProvider";
+import { useSavings } from "@/lib/live";
 import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Mark } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/Button";
@@ -35,6 +38,16 @@ export function GuardianLog() {
   const scope: Scope = picked ?? (account ? "mine" : "all");
   const q = useDecisions(scope === "mine" ? account : null, 10);
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const params = useSearchParams();
+  const wanted = params.get("decision");
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  // The newest decision opens by default, or the one a link names (from a position's chart).
+  const isOpen = (id: string, i: number) => opened[id] ?? (wanted ? wanted === id : i === 0);
+  const savings = useSavings(scope === "mine" ? (account ?? undefined) : undefined);
+  const { format } = useMoney();
+  useEffect(() => {
+    if (wanted && items.some((d) => d.id === wanted)) document.getElementById(`d-${wanted}`)?.scrollIntoView({ block: "start" });
+  }, [wanted, items]);
 
   return (
     <div className="grid gap-5">
@@ -70,13 +83,29 @@ export function GuardianLog() {
           }
         />
       ) : (
-        <ol className="grid gap-4" data-stagger>
-          {items.map((d) => (
-            <li key={d.id}>
-              <DecisionCard decision={d} />
-            </li>
-          ))}
-        </ol>
+        <div className="grid gap-4">
+          <p className="text-[13px] text-muted">
+            {items.length} {items.length === 1 ? "decision" : "decisions"} loaded, {items.filter((d) => d.outcome === "executed").length} executed
+            {savings.data && savings.data.totalSavedUsd > 0 ? (
+              <>
+                , <span className="text-fg">{format(savings.data.totalSavedUsd)}</span> saved by picking the better rescue route
+              </>
+            ) : null}
+            .
+          </p>
+          <div className="surface overflow-hidden p-0">
+            <div className="hidden grid-cols-[5.5rem_minmax(0,1fr)_7rem_8rem_7rem] gap-x-4 border-b border-line px-4 py-2 text-[12.5px] text-muted sm:grid">
+              <span>When</span>
+              <span>Action</span>
+              <span>Health</span>
+              <span className="text-right">Route</span>
+              <span className="text-right">Outcome</span>
+            </div>
+            {items.map((d, i) => (
+              <DecisionRow key={d.id} decision={d} open={isOpen(d.id, i)} onToggle={() => setOpened((o) => ({ ...o, [d.id]: !isOpen(d.id, i) }))} />
+            ))}
+          </div>
+        </div>
       )}
 
       {q.hasNextPage ? (

@@ -273,22 +273,35 @@ test.describe("guardian log", () => {
     await page.goto("/app/guardian");
     const first = page.getByRole("article").first();
     await expect(first.getByRole("heading", { name: /Repay on Rhea/ })).toBeVisible();
-    await first.getByRole("button", { name: "Verify" }).click();
+    await first.getByRole("button", { name: "Verify", exact: true }).click();
     await expect(first.getByText("6 of 6 checks pass")).toBeVisible();
     const evm = page.getByRole("article").filter({ has: page.getByRole("heading", { name: /Repay on Aave/ }) });
+    // Older decisions are one-line rows that open into the full record.
+    await evm.getByRole("button", { expanded: false }).click();
     await expect(evm.getByText("Verified by the NEAR MPC network")).toBeVisible();
     await expect(evm.getByRole("link", { name: /Repay on Base Sepolia/ })).toHaveAttribute("href", /sepolia\.basescan\.org\/tx\/0x/);
     await expect(evm.getByRole("link", { name: /Verification on NearBlocks/ })).toHaveAttribute("href", /nearblocks\.io\/txns\//);
     const rejected = page.getByRole("article").filter({ hasText: "Rejected by review" });
-    await expect(rejected.getByText("Chosen")).toBeVisible();
+    await rejected.getByRole("button", { expanded: false }).click();
+    await expect(rejected.getByText("Chosen", { exact: true })).toBeVisible();
     expect(problems()).toEqual([]);
   });
 
   test("a tampered review fails its checks", async ({ page }) => {
     await mockApi(page, { overrides: { "GET /v1/guardian/decisions": { body: { items: [fx.tamperedDecision(Date.now())], next: null } } } });
     await page.goto("/app/guardian");
-    await page.getByRole("button", { name: "Verify" }).click();
+    await page.getByRole("button", { name: "Verify", exact: true }).click();
     await expect(page.getByText("Verification failed")).toBeVisible();
+  });
+
+  test("a link to one decision opens it", async ({ page }) => {
+    await mockApi(page);
+    await seedAccount(page, "watch");
+    await page.goto("/app/guardian");
+    const evm = page.getByRole("article").filter({ has: page.getByRole("heading", { name: /Repay on Aave/ }) });
+    const id = (await evm.getAttribute("id"))!.slice(2);
+    await page.goto(`/app/guardian?decision=${id}`);
+    await expect(page.locator(`#d-${id}`).getByText("Verified by the NEAR MPC network")).toBeVisible();
   });
 });
 

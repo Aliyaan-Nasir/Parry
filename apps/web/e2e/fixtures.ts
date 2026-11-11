@@ -690,12 +690,16 @@ export function simulation(): SimulationResult {
   };
 }
 
-export function rates() {
-  return [
-    { asset: "wNEAR", supplyApr: 0.0214, borrowApr: 0.0481, source: "Rhea lending" },
-    { asset: "USDC", supplyApr: 0.0612, borrowApr: 0.0893, source: "Rhea lending" },
-    { asset: "Parry Earn (EARN)", supplyApr: 0.0712, borrowApr: 0, source: "Parry vault (staking yield; funding shown separately)" },
-  ];
+export function rates(now = Date.now()) {
+  return {
+    rhea: [
+      { asset: "wNEAR", tokenId: CONTRACTS.wnear, supplyApr: 0.0214, borrowApr: 0.0481, utilization: 0.44, source: `${CONTRACTS.lending} get_assets_paged_detailed` },
+      { asset: "USDC", tokenId: CONTRACTS.usdc, supplyApr: 0.0612, borrowApr: 0.0893, utilization: 0.71, source: `${CONTRACTS.lending} get_assets_paged_detailed` },
+    ],
+    hyperliquid: { fundingHourly: 0.0000125, funding24hApr: 0.1095, source: "https://api.hyperliquid-testnet.xyz/info metaAndAssetCtxs and fundingHistory (NEAR)" },
+    vault: { stakingApr: 0.0446, fundingApr: 0.0612, netApr: 0.0951, insuranceShareBps: 1000, source: `${CONTRACTS.vault} yield_breakdown` },
+    readAt: iso(now - 40_000),
+  };
 }
 
 export function status(now: number): StatusView {
@@ -784,4 +788,125 @@ export function shock(now: number, bps: number | null = -2000): ShockState {
 
 export function riskCheck(now: number) {
   return { account: ACCOUNT, checkedAt: iso(now), position: positions(now)[0]!, market: market(now), model: "docs/risk-model.md" as const };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Replay, heatmap, prices, insurance, certificates, savings, incidents, watched accounts
+// ---------------------------------------------------------------------------------------------
+
+const HOUR_MS = 3_600_000;
+
+export function replay() {
+  const start = Date.parse("2022-05-09T00:00:00.000Z");
+  const t = (h: number) => iso(start + h * HOUR_MS);
+  const crash = (id: string, name: string, drop: number, avoided: boolean) => ({
+    id,
+    name,
+    start: t(0),
+    end: t(72),
+    dropPct: drop,
+    candles: Array.from({ length: 73 }, (_, h) => ({ t: t(h), price: 5 * (1 - (drop / 100) * Math.min(1, h / 60)) })),
+    position: {
+      startHealth: 1.6,
+      warningHours: 24,
+      liquidatedAt: t(50),
+      liquidatedWithParryAt: avoided ? null : t(66),
+      predictedHoursAtWarning: 22,
+      steps: [
+        { t: t(26), action: "repay", plan: "Repay 80 USDC from the reserve (score 68, health 1.14).", healthBefore: 1.14, healthAfter: 1.45 },
+        { t: t(44), action: "deleverage", plan: "Sell 40 NEAR for 120 USDC and repay (score 73, health 1.2).", healthBefore: 1.2, healthAfter: 1.45 },
+      ],
+      healthWith: Array.from({ length: 73 }, (_, h) => ({ t: t(h), h: Math.max(1.1, 1.6 - h * 0.006) })),
+      healthWithout: Array.from({ length: 73 }, (_, h) => ({ t: t(h), h: 1.6 - h * 0.012 })),
+    },
+    vault: {
+      navWith: Array.from({ length: 73 }, (_, h) => ({ t: t(h), v: 1 - h * 0.0003 })),
+      navUnhedged: Array.from({ length: 73 }, (_, h) => ({ t: t(h), v: 1 - (drop / 100) * Math.min(1, h / 60) })),
+      maxDrawdownPct: 2.7,
+      maxDrawdownUnhedgedPct: drop,
+      marginMin: 0.5,
+      insurancePaidUsd: 5.48,
+    },
+  });
+  return {
+    source: "https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h",
+    sources: { candles: "Binance spot, hourly NEARUSDT", funding: "Binance USD-M funding", staking: "LiNEAR ft_price: 4.46 % a year", model: "packages/core" },
+    generatedAt: iso(start + 400 * 24 * HOUR_MS),
+    crashes: [crash("2022-05", "9 May 2022 to 12 May 2022", 51.7, false), crash("2021-05", "21 May 2021 to 23 May 2021", 45.6, true)],
+    summary: { crashes: 2, medianWarningHours: 24.5, minWarningHours: 7, liquidationsWithout: 2, liquidationsAvoided: 1, medianVaultDrawdownPct: 2.7, medianUnhedgedDrawdownPct: 48.6 },
+  };
+}
+
+export function heatmap(now: number, network = "testnet") {
+  const price = 3.62;
+  return {
+    network,
+    lending: CONTRACTS.lending,
+    price,
+    buckets: [0.97, 0.9, 0.82, 0.71, 0.6, 0.52].map((f, i) => ({ price: price * f, collateralUsd: [1200, 40_000, 8000, 450_000, 2_600_000, 30_000][i]!, debtUsd: [800, 26_000, 5000, 300_000, 1_700_000, 20_000][i]!, accounts: [2, 9, 3, 41, 77, 5][i]! })),
+    cascades: [{ from: price * 0.6, to: price * 0.585, collateralUsd: 2_583_064, accounts: 77, rounds: 2 }],
+    pressure: { atRiskUsd: 41_200, pressure: 0.00025, to: price * 0.92, accounts: 11 },
+    sweep: { totalAccounts: 73_008, nextIndex: 15_000, lastFullSweepAt: null },
+    readAt: iso(now - 60_000),
+    accounts: 137,
+    source: `${CONTRACTS.lending} get_accounts_paged; market depth 1500000 USD per 2 %`,
+  };
+}
+
+export function prices(now: number) {
+  const row = (id: string, symbol: string, priceUsd: number, change24h: number) => ({ id, symbol, priceUsd, change24h, source: "aggregate-oracle.near" });
+  return { tokens: [row("wrap.near", "NEAR", 3.62, -0.021), row("linear-protocol.near", "LINEAR", 5.19, -0.019), row("meta-pool.near", "STNEAR", 5.5, -0.02), row("usdc", "USDC", 0.9998, 0)], readAt: iso(now - 20_000) };
+}
+
+export function insurance(now: number) {
+  return {
+    available: true,
+    shareBps: 1000,
+    linear: "1200000000000000000000000",
+    usdcE6: "1500000",
+    valueUsdE6: "7731000",
+    paidTotalE6: "2930000",
+    paidTodayE6: "0",
+    capPerDayBps: 50,
+    marginReservedUsdE6: "0",
+    events: [
+      { kind: "inflow", at: iso(now - 6 * HOUR_MS), amountE6: "410000" },
+      { kind: "payout", at: iso(now - 30 * HOUR_MS), reason: "negative_funding", amountE6: "2930000" },
+    ],
+    source: `${CONTRACTS.vault} insurance()`,
+  };
+}
+
+/** A health certificate signed with the fixture enclave key, for `reader`, with real hashing. */
+export function certificate(now: number, reader = "lender.testnet", threshold = 1.3) {
+  const issued = Math.floor(now / 1000) - 600;
+  const body = { kind: "parry-health-certificate", version: 1, account: ACCOUNT, reader, venue: "rhea", threshold, block_height: 221_455_000, block_hash: "8iPzcDmfqTy9NJuB3TJm2sFxvFmQ1nGxu7kT3KcRZ2fV", issued_at: issued, expires_at: issued + 86_400, statement: `health is at least ${threshold}` };
+  const text = JSON.stringify(body);
+  const digest = sha256(`parry-certificate:v1:${text}`);
+  return { hash: toHex(digest), certificate: text, signature: toBase64(ed25519.sign(digest, ENCLAVE_SECRET)), enclavePublicKey: ENCLAVE_PUBLIC_KEY, anchorTx: txHash(`certificate:${reader}`), createdAt: iso(issued * 1000) };
+}
+
+export function savings(now: number) {
+  return {
+    totalSavedUsd: 3.12,
+    rescues: [
+      { decision: "d1", chosen: { venue: "rhea", outUsd: 120.4 }, worst: { venue: "intents", outUsd: 117.28 }, savedUsd: 3.12, quotes: [], at: iso(now - 3 * HOUR_MS) },
+    ],
+  };
+}
+
+export function incidents(now: number) {
+  const list = alerts(now);
+  return [
+    {
+      id: "inc-1",
+      account: ACCOUNT,
+      title: "Health falling on Rhea",
+      body: "Three alerts in 15 minutes: the score crossed 60, then health went under 1.2.",
+      severity: "critical",
+      alerts: list.slice(0, 2),
+      openedAt: iso(now - 2 * HOUR_MS),
+      closedAt: null,
+    },
+  ];
 }

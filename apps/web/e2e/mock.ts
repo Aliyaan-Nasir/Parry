@@ -61,6 +61,10 @@ export type MockState = {
   passkeys: Map<string, string>;
   /** NEAR balances in yocto per account (view_account). */
   balances: Map<string, bigint>;
+  /** Watched accounts per signed-in account. */
+  watch: Map<string, Map<string, { thresholds: { score: number; health: number }; label: string | null }>>;
+  /** Certificates issued through the API, newest first. */
+  certificates: ReturnType<typeof fx.certificate>[];
 };
 
 export type MockHandle = {
@@ -78,7 +82,7 @@ export type MockHandle = {
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
   "access-control-allow-headers": "content-type, authorization, x-payment",
   "access-control-expose-headers": "x-payment-response",
 };
@@ -154,6 +158,67 @@ const ROUTES: RouteDef[] = [
   route("GET /v1/fx", (c) => json(fx.fx(c.now))),
   route("GET /v1/rates", () => json(fx.rates())),
   route("GET /v1/status", (c) => json(fx.status(c.now))),
+  route("GET /v1/replay", () => json(fx.replay())),
+  route("GET /v1/heatmap", (c) => json(fx.heatmap(c.now, c.query.network ?? "testnet"))),
+  route("GET /v1/prices", (c) => json(fx.prices(c.now))),
+  route("GET /v1/vault/insurance", (c) => json(fx.insurance(c.now))),
+  route("GET /v1/routes/savings", (c) => json(fx.savings(c.now))),
+  route("GET /v1/incidents", (c) => json(c.query.account === fx.ACCOUNT && !empty(c) ? fx.incidents(c.now) : [])),
+  // The stream: one comment, then the connection closes (the client falls back to polling).
+  route("GET /v1/stream", () => ({ status: 200, body: ": parry\n\n", headers: { "content-type": "text/event-stream" } })),
+  route("GET /v1/certificates", (c) => json(c.query.account === fx.ACCOUNT ? c.state.certificates : [])),
+  route("GET /v1/certificates/:hash", (c) => {
+    const cert = [...c.state.certificates, fx.certificate(c.now)].find((x) => x.hash === c.params.hash);
+    return cert ? json(cert) : error("no such certificate", 404);
+  }),
+  route("POST /v1/certificates", (c) => {
+    const who = bearer(c);
+    if (!who) return error("sign in first", 401);
+    const req = c.body as { account?: string; reader?: string; threshold?: number };
+    if (req.account !== who) return error("not your account", 403);
+    if ((req.threshold ?? 0) > 1.5) return error("health is below the threshold", 422);
+    const cert = fx.certificate(c.now, req.reader ?? "", req.threshold ?? 1.3);
+    c.state.certificates.unshift(cert);
+    return json(cert);
+  }),
+  route("GET /v1/verify/:id", (c) => {
+    const cert = [...c.state.certificates, fx.certificate(c.now)].find((x) => x.hash === c.params.id);
+    if (cert) {
+      const body = JSON.parse(cert.certificate) as { statement: string; reader: string; block_height: number };
+      return json({
+        kind: "certificate",
+        ok: true,
+        checks: [
+          { name: "hash", ok: true, detail: `SHA-256 of the domain and certificate is ${cert.hash}` },
+          { name: "signature", ok: true, detail: `signed by ${fx.ENCLAVE_PUBLIC_KEY}` },
+          { name: "statement", ok: true, detail: `${body.statement} at block ${body.block_height}, for ${body.reader}` },
+          { name: "expiry", ok: true, detail: "valid for another 23 hours" },
+        ],
+        subject: cert,
+      });
+    }
+    return error("unknown id", 404);
+  }),
+  route("GET /v1/watch", (c) => {
+    const who = bearer(c);
+    if (!who) return error("sign in first", 401);
+    return json([...(c.state.watch.get(who) ?? new Map()).entries()].map(([account, w]) => ({ account, ...w, position: null, alert: [] })));
+  }),
+  route("PUT /v1/watch/:id", (c) => {
+    const who = bearer(c);
+    if (!who) return error("sign in first", 401);
+    const body = c.body as { thresholds: { score: number; health: number }; label?: string };
+    const list = c.state.watch.get(who) ?? new Map();
+    list.set(c.params.id!, { thresholds: body.thresholds, label: body.label ?? null });
+    c.state.watch.set(who, list);
+    return json({ account: c.params.id, thresholds: body.thresholds, label: body.label ?? null, position: null, alert: [] });
+  }),
+  route("DELETE /v1/watch/:id", (c) => {
+    const who = bearer(c);
+    if (!who) return error("sign in first", 401);
+    c.state.watch.get(who)?.delete(c.params.id!);
+    return json({ ok: true });
+  }),
   route("GET /v1/treasury", () => json({ account: "treasury.parry.testnet", balanceNear: 182.4 })),
 
   route("GET /v1/accounts/by-owner/:owner", (c) => {
@@ -477,6 +542,8 @@ export function freshState(options: MockOptions, now: number): MockState {
     created: new Map(),
     passkeys: new Map(),
     balances: new Map(),
+    watch: new Map(),
+    certificates: [],
   };
 }
 
@@ -536,11 +603,12 @@ export async function mockApi(page: Page, options: MockOptions = {}): Promise<Mo
           res = error("not found", 404);
         }
       }
+      const text = res.headers?.["content-type"] && !res.headers["content-type"].includes("json");
       return r.fulfill({
         status: res.status ?? 200,
         headers: { ...CORS, ...res.headers },
-        contentType: "application/json",
-        body: JSON.stringify(res.body ?? null),
+        contentType: res.headers?.["content-type"] ?? "application/json",
+        body: text ? String(res.body ?? "") : JSON.stringify(res.body ?? null),
       });
     },
   );
