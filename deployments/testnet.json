@@ -6,7 +6,10 @@
   "contracts": {
     "boost": {
       "account": "boost.parry.testnet",
+      "codeHash": "EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7",
       "tx": "FenppYjVodicXz44bN2ChN7tFS49APd3ybSnwJpubvMo",
+      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "source": "contracts/token",
       "verified": "2026-11-11"
     },
     "oracle": {

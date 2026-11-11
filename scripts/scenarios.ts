@@ -354,7 +354,9 @@ async function limits() {
   // No guardian action withdraws; and only the owner may.
   await refused("a withdrawal by someone who is not the owner", send(root, rootId, p.account, "owner_call", { actions: [{ withdraw: { token: c("wnear"), amount: near(1).toString() } }] }, 1n, 300), /owner/i);
   const withdrawEnvelope = forged.replace(/"action":.*}$/, `"action":{"withdraw":{"token":"${c("wnear")}","amount":"1"}}}`);
-  await refused("a guardian envelope asking to withdraw", send(root, rootId, p.account, "guardian_execute", { envelope: withdrawEnvelope, signature: Buffer.alloc(64, 7).toString("base64") }, 0n, 300), /withdraw|unknown variant|parse|signature/i);
+  // Refused at the signature check here; that a correctly signed one cannot parse either is the
+  // account's unit test `guardian_can_never_withdraw_or_transfer_out` (no guardian action withdraws).
+  await refused("a forged guardian envelope asking to withdraw (with the enclave's signature it would not parse either: no guardian action withdraws)", send(root, rootId, p.account, "guardian_execute", { envelope: withdrawEnvelope, signature: Buffer.alloc(64, 7).toString("base64") }, 0n, 300), /withdraw|unknown variant|parse|signature/i);
   // An expired mandate: the guardian stops acting for it.
   const e = await person("expiry", 1);
   await mandate(e, ["repay"], [{ token: c("usdc"), reserve: "1000000", daily: "1000000" }], policy("repay-first"), 75);

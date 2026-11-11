@@ -84,10 +84,10 @@ Each row is a NEAR primitive Parry depends on, the code that uses it, and a test
 | Primitive | What Parry does with it | Code | On testnet |
 | --- | --- | --- | --- |
 | NEP-655 universal accounts and global contracts | every protected account is derived from one published code hash and created by the relayer | [`accounts/src/lib.rs`](contracts/accounts/src/lib.rs) | [transaction](https://testnet.nearblocks.io/txns/Gw8ZTrqUpmY7zbtb25hhvmojApRrmcVSqkHHHsTffNKY) |
-| Chain Signatures | the vault signs its Hyperliquid hedge, and an account signs its Aave repay, for their own derived addresses | [`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs) | recorded by `bun scripts/scenarios.ts` |
-| MPC foreign-transaction verification | the MPC network confirms the Aave repay landed on Base Sepolia | [`services/src/lib/evm.ts`](services/src/lib/evm.ts) | recorded by `bun scripts/scenarios.ts` |
+| Chain Signatures | a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address | [`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs) | [account's Hyperliquid order](https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL) |
+| MPC foreign-transaction verification | the MPC network confirms the Aave repay landed on Base Sepolia | [`services/src/lib/evm.ts`](services/src/lib/evm.ts) | waits for Base Sepolia ETH (scenario 9) |
 | OutLayer TEE | the guardian runs with keys bound to its build | [`enclave/`](enclave) | [keys run](https://testnet.nearblocks.io/txns/Fi14H8QFgMGEay3u5n8ZD9P9vnUgrVG1BZkP1GgYpQG6) |
-| NEAR AI Cloud verifiable models | every rescue is reviewed, and the review's TEE signature is checked before acting | [`enclave/src/ai.rs`](enclave/src/ai.rs) | recorded by `bun scripts/scenarios.ts` |
+| NEAR AI Cloud verifiable models | every rescue is reviewed, and the review's TEE signature is checked before acting | [`enclave/src/ai.rs`](enclave/src/ai.rs) | waits for the NEAR AI Cloud key (scenario 6) |
 | Rhea lending and exchange | positions, repays and the atomic deleverage, on lending's exact mainnet code | [`guardian.rs`](contracts/account/src/guardian.rs) | [supply](https://testnet.nearblocks.io/txns/3XjNb5s41sGwXjNYwL9VNayJr4ygmwXfC4j8oKrMwSPt), [borrow](https://testnet.nearblocks.io/txns/DfVtq8hz4cid4AH2CjiaAg9BPjPXKDsvAzStcfTYZwx6) |
 | x402 on NEAR | paid risk checks settled with a signed delegate `ft_transfer` | [`apps/api/src/x402.ts`](apps/api/src/x402.ts) | [transaction](https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf) |
 | Gas keys (NEP-611) | each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself | [`near.ts`](services/src/lib/near.ts) | [keeper, 8 lanes](https://testnet.nearblocks.io/txns/ForLagMhcnjao6PzVgkRQQBaEpxo7iJ9bfcNXisUa3K1), [monitor, 4 lanes](https://testnet.nearblocks.io/txns/C4GFLKTB9Tkd6gU6eWjD6z5EHVsnBe4DA1iMvn8mTSHC), [relayer, 8 lanes](https://testnet.nearblocks.io/txns/7X4kzrKobrNoqZobrSG9JqDt2C4bNo1JvB16tZR3DtWp) |
@@ -116,6 +116,7 @@ Every contract is a reproducible build in SourceScan's pinned image (`contracts/
 | Pyth-interface price oracle with the testnet market shock | [`oracle.parry.testnet`](https://testnet.nearblocks.io/address/oracle.parry.testnet) | `2K81bAZJvapFWyQGQ2nPYA5tGRKPyZ4qiNFfNseqz8iM` | [8cvn41iv...](https://testnet.nearblocks.io/txns/8cvn41ivD68XY9NMAh1xM7xcNXd8Fr5eHixw3BMmLgE1) | matched by `near contract verify` (2026-11-11) |
 | Rhea lending, mainnet's exact wasm | [`lending.parry.testnet`](https://testnet.nearblocks.io/address/lending.parry.testnet) | `6Nek1MZ8cwJJ2xMQAUWup9V5AToYS9rkTxJfwo6BCpFa` | [EoyGJoed...](https://testnet.nearblocks.io/txns/EoyGJoedMf222e1YjpD1Xbdy3q7fYXZcW55SYGEWeCgb) | mainnet's code hash |
 | Test USDC with a faucet | [`usdc.parry.testnet`](https://testnet.nearblocks.io/address/usdc.parry.testnet) | `EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7` | [EuEKFymr...](https://testnet.nearblocks.io/txns/EuEKFymrVmpLJBZvAm1dDBgKvxJcJyFH7eTSP4Yg8cBM) | matched by `near contract verify` (2026-11-11) |
+| Test booster token (the token code; Rhea lending's config names one) | [`boost.parry.testnet`](https://testnet.nearblocks.io/address/boost.parry.testnet) | `EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7` | [FenppYjV...](https://testnet.nearblocks.io/txns/FenppYjVodicXz44bN2ChN7tFS49APd3ybSnwJpubvMo) | matched by `near contract verify` (2026-11-11) |
 <!-- contracts:end -->
 
 ## The repository
@@ -152,7 +153,7 @@ pnpm test:contracts               # contract unit tests
 pnpm test:sandbox                 # sandbox flows on real lending, exchange, wNEAR and LiNEAR code
 cd enclave && cargo test          # the guardian program
 pnpm typecheck && pnpm lint && pnpm security
-pnpm verify                       # every claim in this README, against testnet
+pnpm verify                       # this README's claims, against testnet
 ```
 
 ## Use it from code

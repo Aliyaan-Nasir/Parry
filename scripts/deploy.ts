@@ -363,6 +363,9 @@ async function testnetOnly(ids: Record<string, string>, wallets: Record<string, 
   if (dep.contracts.token) dep.contracts.usdc = dep.contracts.token;
   await deploy("token", ids.boost!, { method: "new", args: { owner_id: ROOT, name: "Booster (Parry test)", symbol: "BOOST", decimals: 18, icon: null, faucet_amount: "1", faucet_period_secs: 86400 } });
   if (dep.contracts.token) dep.contracts.boost = { ...dep.contracts.token, account: ids.boost! };
+  // Both run the token code: a rerun that deploys nothing still records the booster's hash and build.
+  const usdc = dep.contracts.usdc;
+  if (usdc && dep.contracts.boost) dep.contracts.boost = { ...dep.contracts.boost, codeHash: usdc.codeHash, commit: usdc.commit, source: usdc.source };
   delete dep.contracts.token;
   save();
 

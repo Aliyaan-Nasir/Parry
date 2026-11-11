@@ -20,7 +20,7 @@ This file is for AI agents and engineers working in the repository; the product 
 - `packages/sdk` (`@parry/sdk`), `packages/mcp` (`@parry/mcp`), `packages/brand` (design tokens).
 - `services/`: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up, and the Agent Market worker (Bun, one package, `bun services/src/main.ts <name>`).
 - `apps/api`: the API (Hono on Bun, contract in `docs/api.md`), `apps/web`: the site and app (Next.js 16).
-- `scripts/`: `deploy.ts` (testnet, or a guarded mainnet plan and deploy), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `scenarios.ts` (the test matrix's scenarios, with recorded proofs), `evm-position.ts` (an Aave loan on Base Sepolia from an account's derived address), `verify.ts` (check every claim), `security.ts`.
+- `scripts/`: `deploy.ts` (testnet, or a guarded mainnet plan and deploy), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `scenarios.ts` (the test matrix's scenarios, with recorded proofs), `evm-position.ts` (an Aave loan on Base Sepolia from an account's derived address), `verify.ts` (check the README's claims), `security.ts`.
 - `skills/parry/SKILL.md`: the agent skill; `tools/make_readme_art.py`: the README figures, drawn from the brand tokens.
 - `deployments/<network>.json`: deployed accounts, code hashes, transactions and commits.
 
@@ -34,7 +34,7 @@ contracts/scripts/fetch-fixtures.sh && contracts/scripts/build.sh && pnpm test:s
 cd enclave && cargo test       # enclave tests
 pnpm typecheck && pnpm lint
 pnpm security                  # Clippy, cargo audit, cargo deny, pnpm audit
-pnpm verify                    # check every README claim against testnet
+pnpm verify                    # check the README's claims against testnet
 docker compose up              # the whole stack against testnet (read-only without keys)
 pnpm dev                       # the same without Docker (needs Postgres)
 bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --sandbox`

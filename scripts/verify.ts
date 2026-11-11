@@ -28,6 +28,8 @@ const MAINNET_RPC = "https://free.rpc.fastnear.com";
 const API = process.env.PARRY_API_URL ?? "http://localhost:4000";
 const SITE = process.env.PARRY_SITE_URL ?? "http://localhost:3000";
 const quick = process.argv.includes("--quick");
+/** The build each deployment entry runs, where its name differs: both test tokens run the token code. */
+const WASM: Record<string, string> = { usdc: "token", boost: "token", factory: "accounts" };
 const rebuild = process.argv.includes("--build");
 
 type Dep = {
@@ -144,7 +146,7 @@ async function main() {
     await check(`${name} at ${c.account} runs the recorded code`, async () => {
       const a = await account(c.account);
       if (c.codeHash && a.code_hash !== c.codeHash) throw new Error(`live ${a.code_hash}, recorded ${c.codeHash}`);
-      const f = c.commit ? join(ROOT, "contracts", "target", "near-reproducible", c.commit, `parry_${name}.wasm`) : "";
+      const f = c.commit ? join(ROOT, "contracts", "target", "near-reproducible", c.commit, `parry_${WASM[name] ?? name}.wasm`) : "";
       if (f && existsSync(f)) {
         const local = b58(createHash("sha256").update(readFileSync(f)).digest());
         if (local !== a.code_hash) throw new Error(`reproducible build ${local} differs from live ${a.code_hash}`);
@@ -160,7 +162,7 @@ async function main() {
       run(["./scripts/build.sh", "--reproducible", commit], join(ROOT, "contracts"));
       const mismatched: string[] = [];
       for (const [name, c] of Object.entries(dep.contracts)) {
-        const f = join(ROOT, "contracts", "target", "near-reproducible", commit, `parry_${name}.wasm`);
+        const f = join(ROOT, "contracts", "target", "near-reproducible", commit, `parry_${WASM[name] ?? name}.wasm`);
         if (!c.codeHash || !existsSync(f)) continue;
         if (b58(createHash("sha256").update(readFileSync(f)).digest()) !== c.codeHash) mismatched.push(name);
       }

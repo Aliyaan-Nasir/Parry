@@ -10,8 +10,12 @@
  *   <!-- links:start --> ... <!-- links:end -->           the hosted app, API and MCP endpoint
  *                                                          (deployments/testnet.json `site` and `api`)
  *
- *   bun scripts/readme.ts          rewrite README.md
- *   bun scripts/readme.ts --check  exit 1 when README.md is out of date
+ * JUDGES.md's <!-- scenarios:start --> block lists each scenario of the test matrix with its
+ * result on testnet and its first transactions. It also points every [`symbol`](path#Lnn) link in README.md, JUDGES.md, AGENTS.md and
+ * SECURITY.md at the line that defines the symbol.
+ *
+ *   bun scripts/readme.ts          rewrite what is out of date
+ *   bun scripts/readme.ts --check  exit 1 when anything is out of date
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -47,6 +51,7 @@ function contracts(): string {
     ["oracle", "Pyth-interface price oracle with the testnet market shock"],
     ["lending", "Rhea lending, mainnet's exact wasm"],
     ["usdc", "Test USDC with a faucet"],
+    ["boost", "Test booster token (the token code; Rhea lending's config names one)"],
   ];
   const rows = order
     .filter(([k]) => dep.contracts[k])
@@ -70,10 +75,10 @@ function step(n: number, pattern: RegExp, label?: string): string {
 function proofsTable(): string {
   const rows: [string, string, string, string][] = [
     ["NEP-655 universal accounts and global contracts", "every protected account is derived from one published code hash and created by the relayer", "[`accounts/src/lib.rs`](contracts/accounts/src/lib.rs)", step(2, /relayer creates/)],
-    ["Chain Signatures", "the vault signs its Hyperliquid hedge, and an account signs its Aave repay, for their own derived addresses", "[`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs)", [step(8, /signs a Hyperliquid order/, "account's Hyperliquid order"), step(10, /order's signing/, "vault hedge"), step(9, /evm_repay/, "Aave repay")].filter(Boolean).join(", ")],
-    ["MPC foreign-transaction verification", "the MPC network confirms the Aave repay landed on Base Sepolia", "[`services/src/lib/evm.ts`](services/src/lib/evm.ts)", step(9, /verify_foreign_transaction/)],
+    ["Chain Signatures", "a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address", "[`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs)", [step(8, /signs a Hyperliquid order/, "account's Hyperliquid order"), step(10, /order's signing/, "vault hedge"), step(9, /evm_repay/, "Aave repay")].filter(Boolean).join(", ")],
+    ["MPC foreign-transaction verification", "the MPC network confirms the Aave repay landed on Base Sepolia", "[`services/src/lib/evm.ts`](services/src/lib/evm.ts)", step(9, /verify_foreign_transaction/) || "waits for Base Sepolia ETH (scenario 9)"],
     ["OutLayer TEE", "the guardian runs with keys bound to its build", "[`enclave/`](enclave)", dep.enclave?.keysRun ? link(`${NEARBLOCKS}/txns/${dep.enclave.keysRun}`, "keys run") : ""],
-    ["NEAR AI Cloud verifiable models", "every rescue is reviewed, and the review's TEE signature is checked before acting", "[`enclave/src/ai.rs`](enclave/src/ai.rs)", step(6, /repay:/)],
+    ["NEAR AI Cloud verifiable models", "every rescue is reviewed, and the review's TEE signature is checked before acting", "[`enclave/src/ai.rs`](enclave/src/ai.rs)", step(6, /repay:/) || "waits for the NEAR AI Cloud key (scenario 6)"],
     ["Rhea lending and exchange", "positions, repays and the atomic deleverage, on lending's exact mainnet code", "[`guardian.rs`](contracts/account/src/guardian.rs)", [step(3, /supply/, "supply"), step(3, /borrow/, "borrow"), step(6, /delev:/, "deleverage")].filter(Boolean).join(", ")],
     ["x402 on NEAR", "paid risk checks settled with a signed delegate `ft_transfer`", "[`apps/api/src/x402.ts`](apps/api/src/x402.ts)", step(12, /pays per call/)],
     ["Gas keys (NEP-611)", "each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself", "[`near.ts`](services/src/lib/near.ts)", Object.entries(dep.keys?.gasKeys ?? {}).map(([svc, k]) => (k.tx ? link(`${NEARBLOCKS}/txns/${k.tx}`, `${svc}, ${k.lanes} lanes`) : "")).filter(Boolean).join(", ")],
@@ -82,7 +87,7 @@ function proofsTable(): string {
   return [
     "| Primitive | What Parry does with it | Code | On testnet |",
     "| --- | --- | --- | --- |",
-    ...rows.map(([a, b, c, d]) => `| ${a} | ${b} | ${c} | ${d || "recorded by `bun scripts/scenarios.ts`"} |`),
+    ...rows.map(([a, b, c, d]) => `| ${a} | ${b} | ${c} | ${d || "waits for its scenario in `bun scripts/scenarios.ts`"} |`),
   ].join("\n");
 }
 
@@ -93,19 +98,83 @@ function links(): string {
 
 function fill(text: string, name: string, body: string): string {
   const re = new RegExp(`(<!-- ${name}:start -->)[\\s\\S]*?(<!-- ${name}:end -->)`);
-  if (!re.test(text)) throw new Error(`README.md has no ${name} block`);
+  if (!re.test(text)) throw new Error(`no ${name} block to fill`);
   return text.replace(re, `$1\n${body}\n$2`);
 }
 
-const before = readFileSync(README, "utf8");
-const after = fill(fill(fill(before, "contracts", contracts()), "proofs", proofsTable()), "links", links());
-if (process.argv.includes("--check")) {
-  if (after !== before) {
-    console.error("README.md is out of date: run bun scripts/readme.ts");
+/** The line a symbol is defined on: a Rust item or a TypeScript declaration, else a method. */
+function definitionLine(file: string, symbol: string): number | null {
+  const lines = readFileSync(join(ROOT, file), "utf8").split("\n");
+  const s = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`^\\s*(pub(\\([^)]*\\))?\\s+)?(async\\s+)?(fn|struct|enum|const|trait|type|mod)\\s+${s}\\b`),
+    new RegExp(`^\\s*(export\\s+)?(default\\s+)?(async\\s+)?(function|class|const|let|interface|type|enum)\\s+${s}\\b`),
+    new RegExp(`^\\s*(async\\s+)?${s}\\s*[(<]`),
+  ];
+  for (const re of patterns) {
+    const i = lines.findIndex((l) => re.test(l));
+    if (i >= 0) return i + 1;
+  }
+  return null;
+}
+
+/**
+ * Points every [`symbol`](path#Lnn) link in a Markdown file at the line that defines the symbol
+ * (the part after the last `::` for a path such as `seal::open`), so anchors follow the code.
+ */
+function anchors(text: string, name: string): string {
+  return text.replace(/\[`([^`]+)`\]\(([^)#\s]+)#L(\d+)\)/g, (whole, label: string, file: string, line: string) => {
+    if (!existsSync(join(ROOT, file))) throw new Error(`${name}: ${file} does not exist`);
+    const at = definitionLine(file, label.split("::").pop()!);
+    if (at === null) throw new Error(`${name}: ${label} is not defined in ${file}`);
+    return at === Number(line) ? whole : `[\`${label}\`](${file}#L${at})`;
+  });
+}
+
+/** Each scenario of the test matrix, and what it says while it has no passing record. */
+const SCENARIOS: [number, string, string][] = [
+  [1, "Sign in with a passkey or a NEAR wallet", "runs in a browser: the app's Playwright suite signs in with a virtual passkey authenticator"],
+  [2, "A protected account without gas", ""],
+  [3, "A leveraged Rhea position", ""],
+  [4, "A mandate with a sealed policy", ""],
+  [5, "The market shock moves the price", ""],
+  [6, "Alert, AI review, rescue and recovery", "waits for the NEAR AI Cloud key"],
+  [7, "Limits: replays, forged envelopes, withdrawals and expiry are refused", ""],
+  [8, "A Hyperliquid order signed by the protected account through Chain Signatures", ""],
+  [9, "An Aave loan on Base Sepolia rescued through Chain Signatures and verified by the MPC network", "waits for Base Sepolia ETH at the account's derived address"],
+  [10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", ""],
+  [11, "The vault pauses deposits from its risk score", ""],
+  [12, "A paid risk check over x402 on NEAR", ""],
+  [13, "Core flows through the SDK and the MCP server", ""],
+];
+
+function scenariosTable(): string {
+  const rows = SCENARIOS.map(([n, title, needs]) => {
+    const s = proofs.scenarios[String(n)];
+    const txs = (s?.steps ?? []).map((x) => x.tx ?? x.action ?? null).filter((x): x is string => typeof x === "string" && x.startsWith("http")).slice(0, 3);
+    const result = s?.ok ? "passes" : needs || (s ? "fails" : "not run yet");
+    return `| ${n} | ${s?.title ?? title} | ${result} | ${txs.map((u, i) => link(u, `tx ${i + 1}`)).join(", ")} |`;
+  });
+  return ["| # | Scenario | On testnet | Transactions |", "| --- | --- | --- | --- |", ...rows].join("\n");
+}
+
+const check = process.argv.includes("--check");
+const outputs: [string, string, string][] = [];
+const readmeBefore = readFileSync(README, "utf8");
+outputs.push([README, readmeBefore, anchors(fill(fill(fill(readmeBefore, "contracts", contracts()), "proofs", proofsTable()), "links", links()), "README.md")]);
+for (const doc of ["JUDGES.md", "AGENTS.md", "SECURITY.md"]) {
+  const f = join(ROOT, doc);
+  const text = readFileSync(f, "utf8");
+  outputs.push([f, text, anchors(doc === "JUDGES.md" ? fill(text, "scenarios", scenariosTable()) : text, doc)]);
+}
+const stale = outputs.filter(([, before, after]) => before !== after).map(([f]) => f.replace(`${ROOT}/`, ""));
+if (check) {
+  if (stale.length) {
+    console.error(`out of date: ${stale.join(", ")}; run bun scripts/readme.ts`);
     process.exit(1);
   }
-  console.log("README.md is current");
-} else if (after !== before) {
-  writeFileSync(README, after);
-  console.log("README.md updated");
-} else console.log("README.md is current");
+  console.log("README.md and the line anchors are current");
+} else {
+  for (const [f, before, after] of outputs) if (before !== after) writeFileSync(f, after);
+  console.log(stale.length ? `updated ${stale.join(", ")}` : "README.md and the line anchors are current");
+}
