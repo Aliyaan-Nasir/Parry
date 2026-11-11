@@ -1,6 +1,6 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
-import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, type ReserveLeaf } from "@parry/core";
+import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type ReserveLeaf } from "@parry/core";
 import { contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parry/services/lib/config";
 import type { Sql } from "@parry/services/lib/db";
 import { errorText } from "@parry/services/lib/log";
@@ -15,6 +15,7 @@ import { challenge, session, verify, type Proof } from "./auth";
 import { cached, decision, position, vaultState, type DecisionRow, type PositionRow } from "./views";
 import { copilot, CURRENCIES, fx } from "./extras";
 import { paidRisk } from "./x402";
+import { insuranceOf, registerRoutes } from "./routes";
 
 const ACCOUNT = /^[a-z0-9._-]{2,64}$/;
 
@@ -28,7 +29,7 @@ const RELAYER = process.env.RELAYER_URL ?? "http://localhost:4500";
 
 export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Response> } = {}) {
   const app = new Hono();
-  app.use("*", cors({ origin: (o) => o ?? "*", allowHeaders: ["content-type", "authorization", "x-payment"], exposeHeaders: ["x-payment-response"] }));
+  app.use("*", cors({ origin: (o) => o ?? "*", allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"], allowHeaders: ["content-type", "authorization", "x-payment"], exposeHeaders: ["x-payment-response"] }));
   // A request error carries its status (4xx, or 503 while a dependency has no data); anything else is a 500.
   app.onError((e, c) => {
     const status = (e as { status?: number }).status;
@@ -68,8 +69,23 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const [p] = await sql<{ n: string }[]>`SELECT count(DISTINCT p.account)::text AS n FROM positions p JOIN accounts a USING (account)
       WHERE EXISTS (SELECT 1 FROM events e WHERE e.contract = p.account AND e.event = 'mandate_set')`;
     const [r] = await sql<{ n: string }[]>`SELECT count(*)::text AS n FROM decisions WHERE outcome = 'executed'`;
+    // Value protected: every position of an account whose Rhea position the monitor read under a live mandate.
+    const [w] = await sql<{ protected_usd: number | null; watched: number }[]>`SELECT
+      (SELECT sum(collateral_usd) FROM positions WHERE account IN (SELECT account FROM positions WHERE raw->>'protected' = 'true')) AS protected_usd,
+      (SELECT count(*)::int FROM positions) AS watched`;
     const v = await vaultState(sql).catch(() => null);
-    return c.json({ network, positionsProtected: Number(p?.n ?? 0), rescues: Number(r?.n ?? 0), vaultTvlUsd: v?.navUsd ?? 0, vaultRiskScore: v?.riskScore ?? null, updatedAt: new Date().toISOString() });
+    const ins = await insuranceOf();
+    return c.json({
+      network,
+      positionsProtected: Number(p?.n ?? 0),
+      rescues: Number(r?.n ?? 0),
+      vaultTvlUsd: v?.navUsd ?? 0,
+      vaultRiskScore: v?.riskScore ?? null,
+      valueProtectedUsd: w?.protected_usd ?? 0,
+      positionsWatched: w?.watched ?? 0,
+      insuranceUsd: ins ? Number(ins.value_usd_e6) / 1e6 : 0,
+      updatedAt: new Date().toISOString(),
+    });
   });
 
   app.get("/v1/config", async (c) => {
@@ -94,7 +110,10 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
       SELECT payload, created_at FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
     const [hl] = await sql<{ price: number }[]>`SELECT price FROM prices WHERE asset = 'NEAR' AND source = 'hyperliquid' ORDER BY t DESC LIMIT 1`;
     if (!m) return c.json({ error: "no market data yet" }, 503);
-    return c.json({ near: { priceUsd: m.payload.price, hlMid: hl?.price ?? null, updatedAt: m.created_at.toISOString() }, tremor: m.payload.tremor, cascade: m.payload.cascade });
+    // Reports written before the regime and the heatmap source carry neither: derive the regime, say the source.
+    const tremor = { ...m.payload.tremor, regime: m.payload.tremor.regime ?? tremorRegime(Number(m.payload.tremor.annual ?? 0)) };
+    const cascade = { source: "positions", ...m.payload.cascade };
+    return c.json({ near: { priceUsd: m.payload.price, hlMid: hl?.price ?? null, updatedAt: m.created_at.toISOString() }, tremor, cascade });
   });
 
   app.get("/v1/accounts/:id", async (c) => {
@@ -324,8 +343,28 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   app.get("/v1/vault/history", async (c) => {
     const days = numQuery(c, "days", 7, 1, 90);
-    const rows = await sql<{ t: Date; share_price: number; nav: number; score: number; hedged: number }[]>`SELECT * FROM vault_history WHERE t > now() - make_interval(days => ${days}) ORDER BY t`;
-    return c.json(rows.map((r) => ({ t: r.t.toISOString(), sharePriceUsd: r.share_price, navUsd: r.nav, riskScore: r.score, hedgedFraction: r.hedged })));
+    type Row = {
+      t: Date; share_price: number; nav: number; score: number; hedged: number; staking_yield_usd: number | null; funding_yield_usd: number | null; hedge_ratio: number | null;
+      insurance_usd: number | null; reserves_root: string | null; basis_apr: number | null; drawdown: number | null; margin_ratio: number | null;
+    };
+    const rows = await sql<Row[]>`SELECT * FROM vault_history WHERE t > now() - make_interval(days => ${days}) ORDER BY t`;
+    return c.json(
+      rows.map((r) => ({
+        t: r.t.toISOString(),
+        sharePriceUsd: r.share_price,
+        navUsd: r.nav,
+        riskScore: r.score,
+        hedgedFraction: r.hedged,
+        stakingYieldUsd: r.staking_yield_usd,
+        fundingYieldUsd: r.funding_yield_usd,
+        hedgeRatio: r.hedge_ratio,
+        insuranceUsd: r.insurance_usd,
+        reservesRoot: r.reserves_root,
+        basisApr: r.basis_apr,
+        drawdown: r.drawdown,
+        marginRatio: r.margin_ratio,
+      })),
+    );
   });
 
   app.get("/v1/vault/reserves", async (c) => {
@@ -334,19 +373,6 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     if (!r) return c.json({ error: "no vault report yet" }, 404);
     const leaves = r.extra.leaves;
     return c.json({ root: r.payload.reserves.root, ratioBps: r.payload.reserves.ratio_bps, reportAt: new Date(r.payload.at * 1000).toISOString(), leaves: leaves.map((l) => ({ ...l, proof: reserveProof(leaves, l) })) });
-  });
-
-  app.get("/v1/rates", async (c) => {
-    const rates = await cached("rates", 120_000, async () => {
-      const out: { asset: string; supplyApr: number; borrowApr: number; source: string }[] = [];
-      for (const [asset, token] of [["wNEAR", contract("wnear")], ["USDC", contract("usdc")]] as const) {
-        const a = await view<{ supply_apr: string; borrow_apr: string } | null>(contract("lending"), "get_asset", { token_id: token }).catch(() => null);
-        if (a) out.push({ asset, supplyApr: Number(a.supply_apr), borrowApr: Number(a.borrow_apr), source: "Rhea lending" });
-      }
-      return out;
-    });
-    const v = await vaultState(sql).catch(() => null);
-    return c.json([...rates, ...(v ? [{ asset: "Parry Earn (EARN)", supplyApr: v.yield.stakingApr ?? 0, borrowApr: 0, source: "Parry vault (staking yield; funding shown separately)" }] : [])]);
   });
 
   app.get("/v1/fx", async (c) => c.json(await fx()));
@@ -421,6 +447,13 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const t = process.env.TREASURY_ACCOUNT_ID;
     return c.json({ account: t ?? null, balanceNear: t ? toNear((await balanceOf(t)) ?? 0n) : null, postQuantumKey: t ? await postQuantum(t) : false });
   });
+
+  const signedIn = async (c: Context) => {
+    const who = await session(sql, c.req.header("authorization"));
+    if (!who) throw bad("sign in first", 401);
+    return who;
+  };
+  registerRoutes(app, sql, { bad, account, numQuery, body, signedIn });
 
   if (opts.mcp) app.all("/mcp", (c) => opts.mcp!(c.req.raw));
 

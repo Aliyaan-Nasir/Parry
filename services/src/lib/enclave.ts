@@ -9,7 +9,17 @@
 import { contract, enclaveInfo } from "./config";
 import { returnValue, Sender, view } from "./near";
 
-export type EnclaveMode = "keys" | "risk_update" | "guardian" | "vault_report";
+export type EnclaveMode = "keys" | "risk_update" | "guardian" | "vault_report" | "certificate";
+
+/**
+ * The modes the deployed enclave build serves: `ENCLAVE_MODES` (comma separated), else the
+ * deployment record's `enclave.modes`, else the four every build has.
+ */
+export function enclaveModes(): EnclaveMode[] {
+  const fromEnv = process.env.ENCLAVE_MODES?.split(",").map((m) => m.trim()).filter(Boolean);
+  const recorded = (enclaveInfo() as { modes?: string[] } | null)?.modes;
+  return (fromEnv ?? recorded ?? ["keys", "risk_update", "guardian", "vault_report"]) as EnclaveMode[];
+}
 
 export interface EnclaveRun<T> {
   output: T;
@@ -32,8 +42,9 @@ function caller(): Sender {
   return enclaveSender;
 }
 
-export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = []): Promise<EnclaveRun<T>> {
-  const input = JSON.stringify({ mode, accounts });
+/** Runs a mode; `fields` replace the account list for modes with their own input (certificate). */
+export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = [], fields?: Record<string, unknown>): Promise<EnclaveRun<T>> {
+  const input = JSON.stringify(fields ? { mode, ...fields } : { mode, accounts });
   if ((process.env.ENCLAVE_MODE ?? "outlayer") === "local") return runLocal<T>(input);
   const sender = caller();
   const info = enclaveInfo();

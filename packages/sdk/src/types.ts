@@ -18,6 +18,12 @@ export interface Stats {
   rescues: number;
   vaultTvlUsd: number;
   vaultRiskScore: number;
+  /** Collateral (USD) of positions on protected accounts with a live mandate. */
+  valueProtectedUsd?: number;
+  /** Positions the monitor reads, protected or not. */
+  positionsWatched?: number;
+  /** The vault insurance fund's value (0 until the vault has one). */
+  insuranceUsd?: number;
   updatedAt: string;
 }
 
@@ -46,10 +52,22 @@ export interface Market {
     sigmaHourly: number;
     annual: number;
     level: "calm" | "elevated" | "high" | "extreme";
+    /** The volatility regime, with thresholds calibrated on NEAR's crashes (docs/risk-model.md). */
+    regime?: Regime;
     windows: { hours: number; sigma: number | null }[];
   };
-  cascade: { pressure: number; atRiskUsd: number; correlatedOwners: number };
+  cascade: {
+    pressure: number;
+    atRiskUsd: number;
+    correlatedOwners: number;
+    /** "heatmap": every Rhea lending borrower on `network`; "positions": the positions Parry monitors. */
+    source?: "heatmap" | "positions";
+    network?: Network | null;
+    accounts?: number;
+  };
 }
+
+export type Regime = "calm" | "stressed" | "panic";
 
 export interface Position {
   /** `<account>:<venue>:<name>` */
@@ -170,7 +188,15 @@ export interface Decision {
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
+  /** Why the planner chose this step and skipped the earlier ones in the policy's order; null for decisions without one. */
+  explanation?: RescueExplanation | null;
   createdAt: string;
+}
+
+export interface RescueExplanation {
+  step: string;
+  why: string;
+  skipped: { step: string; reason: string }[];
 }
 
 export interface DecisionPage {
@@ -243,6 +269,19 @@ export interface VaultPoint {
   sharePriceUsd: number;
   navUsd: number;
   riskScore: number;
+  hedgedFraction?: number;
+  /** Cumulative staking yield and funding (USD); null for points recorded before they were. */
+  stakingYieldUsd?: number | null;
+  fundingYieldUsd?: number | null;
+  hedgeRatio?: number | null;
+  insuranceUsd?: number | null;
+  reservesRoot?: string | null;
+  /** LiNEAR's staking yield plus the funding the short earns, a year. */
+  basisApr?: number | null;
+  /** 1 − share price / the best share price so far. */
+  drawdown?: number | null;
+  /** Hedge account value over the short's notional. */
+  marginRatio?: number | null;
 }
 
 export interface ReserveLeafWithProof {
@@ -260,15 +299,21 @@ export interface Reserves {
   leaves: ReserveLeafWithProof[];
 }
 
-/** One row of `GET /v1/rates`. */
+/** One Rhea lending asset in `GET /v1/rates`. APRs and utilization are fractions. */
 export interface Rate {
-  /** "wNEAR", "USDC", or "Parry Earn (EARN)" for the vault's yield. */
   asset: string;
+  tokenId: string;
   supplyApr: number;
-  /** 0 for the vault. */
   borrowApr: number;
-  /** "Rhea lending", or the vault. */
+  utilization: number;
   source: string;
+}
+
+export interface Rates {
+  rhea: Rate[];
+  hyperliquid: { fundingHourly: number | null; funding24hApr: number | null; source: string };
+  vault: { stakingApr: number | null; fundingApr: number | null; netApr: number | null; insuranceShareBps: number | null; source: string };
+  readAt: string;
 }
 
 export interface RouteComparison {
@@ -457,3 +502,172 @@ export interface PasskeyAssertion {
   /** r || s, 64 bytes, hex, low-s. */
   signature: string;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Crash replay, verification, watched accounts, certificates and the market views
+// ---------------------------------------------------------------------------------------------
+
+export interface ReplayCrash {
+  id: string;
+  name: string;
+  start: string;
+  end: string;
+  dropPct: number;
+  candles: { t: string; price: number; low?: number }[];
+  position: {
+    startHealth: number;
+    warningHours: number | null;
+    liquidatedAt: string | null;
+    liquidatedWithParryAt?: string | null;
+    predictedHoursAtWarning?: number | null;
+    steps: { t: string; action: string; plan: string; healthBefore: number; healthAfter: number }[];
+    healthWith: { t: string; h: number }[];
+    healthWithout: { t: string; h: number }[];
+  };
+  vault: {
+    navWith: { t: string; v: number }[];
+    navUnhedged: { t: string; v: number }[];
+    maxDrawdownPct: number;
+    maxDrawdownUnhedgedPct?: number;
+    marginMin: number;
+    insurancePaidUsd: number;
+  };
+}
+
+export interface Replay {
+  source: string;
+  sources?: Record<string, string>;
+  generatedAt?: string;
+  crashes: ReplayCrash[];
+  summary: { medianWarningHours: number | null; liquidationsAvoided: number; crashes: number; [k: string]: unknown };
+  calibration?: { regime: { stressed: number; panic: number; [k: string]: unknown }; [k: string]: unknown };
+}
+
+export interface VerifyResult {
+  kind: "decision" | "certificate" | "transaction";
+  ok: boolean;
+  checks: { name: string; ok: boolean; detail: string }[];
+  subject: Record<string, unknown>;
+}
+
+export interface WatchThresholds {
+  score: number;
+  health: number;
+}
+
+export interface WatchRow {
+  account: string;
+  label: string | null;
+  thresholds: WatchThresholds;
+  position: Position | null;
+  /** The alerts the position raises now at these thresholds (empty when none). */
+  alert: { kind: "risk" | "health"; severity: "info" | "warning" | "critical"; title: string; body: string }[];
+}
+
+/** The certificate JSON the enclave signs (internal/INTERFACES.md, section 4). */
+export interface CertificateBody {
+  kind: "parry-health-certificate";
+  version: 1;
+  account: string;
+  reader: string;
+  venue: string;
+  threshold: number;
+  block_height: number;
+  block_hash: string;
+  issued_at: number;
+  expires_at: number;
+  statement: string;
+}
+
+export interface Certificate {
+  /** Hex SHA-256 of "parry-certificate:v1:" + the certificate JSON: the digest the enclave signed and the risk board's key. */
+  hash: string;
+  /** The exact certificate JSON text the enclave signed. */
+  certificate: string;
+  /** The enclave's ed25519 signature over the digest (standard base64). */
+  signature: string;
+  enclavePublicKey: string;
+  anchorTx: string | null;
+  createdAt: string;
+}
+
+export interface CertificateRequest {
+  account: string;
+  reader: string;
+  threshold: number;
+  ttlSecs: number;
+  venue?: string;
+  anchor?: boolean;
+}
+
+/** The risk board's `certificate(hash)` record. */
+export interface CertificateAnchor {
+  hash: string;
+  reader: string;
+  expires_at: number;
+  at: number;
+}
+
+export interface RouteSavings {
+  totalSavedUsd: number;
+  rescues: {
+    decision: string;
+    chosen: { venue: "rhea" | "intents"; outUsd: number } | null;
+    worst: { venue: "rhea" | "intents"; outUsd: number } | null;
+    savedUsd: number;
+    quotes: { venue: "rhea" | "intents"; outUsd: number | null; unavailable: string | null }[];
+    at: string;
+  }[];
+}
+
+export interface VaultInsurance {
+  /** False while the deployed vault has no insurance fund (every value is then empty). */
+  available: boolean;
+  shareBps: number | null;
+  linear: string;
+  usdcE6: string;
+  valueUsdE6: string;
+  paidTotalE6: string;
+  paidTodayE6: string;
+  capPerDayBps: number | null;
+  marginReservedUsdE6: string;
+  events: { kind: "inflow" | "payout"; at: string; [k: string]: unknown }[];
+  source: string;
+}
+
+export interface Heatmap {
+  network: Network;
+  price: number;
+  buckets: { price: number; collateralUsd: number; debtUsd: number; accounts: number }[];
+  cascades: { from: number; to: number; collateralUsd: number; accounts?: number; rounds?: number }[];
+  readAt: string;
+  accounts: number;
+  source?: string;
+}
+
+export interface TokenPriceRow {
+  id: string;
+  symbol: string;
+  priceUsd: number;
+  /** Fraction over 24 hours, or null without a source for it. */
+  change24h: number | null;
+  source: string;
+}
+
+export interface Prices {
+  tokens: TokenPriceRow[];
+  readAt: string;
+}
+
+export interface Incident {
+  id: string;
+  account: string;
+  title: string;
+  body: string;
+  severity: "info" | "warning" | "critical";
+  alerts: Alert[];
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export type StreamEvent = "alert" | "decision" | "position" | "price" | "vault" | "status";

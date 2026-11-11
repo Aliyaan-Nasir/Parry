@@ -53,14 +53,14 @@ export async function rpc<T>(method: string, params: unknown, urls: string[] = R
 }
 
 /** A contract view, parsed as JSON. */
-export async function view<T>(account: string, method: string, args: Record<string, unknown> = {}, finality: "final" | "optimistic" = "optimistic"): Promise<T> {
+export async function view<T>(account: string, method: string, args: Record<string, unknown> = {}, finality: "final" | "optimistic" = "optimistic", urls: string[] = RPC_URLS): Promise<T> {
   const r = await rpc<{ result?: number[]; error?: string }>("query", {
     request_type: "call_function",
     finality,
     account_id: account,
     method_name: method,
     args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
-  });
+  }, urls);
   // A view that panics, or a method the contract lacks, comes back as `error` beside the block.
   if (!r.result) throw new Error(`${account}.${method}: ${r.error ?? "no result"}`);
   return JSON.parse(Buffer.from(r.result).toString()) as T;

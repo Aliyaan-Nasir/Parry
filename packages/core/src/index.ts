@@ -4,3 +4,6 @@ export * from "./strategy.js";
 export * from "./hedge.js";
 export * from "./reserves.js";
 export * from "./alerts.js";
+export * from "./heatmap.js";
+export * from "./replay.js";
+export * from "./savings.js";

@@ -25,7 +25,9 @@ export type OwnerAction =
   | { ft_transfer: { token: string; receiver_id: string; amount: string } }
   | { mpc_sign: { path: string; payload: string; domain_id: number } }
   | { hl_order: { order: HlOrder; nonce: number } }
-  | { upgrade: { code_hash: string } };
+  | { upgrade: { code_hash: string } }
+  | { close_rhea: { slippage_bps: number } }
+  | { unwind: { tokens: string[]; to?: string } };
 
 type Amount = string | number | bigint;
 
@@ -85,6 +87,23 @@ export const ownerActions = {
     if (!Number.isSafeInteger(nonce) || nonce <= 0) throw new Error("Hyperliquid nonce must be a positive integer (milliseconds)");
     return { hl_order: { order, nonce } };
   },
+  /**
+   * Closes the whole Rhea position atomically: sells just enough collateral on the Rhea exchange to
+   * repay all debt, repays it, and withdraws the rest into the account; any failed step restores the
+   * position. Must be the only action.
+   */
+  closeRhea: (slippageBps: number): OwnerAction => {
+    if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 1000) throw new Error("slippageBps must be an integer from 0 to 1000");
+    return { close_rhea: { slippage_bps: slippageBps } };
+  },
+  /**
+   * Revokes the mandate, withdraws every lending position into the account, then sends each listed
+   * token's balance and the NEAR above the storage reserve to the owner (`to` for a passkey owner).
+   */
+  unwind: (tokens: string[], to?: string): OwnerAction => {
+    if (new Set(tokens).size !== tokens.length) throw new Error("unwind lists each token once");
+    return { unwind: to === undefined ? { tokens } : { tokens, to } };
+  },
   /** Moves the account to another published global code hash (base58). */
   upgrade: (codeHash: string): OwnerAction => ({ upgrade: { code_hash: codeHash } }),
 } as const;
@@ -93,6 +112,8 @@ function assertActions(actions: OwnerAction[]): void {
   if (actions.length === 0) throw new Error("no actions");
   const signing = actions.some((a) => typeof a === "object" && ("mpc_sign" in a || "hl_order" in a));
   if (signing && actions.length !== 1) throw new Error("a signing action (mpc_sign, hl_order) must be the only action");
+  const closing = actions.some((a) => typeof a === "object" && "close_rhea" in a);
+  if (closing && actions.length !== 1) throw new Error("close_rhea must be the only action");
 }
 
 /** `owner_call(actions)` for a NEAR-account owner: 1 yoctoNEAR, 300 Tgas. */

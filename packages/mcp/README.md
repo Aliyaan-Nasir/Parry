@@ -52,6 +52,14 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `simulate_rescue(account)`: what the guardian would do now, unsigned and unlimited.
 - `get_rescue_route(amount_near)`: the Rhea pool against a dry-run NEAR Intents 1Click quote for a rescue swap.
 - `get_status()`: every service's health, the oracle's freshness, the indexer's lag, the gas-key lanes and the treasury.
+- `get_rates()`: every Rhea lending asset's rates, Hyperliquid's NEAR funding and the vault's staking against funding yield, each with its source.
+- `get_crash_replay()`: the risk model, guardian and vault replayed through NEAR's largest historical crashes.
+- `get_liquidation_heatmap(network?)`: every Rhea lending borrower's liquidation price, bucketed, and the chained cascades.
+- `get_prices(tokens?)`: USD prices and 24 hour changes of NEAR, the liquid staking tokens, USDC and every Rhea asset.
+- `verify_record(id)`: the API's re-check of a decision id, a certificate hash or a NEAR transaction hash.
+- `verify_certificate(hash, reader?)`: checks a health certificate's hash, enclave signature (with the key in force at issue time), expiry, reader and anchor locally.
+- `get_incidents(account)`: an account's alerts grouped into incidents.
+- `get_route_savings(account?)`: what each rescue's route choice saved against the worst quote.
 
 ## Write tools (testnet, agent account only)
 
@@ -60,6 +68,9 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `vault_deposit(amount_near)`: deposits NEAR from the agent account into the vault, at most 1 NEAR per call and 5 calls per UTC day.
 - `vault_withdraw(shares)`: queues a withdrawal of the agent's vault shares, at most 5 calls per UTC day.
 - `paid_risk_check(account)`: a risk check paid per call over x402 on NEAR from the agent account (at most 0.05 test USDC a call), at most 20 calls per UTC day.
+- `list_watched()`: the agent's watched accounts with live risk (a read, listed only with an agent because it signs in with the agent key).
+- `watch_account(account, score, health, label?)` and `unwatch_account(account)`: the agent's watch list, at most 20 calls per UTC day together.
+- `issue_certificate(reader, threshold, ttl_secs, venue?, anchor?)`: an enclave-signed health certificate for the agent's protected account, at most 7 days long and 5 calls per UTC day.
 
 Every refusal says why, and nothing is sent when a call is refused.
 

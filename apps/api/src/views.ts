@@ -59,6 +59,7 @@ export interface DecisionRow {
   health_after: number | null;
   routes: unknown;
   detail: string | null;
+  explanation?: { step: string; why: string; skipped: { step: string; reason: string }[] } | null;
   created_at: Date;
 }
 
@@ -97,6 +98,7 @@ export const decision = (r: DecisionRow) => ({
   healthBefore: r.health_before,
   healthAfter: r.health_after,
   routes: r.routes,
+  explanation: r.explanation ?? null,
   createdAt: r.created_at.toISOString(),
 });
 

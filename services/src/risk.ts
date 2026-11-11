@@ -19,9 +19,13 @@ import {
   tremor,
   valueAtRisk99,
   MAX_TRIGGER_HEALTH,
+  heatmapPressure,
+  type AlertThresholds,
   type Assessment,
+  type HeatmapAccount,
 } from "@parry/core";
-import { contract, intEnv } from "./lib/config";
+import { contract, intEnv, type Network } from "./lib/config";
+import { cascadeParams, heatmapAccounts, sweep } from "./lib/heatmap";
 import { nearHistory } from "./lib/history";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
@@ -60,6 +64,28 @@ export function assessAave(health: number, now: number): Assessment {
   };
 }
 
+/** Mainnet's borrowers from the heatmap, read at most once a minute (the scoring loop runs every 10 s). */
+const heatmapCache = new WeakMap<Sql, { at: number; accounts: HeatmapAccount[] }>();
+async function marketBorrowers(sql: Sql): Promise<HeatmapAccount[]> {
+  const hit = heatmapCache.get(sql);
+  if (hit && Date.now() - hit.at < 60_000) return hit.accounts;
+  const accounts = await heatmapAccounts(sql, "mainnet").catch(() => []);
+  heatmapCache.set(sql, { at: Date.now(), accounts });
+  return accounts;
+}
+
+/** Raises and resolves the risk and health alerts of one position for one person, at their thresholds. */
+async function raiseAlerts(sql: Sql, account: string, positionId: string, label: string, a: Assessment, thresholds: AlertThresholds) {
+  const raised = alertsFor({ id: positionId, label }, { score: a.score.score, tier: a.score.tier, health: a.health, ttlHours: a.ttl.medianHours }, thresholds);
+  for (const al of raised) {
+    await sql`INSERT INTO alerts (account, kind, severity, key, title, body) VALUES (${account}, ${al.kind}, ${al.severity}, ${al.key}, ${al.title}, ${al.body})
+      ON CONFLICT (account, key) WHERE status <> 'resolved' DO UPDATE SET severity = excluded.severity, title = excluded.title, body = excluded.body, updated_at = now()`;
+  }
+  const keys = raised.map((x) => x.key);
+  await sql`UPDATE alerts SET status = 'resolved', updated_at = now() WHERE account = ${account} AND status <> 'resolved'
+    AND kind IN ('risk', 'health') AND key LIKE ${`%:${positionId}`} AND NOT (key = ANY(${keys}))`;
+}
+
 export async function scoreAll(sql: Sql): Promise<number> {
   const now = Date.now() / 1000;
   // The oracle sets the price positions are valued at; volatility comes from the market.
@@ -74,7 +100,15 @@ export async function scoreAll(sql: Sql): Promise<number> {
     const a = assess(r.raw.position as never, price, marketHistory, now);
     return { owner: r.account, venue: "rhea", liqPrice: a.liqPrice, collateralUsd: r.collateral_usd };
   });
-  const c = cascade(cascadeInputs, price, tr.sigmaHourly, liquidity);
+  const own = cascade(cascadeInputs, price, tr.sigmaHourly, liquidity);
+  // The market's own borrowers (the heatmap of mainnet Rhea lending) set the pressure once read;
+  // until then, the positions Parry monitors do.
+  const borrowers = await marketBorrowers(sql);
+  const fromHeatmap = borrowers.length > 0 ? heatmapPressure(borrowers, price, tr.sigmaHourly, cascadeParams()) : null;
+  const c = fromHeatmap ? { ...own, pressure: fromHeatmap.pressure, atRiskUsd: fromHeatmap.atRiskUsd } : own;
+  const cascadeSource = fromHeatmap
+    ? { source: "heatmap" as const, network: "mainnet" as Network, accounts: borrowers.length, cascadeTo: fromHeatmap.to }
+    : { source: "positions" as const, network: null, accounts: lending.length, cascadeTo: null };
 
   for (const r of rows) {
     let a;
@@ -94,17 +128,13 @@ export async function scoreAll(sql: Sql): Promise<number> {
     await sql`INSERT INTO position_history (position_id, t, health, score, price) VALUES (${r.id}, date_trunc('minute', now()), ${health}, ${a.score.score}, ${a.driverPrice})
       ON CONFLICT (position_id, t) DO UPDATE SET health = excluded.health, score = excluded.score, price = excluded.price`;
 
-    // Alerts, with the person's thresholds.
+    // Alerts, with the person's thresholds; a watched account's alerts go to whoever watches it.
     const [s] = await sql<{ thresholds: typeof DEFAULT_THRESHOLDS }[]>`SELECT thresholds FROM settings WHERE account = ${r.account}`;
-    const thresholds = s?.thresholds ?? DEFAULT_THRESHOLDS;
-    const raised = alertsFor({ id: r.id, label: r.label }, { score: a.score.score, tier: a.score.tier, health: a.health, ttlHours: a.ttl.medianHours }, thresholds);
-    for (const al of raised) {
-      await sql`INSERT INTO alerts (account, kind, severity, key, title, body) VALUES (${r.account}, ${al.kind}, ${al.severity}, ${al.key}, ${al.title}, ${al.body})
-        ON CONFLICT (account, key) WHERE status <> 'resolved' DO UPDATE SET severity = excluded.severity, title = excluded.title, body = excluded.body, updated_at = now()`;
+    if (r.raw.watched !== true) await raiseAlerts(sql, r.account, r.id, r.label, a, s?.thresholds ?? DEFAULT_THRESHOLDS);
+    const watchers = await sql<{ owner: string; label: string | null; thresholds: { score: number; health: number } }[]>`SELECT owner, label, thresholds FROM watched WHERE account = ${r.account}`;
+    for (const w of watchers) {
+      await raiseAlerts(sql, w.owner, r.id, `${w.label ?? r.account}: ${r.label}`, a, { ...DEFAULT_THRESHOLDS, ...w.thresholds });
     }
-    const keys = raised.map((x) => x.key);
-    await sql`UPDATE alerts SET status = 'resolved', updated_at = now() WHERE account = ${r.account} AND status <> 'resolved'
-      AND kind IN ('risk', 'health') AND key LIKE ${`%:${r.id}`} AND NOT (key = ANY(${keys}))`;
 
     // Protected accounts in caution or worse, or under the highest trigger health a sealed policy
     // may hold, go to the guardian (it decides with the policy); the queue keeps each account's
@@ -125,7 +155,7 @@ export async function scoreAll(sql: Sql): Promise<number> {
   } else {
     await sql`UPDATE alerts SET status = 'resolved', updated_at = now() WHERE kind = 'cascade' AND status <> 'resolved'`;
   }
-  await sql`INSERT INTO reports (kind, run_id, payload) VALUES ('market', ${Date.now()}, ${sql.json({ tremor: { sigmaHourly: tr.sigmaHourly, annual: tr.annual, level: tr.level, windows: tr.windows }, cascade: { pressure: c.pressure, atRiskUsd: c.atRiskUsd, correlatedOwners: c.correlatedOwners.length }, price } as never)})`;
+  await sql`INSERT INTO reports (kind, run_id, payload) VALUES ('market', ${Date.now()}, ${sql.json({ tremor: { sigmaHourly: tr.sigmaHourly, annual: tr.annual, level: tr.level, regime: tr.regime, windows: tr.windows }, cascade: { pressure: c.pressure, atRiskUsd: c.atRiskUsd, correlatedOwners: c.correlatedOwners.length, ...cascadeSource }, price } as never)})`;
   await sql`DELETE FROM reports WHERE kind = 'market' AND created_at < now() - interval '1 day'`;
   return rows.length;
 }
@@ -161,6 +191,20 @@ export async function main() {
       await setStatus(sql, "risk-publisher", false, errorText(e));
       throw e;
     }
+  });
+  // The liquidation heatmap: a few pages of every Rhea lending account per pass, on both networks.
+  const networks = (process.env.HEATMAP_NETWORKS ?? "testnet,mainnet").split(",").map((x) => x.trim()).filter((x): x is Network => x === "testnet" || x === "mainnet");
+  every(intEnv("HEATMAP_MS", 120_000), "heatmap", async () => {
+    const parts: string[] = [];
+    for (const net of networks) {
+      try {
+        const r = await sweep(sql, net);
+        parts.push(`${net}: ${r.read} read, ${r.borrowers} borrowers of ${r.total}`);
+      } catch (e) {
+        parts.push(`${net}: ${errorText(e)}`);
+      }
+    }
+    await setStatus(sql, "heatmap", !parts.some((p) => /error|failed|rpc /i.test(p)), parts.join("; ").slice(0, 400));
   });
   serveHealth("risk", intEnv("PORT", 4200), async () => ({ ok: Date.now() - lastOk < 60_000, detail: lastReport ? `last report ${lastReport}` : "scoring" }));
 }

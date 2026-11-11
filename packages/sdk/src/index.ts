@@ -15,7 +15,38 @@ export {
 } from "./owner.js";
 export { assertionFromWebAuthn, compressedPasskey, derToRawSignature, type WebAuthnAssertionCredential } from "./webauthn.js";
 export { buildMandate, MANDATE_LIMITS, type MandateInput } from "./mandate.js";
-export { MAX_SEALED_BYTES, openPolicy, policyJson, POLICY_DEFAULTS, rustFloat, sealPolicy, STRATEGIES, type Policy, type SealOptions, type Strategy } from "./seal.js";
+export {
+  defaultSteps,
+  MAX_SEALED_BYTES,
+  openPolicy,
+  policyJson,
+  POLICY_DEFAULTS,
+  POLICY_STEPS,
+  rustFloat,
+  sealPolicy,
+  STRATEGIES,
+  STRATEGY_STEPS,
+  type Policy,
+  type PolicyStep,
+  type SealOptions,
+  type Strategy,
+} from "./seal.js";
+export {
+  approveCalldata,
+  closeFromWalletActions,
+  closePerpAction,
+  closeRheaAction,
+  encodeEip1559,
+  EVM_PATH,
+  repayAaveActions,
+  repayCalldata,
+  unwindAction,
+  type EvmSigningStep,
+  type EvmTx,
+} from "./close.js";
+export { CERTIFICATE_DOMAIN, certificateDigest, verifyCertificate, type CertificateCheck, type CertificateVerification, type VerifyCertificateOptions } from "./certificate.js";
+export { nep413Payload, signInNep413, signNep413 } from "./auth.js";
+export { subscribe, type EventSourceLike, type SubscribeOptions } from "./subscribe.js";
 export {
   envelopeDigest,
   ENVELOPE_DOMAIN,

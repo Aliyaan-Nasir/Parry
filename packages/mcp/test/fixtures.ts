@@ -7,7 +7,9 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { reserveProof, reserveRoot, type ReserveLeaf } from "@parry/core";
 import {
+  certificateDigest,
   createParry,
+  verifyCertificate,
   envelopeDigest,
   reviewHash,
   toBase58,
@@ -125,7 +127,62 @@ const vault = {
   queueLength: 0,
 };
 
+const certBody = JSON.stringify({
+  kind: "parry-health-certificate",
+  version: 1,
+  account: "0uagent.testnet",
+  reader: "lender.testnet",
+  venue: "rhea",
+  threshold: 1.3,
+  block_height: 10,
+  block_hash: "11111111111111111111111111111111",
+  issued_at: Math.floor(Date.now() / 1000) - 100,
+  expires_at: Math.floor(Date.now() / 1000) + 86_400,
+  statement: "health is at least 1.3",
+});
+export const certificate = {
+  hash: bytesToHex(certificateDigest(certBody)),
+  certificate: certBody,
+  signature: toBase64(ed25519.sign(certificateDigest(certBody), enclaveSecret)),
+  enclavePublicKey: enclaveKey,
+  anchorTx: null,
+  createdAt: "2026-11-10T00:00:00Z",
+};
+
 export const routes: Record<string, unknown> = {
+  "GET /v1/rates": {
+    rhea: [{ asset: "wNEAR", tokenId: "wrap.testnet", supplyApr: 0.01, borrowApr: 0.03, utilization: 0.4, source: "lending.parry.testnet get_assets_paged_detailed" }],
+    hyperliquid: { fundingHourly: 0.0000125, funding24hApr: 0.1095, source: "hyperliquid" },
+    vault: { stakingApr: 0.05, fundingApr: 0.02, netApr: 0.07, insuranceShareBps: null, source: "vault" },
+    readAt: "2026-11-10T00:00:00Z",
+  },
+  "GET /v1/replay": {
+    source: "https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h",
+    crashes: [
+      {
+        id: "crash-2022-05-09",
+        name: "9 May 2022 to 12 May 2022",
+        start: "2022-05-09T00:00:00Z",
+        end: "2022-05-12T00:00:00Z",
+        dropPct: 51.7,
+        candles: [{ t: "2022-05-09T00:00:00Z", price: 10 }],
+        position: { startHealth: 1.3, warningHours: 44, liquidatedAt: "2022-05-11T06:00:00Z", liquidatedWithParryAt: null, steps: [], healthWith: [], healthWithout: [] },
+        vault: { navWith: [], navUnhedged: [], maxDrawdownPct: 3.8, maxDrawdownUnhedgedPct: 51.7, marginMin: 0.5, insurancePaidUsd: 5 },
+      },
+    ],
+    summary: { medianWarningHours: 44, liquidationsAvoided: 1, crashes: 1 },
+  },
+  "GET /v1/heatmap": { network: "testnet", price: 3.6, buckets: [{ price: 2.8, collateralUsd: 5, debtUsd: 3, accounts: 1 }], cascades: [], readAt: "2026-11-10T00:00:00Z", accounts: 1 },
+  "GET /v1/prices": { tokens: [{ id: "wrap.near", symbol: "wNEAR", priceUsd: 3.6, change24h: 0.01, source: "aggregate-oracle.near" }], readAt: "2026-11-10T00:00:00Z" },
+  "GET /v1/incidents": [{ id: "1", account: "0uabc.testnet", title: "2 positions affected", body: "", severity: "critical", alerts: [], openedAt: "2026-11-10T00:00:00Z", closedAt: null }],
+  "GET /v1/routes/savings": { totalSavedUsd: 1.5, rescues: [] },
+  [`GET /v1/verify/${"ab".repeat(32)}`]: { kind: "certificate", ok: true, checks: [{ name: "hash", ok: true, detail: "" }], subject: {} },
+  "POST /v1/auth/challenge": { nonce: "cd".repeat(32), message: "Sign in to Parry as 0uagent.testnet.", recipient: "parry" },
+  "POST /v1/auth/verify": { token: "agent-token" },
+  "GET /v1/watch": [{ account: "bob.testnet", label: null, thresholds: { score: 50, health: 1.2 }, position: null, alert: [] }],
+  "PUT /v1/watch/bob.testnet": { account: "bob.testnet", label: "Bob", thresholds: { score: 50, health: 1.2 }, position: null, alert: [] },
+  "DELETE /v1/watch/bob.testnet": { ok: true },
+  "POST /v1/certificates": certificate,
   "GET /v1/accounts/0uabc.testnet": {
     account: "0uabc.testnet",
     owner: { kind: "near", id: "alice.testnet" },
@@ -171,7 +228,7 @@ export function fakeParry(network: Network = "testnet"): FakeParry {
   const fetch = async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const key = `${init?.method ?? "GET"} ${url.pathname}`;
-    apiCalls.push(`${key}${url.search}`);
+    apiCalls.push(`${key}${url.search}${init?.headers && (init.headers as Record<string, string>).authorization ? ` as ${(init.headers as Record<string, string>).authorization}` : ""}`);
     if (key === "GET /v1/guardian/decisions") return Response.json({ items: [decision], next: null });
     if (key === `GET /v1/guardian/decisions/${decision.id}`) return Response.json(decision);
     if (key in routes) return Response.json(routes[key]);
@@ -194,6 +251,7 @@ export function fakeParry(network: Network = "testnet"): FakeParry {
         requirement: { scheme: "exact", network: "near:testnet", asset: "usdc.parry.testnet", amount: "10000", payTo: "api.parry.testnet", resource: `/v1/paid/risk/${account}`, description: "risk check" },
       } as unknown as Awaited<ReturnType<Parry["paidRiskCheck"]>>;
     },
+    verifyCertificate: async (_c, opts = {}) => verifyCertificate(certificate, { enclavePublicKey: enclaveKey, ...opts }),
     sendCall: async (call) => {
       sent.push(call);
       return { txHash: `tx-${sent.length}`, value: call.methodName === "request_withdraw" ? sent.length : null };

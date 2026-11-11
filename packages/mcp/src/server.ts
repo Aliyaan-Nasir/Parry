@@ -6,6 +6,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  verifyCertificate,
   buildMandate,
   nearToYocto,
   ownerActions,
@@ -266,6 +267,152 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       }),
   );
 
+  server.registerTool(
+    "get_rates",
+    {
+      title: "Lending, funding and vault rates",
+      description:
+        "Reads every asset Rhea lending lists with its supply and borrow APR and utilization, Hyperliquid's NEAR funding (the current hourly rate and the last 24 hours annualized), " +
+        "and the vault's staking against funding yield, each number with the source it was read from. Changes nothing.",
+      inputSchema: {},
+      annotations: read,
+    },
+    () =>
+      guard(async () => {
+        const r = await parry.rates();
+        return ok(`${r.rhea.length} Rhea assets; Hyperliquid NEAR funding ${r.hyperliquid.funding24hApr === null ? "unknown" : `${(r.hyperliquid.funding24hApr * 100).toFixed(2)} % a year`}.`, r as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "get_crash_replay",
+    {
+      title: "Crash replay",
+      description:
+        "Reads how Parry's risk model, guardian planner and vault would have done through NEAR's largest historical crashes, from real hourly candles: hours of warning before liquidation, " +
+        "the guardian's steps, health with and without Parry, hedged against unhedged vault NAV, and the calibration of the Tremor regime. Returns the summary and each crash without its series. Changes nothing.",
+      inputSchema: {},
+      annotations: read,
+    },
+    () =>
+      guard(async () => {
+        const r = await parry.replay();
+        const crashes = r.crashes.map((c) => ({
+          id: c.id,
+          name: c.name,
+          dropPct: c.dropPct,
+          warningHours: c.position.warningHours,
+          liquidatedAt: c.position.liquidatedAt,
+          liquidatedWithParryAt: c.position.liquidatedWithParryAt ?? null,
+          guardianSteps: c.position.steps.length,
+          vaultMaxDrawdownPct: c.vault.maxDrawdownPct,
+          unhedgedMaxDrawdownPct: c.vault.maxDrawdownUnhedgedPct ?? null,
+        }));
+        return ok(`${r.summary.crashes} crashes; median warning ${r.summary.medianWarningHours} h; liquidations avoided ${r.summary.liquidationsAvoided}.`, { source: r.source, summary: r.summary, calibration: r.calibration ?? null, crashes });
+      }),
+  );
+
+  server.registerTool(
+    "get_liquidation_heatmap",
+    {
+      title: "Liquidation heatmap",
+      description:
+        "Reads where every Rhea lending borrower (testnet or mainnet) would be liquidated as NEAR falls: collateral and debt bucketed by liquidation price, and the chained cascades " +
+        "in which one bucket's liquidations push the price into the next. Changes nothing.",
+      inputSchema: { network: z.enum(["testnet", "mainnet"]).optional().describe("Which Rhea lending market (default: this server's network).") },
+      annotations: read,
+    },
+    ({ network }) =>
+      guard(async () => {
+        const h = await parry.heatmap(network ? { network } : {});
+        return ok(`${h.accounts} borrowers on ${h.network}; ${h.cascades.length} chained cascade(s).`, h as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "get_prices",
+    {
+      title: "Token prices",
+      description: "Reads USD prices and 24 hour changes of NEAR, the liquid staking tokens, USDC and every asset Rhea lending lists, each with its source. Changes nothing.",
+      inputSchema: { tokens: z.array(z.string().min(1).max(80)).max(30).optional().describe("Token ids or symbols to keep (default: all).") },
+      annotations: read,
+    },
+    ({ tokens }) =>
+      guard(async () => {
+        const p = await parry.prices(tokens);
+        return ok(`${p.tokens.length} price(s).`, p as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "verify_record",
+    {
+      title: "Verify a decision, certificate or transaction",
+      description:
+        "Asks the Parry API to re-check a guardian decision id, a health certificate hash or a NEAR transaction hash: every signature (the model's, the enclave's with the key in force at the time) " +
+        "and the hashes recorded on chain. Changes nothing.",
+      inputSchema: { id: z.string().min(32).max(128).describe("A decision id, a certificate hash or a NEAR transaction hash.") },
+      annotations: read,
+    },
+    ({ id }) =>
+      guard(async () => {
+        const v = await parry.verify(id);
+        const bad = v.checks.filter((c) => !c.ok).map((c) => c.name);
+        return ok(`${v.kind}: ${v.ok ? "verified" : `NOT verified (${bad.join(", ")})`}.`, v as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "verify_certificate",
+    {
+      title: "Verify a health certificate",
+      description:
+        "Verifies a Parry health certificate independently of the API's own claims: its hash, the enclave's signature with the key the risk board trusted when it was issued (read from the chain), " +
+        "the expiry, the reader it names and the risk board's anchor. Changes nothing.",
+      inputSchema: {
+        hash: z.string().regex(/^[0-9a-f]{64}$/).describe("The certificate hash."),
+        reader: accountArg.optional().describe("Who is reading it: the certificate must name this reader."),
+      },
+      annotations: read,
+    },
+    ({ hash, reader }) =>
+      guard(async () => {
+        const v = await parry.verifyCertificate(hash, reader ? { reader } : {});
+        const bad = v.checks.filter((c) => c.status === "fail").map((c) => c.name);
+        return ok(v.ok ? `Verified: ${v.certificate?.statement ?? ""}.` : `NOT verified${bad.length ? `: ${bad.join(", ")} failed` : ""}.`, v as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "get_incidents",
+    {
+      title: "Alert incidents",
+      description: "Reads an account's alert incidents from the Parry API, newest first: related alerts (one price move touching several positions) grouped, with severity and when each opened and closed. Changes nothing.",
+      inputSchema: { account: accountArg },
+      annotations: read,
+    },
+    ({ account }) =>
+      guard(async () => {
+        const xs = await parry.incidents(account);
+        return ok(`${xs.length} incident(s); ${xs.filter((i) => i.closedAt === null).length} open.`, { incidents: xs });
+      }),
+  );
+
+  server.registerTool(
+    "get_route_savings",
+    {
+      title: "Rescue route savings",
+      description: "Reads what each rescue's swap route choice saved against the worst quote the guardian had (the Rhea pool against a NEAR Intents 1Click dry-run quote), optionally for one account. Changes nothing.",
+      inputSchema: { account: accountArg.optional() },
+      annotations: read,
+    },
+    ({ account }) =>
+      guard(async () => {
+        const s = await parry.routeSavings(account);
+        return ok(`${s.rescues.length} rescue(s) saved $${s.totalSavedUsd.toFixed(2)} in all.`, s as unknown as Record<string, unknown>);
+      }),
+  );
+
   // ------------------------------------------------------------------------------------------
   // Write tools: testnet only, the configured agent's own account, capped.
   // ------------------------------------------------------------------------------------------
@@ -469,6 +616,105 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
           payment: r.payment,
           remainingToday: remaining("paid_risk_check", caps.paidPerDay),
         });
+      }),
+  );
+
+  /** A session token for the agent's protected account, signed with the agent key (NEP-413), reused for 11 hours. */
+  let session: { token: string; at: number } | null = null;
+  const agentToken = async (): Promise<{ token: string; account: string }> => {
+    const account = await agentProtectedAccount();
+    if (!session || now().getTime() - session.at > 11 * 3_600_000) session = { token: await parry.signIn(account, agent.privateKey), at: now().getTime() };
+    return { token: session.token, account };
+  };
+
+  server.registerTool(
+    "list_watched",
+    {
+      title: "The agent's watched accounts",
+      description:
+        `Lists the NEAR accounts the agent's protected account watches (signed in with the agent key of ${agent.accountId}), each with its thresholds, its live position risk and the alerts it raises now. Changes nothing.`,
+      inputSchema: {},
+      annotations: read,
+    },
+    () =>
+      guard(async () => {
+        const { token } = await agentToken();
+        const rows = await parry.watchlist(token);
+        return ok(`${rows.length} watched account(s); ${rows.filter((r) => r.alert.length > 0).length} alerting.`, { watched: rows });
+      }),
+  );
+
+  server.registerTool(
+    "watch_account",
+    {
+      title: "Watch an account",
+      description:
+        "Adds or updates a watched NEAR account on the agent's protected account: Parry reads its Rhea position, scores it and alerts at these thresholds (it never protects or acts on it). " +
+        `Changes: the agent's watch list on the Parry API (at most 25 accounts). Testnet only; at most ${caps.watchPerDay} call(s) per UTC day, shared with unwatch_account.`,
+      inputSchema: {
+        account: accountArg,
+        score: z.number().int().min(0).max(100).describe("Alert at or above this risk score."),
+        health: z.number().gt(1).max(5).describe("Alert below this health."),
+        label: z.string().max(64).optional(),
+      },
+      annotations: { ...write, idempotentHint: true },
+    },
+    ({ account, score, health, label }) =>
+      guard(async () => {
+        const refused = notTestnet("watch_account") ?? admit("watch", caps.watchPerDay);
+        if (refused) return refused;
+        const { token } = await agentToken();
+        const row = await parry.watch(token, account, { thresholds: { score, health }, ...(label ? { label } : {}) });
+        return ok(`Watching ${account} (score ${score}, health ${health}).`, { ...row, remainingToday: remaining("watch", caps.watchPerDay) });
+      }),
+  );
+
+  server.registerTool(
+    "unwatch_account",
+    {
+      title: "Stop watching an account",
+      description: `Removes a watched account from the agent's watch list. Changes: the agent's watch list on the Parry API. Testnet only; at most ${caps.watchPerDay} call(s) per UTC day, shared with watch_account.`,
+      inputSchema: { account: accountArg },
+      annotations: { ...write, idempotentHint: true },
+    },
+    ({ account }) =>
+      guard(async () => {
+        const refused = notTestnet("unwatch_account") ?? admit("watch", caps.watchPerDay);
+        if (refused) return refused;
+        const { token } = await agentToken();
+        await parry.unwatch(token, account);
+        return ok(`No longer watching ${account}.`, { account, remainingToday: remaining("watch", caps.watchPerDay) });
+      }),
+  );
+
+  server.registerTool(
+    "issue_certificate",
+    {
+      title: "Issue a health certificate",
+      description:
+        "Has the guardian enclave certify, for one reader, that the agent's protected account's health is at least a threshold until an expiry: it reads the position at a final block and signs only that statement " +
+        "(never amounts, collateral, debt or the health itself), and refuses when health is below the threshold. Optionally anchors it on the risk board. " +
+        `Changes: one OutLayer run paid by the Parry API, and an anchor on chain when asked. Testnet only; ttl at most ${caps.certificateMaxTtlSecs} s; at most ${caps.certificatesPerDay} call(s) per UTC day.`,
+      inputSchema: {
+        reader: accountArg.describe("Who the certificate is for."),
+        threshold: z.number().gt(1).max(10).describe("The health it certifies at least."),
+        ttl_secs: z.number().int().min(60).describe(`How long it is valid, in seconds (at most ${caps.certificateMaxTtlSecs}).`),
+        venue: z.enum(["rhea", "hyperliquid", "aave"]).optional(),
+        anchor: z.boolean().optional().describe("Also anchor its hash on the risk board."),
+      },
+      annotations: write,
+    },
+    ({ reader, threshold, ttl_secs, venue, anchor }) =>
+      guard(async () => {
+        const offNetwork = notTestnet("issue_certificate");
+        if (offNetwork) return offNetwork;
+        if (ttl_secs > caps.certificateMaxTtlSecs) return refuse(`issue_certificate refused: ttl_secs is at most ${caps.certificateMaxTtlSecs}. Nothing was issued.`);
+        const refused = admit("issue_certificate", caps.certificatesPerDay);
+        if (refused) return refused;
+        const { token, account } = await agentToken();
+        const cert = await parry.issueCertificate(token, { account, reader, threshold, ttlSecs: ttl_secs, venue: venue ?? "rhea", anchor: anchor ?? false });
+        const check = verifyCertificate(cert, { enclavePublicKey: cert.enclavePublicKey, reader });
+        return ok(`Certificate ${cert.hash} for ${reader}: health of ${account} is at least ${threshold}.`, { ...cert, selfCheck: check.ok, remainingToday: remaining("issue_certificate", caps.certificatesPerDay) });
       }),
   );
 

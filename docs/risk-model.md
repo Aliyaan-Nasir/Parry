@@ -37,6 +37,12 @@ Windows with fewer than two samples drop out and the weights renormalize.
 Without any history the index falls back to 70% annual and says so (`fallback: true`).
 Annual volatility is σ × sqrt(8760); the levels are calm below 40%, elevated below 80%, high below 130%, and extreme above.
 
+The index also reads as a regime: calm below 135 % annual, stressed from 135 %, and panic from 230 % (`REGIME_THRESHOLDS`, `tremorRegime`).
+The thresholds come from NEAR's own history (section 11): stressed is the 80th percentile of Tremor over every ordinary hour (the 72 hours around each of the six worst crashes excluded), so one ordinary hour in five reads stressed or worse; panic is the level, on a 5 % grid, that best separates the hours of a crash's fall from ordinary hours (the largest share of crash hours flagged minus ordinary hours flagged) among the levels that flag at most 5 % of ordinary hours.
+On the data, panic flags 35 % of crash hours and 4.8 % of ordinary ones, and stressed or worse flags 70 % of crash hours.
+The calibration reads Tremor from hourly closes, where the 1-hour window holds a single return; the live index samples every 10 seconds, so its short windows are steadier, and a live reading is at least as well behaved as the calibration's.
+`pnpm replay` recomputes the thresholds and says when they differ from the code's, and a test pins the code's to the committed `deployments/replay.json`.
+
 The monitor samples the oracle price every 10 seconds; the enclave reads Hyperliquid's 5-minute closes, rescaled to the oracle's level, so the volatility is the market's while the level is the one lending uses.
 
 ## 3. The trend
@@ -67,6 +73,17 @@ Across every monitored position on the same driver, Parry adds up the collateral
     C = min(1, collateral liquidated by a 2σ day / reference liquidity)
 
 It also flags an owner whose positions on two or more venues would liquidate in the same 2σ move, because those risks add up rather than diversify.
+
+Once the liquidation heatmap has data, the pressure comes from the whole market instead (`cascade.source: "heatmap"`).
+The risk service pages every Rhea lending account on mainnet (`contract.main.burrow.near`, read-only view calls) and keeps each borrower's liquidation price on NEAR, the driver of wNEAR and the liquid staking tokens (`packages/core/src/heatmap.ts`).
+A cascade starts at the 2σ daily fall: every borrower whose liquidation price is reached is liquidated, its liquidator sells the seized NEAR-linked collateral (the debt plus a 5 % bonus, at most the collateral), the sale moves the price down 2 % per `CASCADE_DEPTH_2PCT_USD` (1.5 million USD by default, a configured market depth), and the lower price may reach more borrowers, round after round until none is reached.
+The pressure is the extra fall the liquidations add over the 2σ fall itself, in log terms, capped at 1:
+
+    C = min(1, ln(P_2σ / P_end) / (2 σ √24))
+
+so 1 means the liquidations alone would double the move.
+`atRiskUsd` is the collateral of every borrower the chain reaches.
+The heatmap view lists the chained cascades that start at each bucket's price and reach further buckets.
 
 ## 6. Value at risk
 
@@ -105,5 +122,36 @@ The square root is deliberate: weighted linearly, a 21 % chance of liquidation w
 
 - Lognormal prices understate jumps; the health floors and the Tremor index's weight on the last hour are there to catch them.
 - The trend is a weak signal by design (halved and capped).
-- Cascade pressure only sees the positions Parry monitors and a configured market depth, not the whole market.
+- Cascade pressure sees every Rhea lending borrower once the heatmap has swept them, but not other venues' leverage, and its market depth is a configured figure.
 - On testnet, Hyperliquid's NEAR market is a test market whose price differs from the real one; the enclave rescales its candles onto the oracle's level for volatility only.
+
+## 11. Crash replay
+
+`pnpm replay` (`scripts/replay.ts`, `packages/core/src/replay.ts`) runs this model, the planner and the vault's math through NEAR's largest historical crashes and writes `deployments/replay.json`, which `GET /v1/replay` serves.
+The candles are Binance's public hourly NEARUSDT klines (`https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h`) from October 2020, funding is Binance's NEARUSDT perpetual funding history, and the staking yield is LiNEAR's `ft_price` growth over the last 30 days on mainnet (4.46 % a year when it last ran).
+The crashes are the six largest falls from an hourly close to the lowest close within the next 72 hours, without overlap, skipping the first week after listing.
+
+Each crash opens a Rhea wNEAR/USDC position at health 1.30 on the peak's close (1000 NEAR, ratios 0.75 and 0.95) and replays it hour by hour to 24 hours after the trough, twice.
+Alone, it is liquidated at the first hour whose low takes health under 1.
+Protected, the guardian assesses it at each close with the history up to that hour and acts with the default policy: at score 60 or health 1.15, aiming for health 1.45, repay-first with a USDC reserve of 10 % of the debt (its daily cap), at most 4 actions in any 24 hours, swaps at 0.5 % slippage against the planner's 2 % bound.
+The warning is the time from the model's first danger score (50, the default alert threshold) to the liquidation without Parry.
+
+| Crash | Drop | Liquidated without Parry | Warning | Guardian steps | Min health with Parry | Vault drawdown (unhedged) | Min margin ratio | Insurance paid |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 21 Dec 2020 to 24 Dec 2020 | 39.8 % | 2020-12-21 10:00 | 7 h | 7 | 1.080 | 2.7 % (39.8 %) | 0.500 | $0.00 |
+| 21 May 2021 to 23 May 2021 | 45.6 % | 2021-05-21 14:00 | 10 h | 9 | 1.236 | 3.1 % (45.6 %) | 0.500 | $0.00 |
+| 19 Jan 2022 to 22 Jan 2022 | 39.1 % | 2022-01-21 20:00 | 47 h | 7 | 1.193 | 2.7 % (39.1 %) | 0.500 | $5.48 |
+| 9 May 2022 to 12 May 2022 | 51.7 % | 2022-05-11 06:00 | 44 h | 7 | 0.971 (liquidated) | 3.8 % (51.7 %) | 0.500 | $5.06 |
+| 31 Jan 2025 to 3 Feb 2025 | 38.6 % | 2025-02-02 18:00 | 33 h | 6 | 1.149 | 2.6 % (38.6 %) | 0.500 | $2.93 |
+| 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 0.500 | $0.68 |
+
+How well the model warned: it warned before every liquidation, with a median of 24.5 hours and at least 7 hours.
+At the first warning its median time to liquidation was, across the crashes, the actual time give or take a factor of two (the median ratio of predicted to actual is 1.0; it ran from 0.67 to 2.1).
+The guardian avoided five of the six liquidations.
+The sixth, in May 2022, was a single hour in which NEAR fell 32 % (7.87 to a low of 5.30): the position stood at health 1.45 after the guardian's fourth action of the day, and a 32 % fall within the hour takes 1.45 under 1.
+The live guardian looks every minute rather than every hour, but four actions a day and a 1.45 target cannot cover a one-hour fall that deep; a higher target or more actions a day would.
+
+The vault opens with 10 000 USD at the peak: LiNEAR staked and a short of 90 % of it at 2x, rebalanced with `rebalance()`, paid or charged the real funding every 8 hours, scored with `assessPerp` (it asks for margin at score 85, as the vault contract does), against the same deposit all staked and unhedged.
+Its insurance fund starts at 10 % of the positive yield (staking and funding) of the 30 days before the crash and pays negative funding and margin top-ups within 25 % of the fund a day.
+The hedged vault's largest drawdown was 2.6 % to 3.8 % against 38.6 % to 51.7 % unhedged; in a fall the short gains, so the margin ratio never dropped below where it opened, and the fund paid only negative funding.
+

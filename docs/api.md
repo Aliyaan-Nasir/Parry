@@ -36,7 +36,20 @@ Writes that change a person's settings need a sign-in (section "Auth").
 | GET | `/v1/vault` | `VaultState` |
 | GET | `/v1/vault/history?days=7` | `VaultPoint[]`, oldest first; `days` 1 to 90 |
 | GET | `/v1/vault/reserves` | `Reserves` with every leaf and its proof (`404` before the first vault report) |
-| GET | `/v1/rates` | `Rate[]`: Rhea supply and borrow rates and the vault's yield |
+| GET | `/v1/rates` | `Rates`: every asset Rhea lending lists, Hyperliquid's NEAR funding and the vault's staking against funding yield, each with its source |
+| GET | `/v1/prices?tokens=` | `Prices`: NEAR, the liquid staking tokens, USDC and every Rhea asset with its 24 h change; `tokens` (ids or symbols, comma separated) narrows it; cached for a minute |
+| GET | `/v1/replay` | `Replay`: the risk model, guardian and vault run through NEAR's largest historical crashes (`deployments/replay.json`, written by `pnpm replay`; `503` before it exists) |
+| GET | `/v1/heatmap?network=testnet\|mainnet&asset=NEAR` | `Heatmap`: every Rhea lending borrower's liquidation price, bucketed, and the chained cascades (`400` for another asset) |
+| GET | `/v1/verify/{id}` | `VerifyResult` for a decision id, a certificate hash or a NEAR transaction hash (`404` when it is none of them) |
+| GET | `/v1/watch` | `WatchRow[]`: the signed-in account's watched accounts with live risk (auth) |
+| PUT | `/v1/watch/{accountId}` | takes `{ thresholds: { score, health }, label? }`, returns the `WatchRow` (auth; at most 25 per account) |
+| DELETE | `/v1/watch/{accountId}` | `{ ok: true }` (auth; `404` when not watched) |
+| POST | `/v1/certificates` | takes `CertificateRequest`, returns `Certificate` (auth as the certified account; `422` when health is below the threshold, `503` until the enclave serves the certificate mode) |
+| GET | `/v1/certificates?account=` and `/v1/certificates/{hash}` | `Certificate[]`, newest first, and one `Certificate` (`404` if unknown) |
+| GET | `/v1/routes/savings?account=` | `RouteSavings`: what each rescue's route choice saved against the worst quote |
+| GET | `/v1/vault/insurance` | `VaultInsurance`: the vault's insurance fund and its inflows and payouts |
+| GET | `/v1/incidents?account=` | `Incident[]`, newest first, at most 50; `account` is required (`400`) |
+| GET | `/v1/stream?events=&account=` | Server-Sent Events (see "Live updates") |
 | GET | `/v1/fx` | `Fx`: USD rates for the display currencies (cached for an hour) |
 | POST | `/v1/copilot` | takes `{ account, positionId?, question? }`, returns `CopilotAnswer` (rate limited) |
 | GET | `/v1/quotes/rescue?amountNear=10` | `RouteComparison`; `amountNear` at least 0.1 |
@@ -62,6 +75,9 @@ interface Stats {
   rescues: number;             // executed guardian decisions
   vaultTvlUsd: number;
   vaultRiskScore: number | null;
+  valueProtectedUsd: number;   // collateral of positions on protected accounts with a live mandate
+  positionsWatched: number;    // positions the monitor reads, protected or not
+  insuranceUsd: number;        // the vault insurance fund's value; 0 until the vault has one
   updatedAt: string;
 }
 
@@ -76,8 +92,16 @@ interface Config {
 
 interface Market {
   near: { priceUsd: number; hlMid: number | null; updatedAt: string };
-  tremor: { sigmaHourly: number; annual: number; level: "calm" | "elevated" | "high" | "extreme"; windows: { hours: number; weight: number; sigma: number | null; samples: number }[] };
-  cascade: { pressure: number; atRiskUsd: number; correlatedOwners: number };
+  tremor: {
+    sigmaHourly: number; annual: number; level: "calm" | "elevated" | "high" | "extreme";
+    regime: "calm" | "stressed" | "panic";   // thresholds calibrated on NEAR's crashes (docs/risk-model.md, section 2)
+    windows: { hours: number; weight: number; sigma: number | null; samples: number }[];
+  };
+  cascade: {
+    pressure: number; atRiskUsd: number; correlatedOwners: number;
+    source: "heatmap" | "positions";   // heatmap: every mainnet Rhea lending borrower; positions: the positions Parry monitors, until the heatmap has data
+    network?: "mainnet" | null; accounts?: number; cascadeTo?: number | null;
+  };
 }
 
 interface MarketReport {        // the risk service's latest market report
@@ -175,6 +199,7 @@ interface Decision {
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
+  explanation: { step: string; why: string; skipped: { step: string; reason: string }[] } | null; // why the planner chose this step and skipped the earlier ones in the policy's order
   createdAt: string;
 }
 
@@ -247,7 +272,18 @@ interface VaultState {
   queueLength: number;
 }
 
-interface VaultPoint { t: string; sharePriceUsd: number; navUsd: number; riskScore: number; hedgedFraction: number }
+interface VaultPoint {
+  t: string; sharePriceUsd: number; navUsd: number; riskScore: number; hedgedFraction: number;
+  // null for points recorded before each was kept
+  stakingYieldUsd: number | null;   // LiNEAR's staking yield so far
+  fundingYieldUsd: number | null;   // funding the short earned so far
+  hedgeRatio: number | null;
+  insuranceUsd: number | null;      // the insurance fund (null while the vault has none)
+  reservesRoot: string | null;
+  basisApr: number | null;          // LiNEAR's staking yield plus Hyperliquid's 24 h funding on the short, a year
+  drawdown: number | null;          // 1 − share price / the best share price so far
+  marginRatio: number | null;       // hedge account value / the short's notional
+}
 
 interface Reserves {
   root: string;
@@ -256,11 +292,113 @@ interface Reserves {
   leaves: { asset: string; venue: string; amount: string; usdE6: string; proof: string[] }[];
 }
 
-interface Rate {
-  asset: string;         // "wNEAR", "USDC", "Parry Earn (EARN)"
-  supplyApr: number;
-  borrowApr: number;     // 0 for the vault
-  source: string;        // "Rhea lending" or the vault
+interface Rates {
+  rhea: { asset: string; tokenId: string; supplyApr: number; borrowApr: number; utilization: number; source: string }[]; // fractions; every asset the lending contract lists (`get_assets_paged_detailed`)
+  hyperliquid: { fundingHourly: number | null; funding24hApr: number | null; source: string }; // positive: longs pay shorts
+  vault: { stakingApr: number | null; fundingApr: number | null; netApr: number | null; insuranceShareBps: number | null; source: string };
+  readAt: string;
+}
+
+interface Prices {
+  tokens: { id: string; symbol: string; priceUsd: number; change24h: number | null; source: string }[]; // change24h is a fraction, null without a market for it
+  readAt: string;
+}
+
+interface Replay {
+  source: string;                      // the exact candle URL
+  sources: Record<string, string>;     // candles, funding, staking, model
+  params: { guardian: object; vault: object; crashWindowHours: number; leadHours: number; tailHours: number };
+  crashes: {
+    id: string; name: string; start: string; end: string; trough: string; dropPct: number;
+    candles: { t: string; price: number; low: number }[];   // hourly closes and lows, 24 h before the peak to 24 h after the trough
+    position: {
+      startHealth: number;             // 1.30 at the peak
+      warningHours: number | null;     // the model's first danger score to the liquidation without Parry
+      warnedAt: string | null; predictedHoursAtWarning: number | null;
+      liquidatedAt: string | null;     // without Parry: the first hourly low under health 1
+      liquidatedWithParryAt: string | null;
+      minHealthWith: number; reserveSpentUsd: number; collateralSoldNear: number;
+      steps: { t: string; action: string; plan: string; healthBefore: number; healthAfter: number }[];
+      healthWith: { t: string; h: number }[]; healthWithout: { t: string; h: number }[];
+    };
+    vault: {
+      navWith: { t: string; v: number }[]; navUnhedged: { t: string; v: number }[];
+      maxDrawdownPct: number; maxDrawdownUnhedgedPct: number; marginMin: number;
+      insuranceFundUsd: number; insurancePaidUsd: number; insurancePaid: { negativeFundingUsd: number; marginTopUpUsd: number };
+      fundingUsd: number; rebalances: number;
+    };
+  }[];
+  summary: { crashes: number; medianWarningHours: number | null; minWarningHours: number | null; liquidationsWithout: number; liquidationsAvoided: number; [k: string]: unknown };
+  calibration: { regime: { stressed: number; panic: number; panicHitRate: number; panicFalseRate: number; [k: string]: unknown }; tremorPercentiles: Record<string, number> };
+}
+
+interface Heatmap {
+  network: "testnet" | "mainnet";
+  lending: string;
+  price: number;                       // NEAR, as mainnet lending prices it
+  buckets: { price: number; collateralUsd: number; debtUsd: number; accounts: number }[]; // non-empty buckets 2 % of the price wide; `price` is the bucket's top
+  cascades: { from: number; to: number; collateralUsd: number; accounts: number; rounds: number }[]; // chained: the liquidations' sales reach further buckets
+  pressure: { atRiskUsd: number; pressure: number; to: number; accounts: number };          // what a 2σ daily fall sets off
+  accounts: number;                    // borrowers stored
+  sweep: { totalAccounts: number; nextIndex: number; lastFullSweepAt: string | null } | null;
+  readAt: string;
+  source: string;
+}
+
+interface VerifyResult {
+  kind: "decision" | "certificate" | "transaction";
+  ok: boolean;
+  checks: { name: string; ok: boolean; detail: string }[];
+  subject: Record<string, unknown>;    // the decision, the certificate body, or the transaction and what it links to
+}
+
+interface WatchRow {
+  account: string;
+  label: string | null;
+  thresholds: { score: number; health: number };
+  position: Position | null;           // its riskiest position, null when it has none
+  alert: { kind: "risk" | "health"; severity: "info" | "warning" | "critical"; title: string; body: string }[]; // what it raises now at these thresholds
+}
+
+interface CertificateRequest { account: string; reader: string; threshold: number; ttlSecs: number; venue?: Venue; anchor?: boolean } // threshold above 1, ttlSecs 60 to 2592000
+
+interface Certificate {
+  hash: string;              // hex SHA-256 of "parry-certificate:v1:" + certificate: the digest the enclave signed
+  certificate: string;       // the exact JSON the enclave signed: { kind, version, account, reader, venue, threshold, block_height, block_hash, issued_at, expires_at, statement }
+  signature: string;         // ed25519 over the digest (base64)
+  enclavePublicKey: string;
+  anchorTx: string | null;   // the risk board transaction that anchored it
+  createdAt: string;
+}
+
+interface RouteSavings {
+  totalSavedUsd: number;
+  rescues: {
+    decision: string;
+    chosen: { venue: "rhea" | "intents"; outUsd: number } | null;
+    worst: { venue: "rhea" | "intents"; outUsd: number } | null;
+    savedUsd: number;
+    quotes: { venue: "rhea" | "intents"; outUsd: number | null; unavailable: string | null }[];
+    at: string;
+  }[];
+}
+
+interface VaultInsurance {     // the vault's insurance() view in camelCase; empty values while it has none
+  available: boolean;
+  shareBps: number | null; linear: string; usdcE6: string; valueUsdE6: string; paidTotalE6: string; paidTodayE6: string; capPerDayBps: number | null; marginReservedUsdE6: string;
+  events: { kind: "inflow" | "payout"; at: string | null; tx: string; [field: string]: unknown }[];
+  source: string;
+}
+
+interface Incident {
+  id: string;
+  account: string;
+  title: string;             // one alert's own title, or how many positions the move touched
+  body: string;
+  severity: "info" | "warning" | "critical";
+  alerts: Alert[];
+  openedAt: string;
+  closedAt: string | null;   // once every alert in it is resolved
 }
 
 interface Fx {
@@ -312,7 +450,7 @@ interface Status {
 
 ## Errors and limits
 
-Every error is `{ error: string }` with its status: `400` for a malformed account id, a missing or non-numeric parameter, an invalid setting or a body that is not JSON, `401` without a valid sign-in, `402` for an unpaid call, `404` for something that does not exist, `429` past a daily limit, `503` while a dependency has no data, and `500` for anything else.
+Every error is `{ error: string }` with its status: `400` for a malformed account id, a missing or non-numeric parameter, an invalid setting or a body that is not JSON, `401` without a valid sign-in, `402` for an unpaid call, `404` for something that does not exist, `422` when the enclave refuses a certificate, `429` past a daily limit, `503` while a dependency has no data, and `500` for anything else.
 A limit per address keys on the right-most `X-Forwarded-For` entry, the one the reverse proxy in front of the API appends.
 `/v1/risk` allows 200 free checks per address per day (`FREE_RISK_CHECKS_PER_DAY`), then answers `429` pointing to the paid route.
 `/v1/copilot` allows 30 questions per account per day (`COPILOT_PER_DAY`) and answers `503` when the API has no NEAR AI key.
@@ -323,11 +461,40 @@ The relayed routes answer a spent budget with `429` and any other refusal with `
 
 ## Auth
 
-Settings, alert actions and push subscriptions need a short-lived session token.
+Settings, alert actions, push subscriptions, watched accounts and issuing certificates need a short-lived session token.
 `POST /v1/auth/challenge { accountId }` returns `{ nonce, message, recipient: "parry" }`, valid for 5 minutes and usable once.
 The person signs the message with their NEAR wallet (NEP-413 with the nonce and recipient `parry`, from a full-access key of the owning account) or their passkey (a WebAuthn assertion whose challenge is the base64url SHA-256 of the message).
 `POST /v1/auth/verify` takes `{ accountId, nonce, nep413: { publicKey, signature } }` or `{ accountId, nonce, passkey: { authenticator_data, client_data_json, signature } }`, checks it against the protected account's owner on chain, and returns `{ token }` for `Authorization: Bearer <token>`, valid for 12 hours.
 A proof that does not check out answers `401`.
+
+The SDK signs in with a NEAR owner's full-access key in one call (`parry.signIn(accountId, privateKey)`).
+
+## Sources
+
+Every number read live says where it came from.
+Rhea rates and assets come from the lending contract's `get_assets_paged_detailed` on the API's network.
+Prices are the Pyth feeds mainnet Rhea lending prices with (`get_all_token_pyth_infos`), read from `aggregate-oracle.near` (`get_price_unsafe`), times the token's own rate view for liquid staking tokens (`ft_price`, `get_st_near_price`, `get_nearx_price`).
+The 24 hour change is Binance's public 24 hour ticker for the feed's market (NEAR, BTC, ETH, ZEC, USDC); a liquid staking token takes NEAR's change, and a token without such a market has `null`.
+Hyperliquid funding is its info API (`metaAndAssetCtxs` for the live rate, `fundingHistory` for the last 24 hours).
+The heatmap pages every Rhea lending account read-only (`get_accounts_paged`, 100 at a time, a pause between calls) on testnet and on mainnet (`contract.main.burrow.near`), in the risk service, about 3000 accounts every 2 minutes per network; it keeps borrowers in Postgres and drops the accounts a whole sweep did not see.
+Its cascades assume a market depth of `CASCADE_DEPTH_2PCT_USD` (1.5 million USD moves NEAR 2 %), a configured figure, and the source field says so.
+
+## Verification
+
+`GET /v1/verify/{id}` re-checks what Parry recorded, from public data.
+A decision id gets the checks of `/v1/guardian/decisions/{id}/verify`.
+A certificate hash gets the hash, the statement, the enclave signature with the key the risk board trusted at `issued_at` (`enclave_history`), the expiry, and the board's anchor when the board has the `certificate` view.
+A NEAR transaction hash is read from FastNEAR's transactions API: a risk board `submit` has its report's enclave signature checked against the key in force at the report's `at`, and a `guardian_execute` has its envelope signature checked against the key in force at `issued_at`, its review hash matched to the account's `guardian_acted` event, and the stored decision's checks added.
+
+## Live updates
+
+`GET /v1/stream` answers `text/event-stream`.
+`events` (comma separated) picks among `alert`, `decision`, `position`, `price`, `vault` and `status` (all by default; another name is a `400`), and `account` keeps only that account's alerts, decisions and positions.
+Each message's `event` is the name and its `data` is one item as the matching GET returns it: an `Alert`, a `Decision`, a `Position`, one `Prices` token (NEAR from the oracle sample, with the change against the sample a day before), the `VaultState`, or one `Status` service.
+One poller per API process reads Postgres every 2 seconds for what changed (and the vault's chain state once per vault report), only while a client is connected, and fans each item out to every client, so the cost does not grow with the number of clients.
+A comment line (`: heartbeat`) arrives every 15 seconds, and `retry: 5000` asks the browser to reconnect after 5 seconds.
+Only changes after the connection are sent: read the GET routes first.
+The SDK's `parry.subscribe({ events, account, onEvent })` uses an EventSource where there is one and polls the GET routes every 10 seconds otherwise.
 
 ## x402
 

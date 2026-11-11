@@ -30,10 +30,18 @@ async function mandateOf(account: string): Promise<MandateView> {
 /** A position is protected while its account has a live mandate: only those go to the guardian. */
 const guarded = (m: MandateView) => !!m && !m.expired && m.paused_until * 1000 <= Date.now();
 
-async function watched(sql: Sql): Promise<{ account: string; protected: boolean }[]> {
-  const rows = await sql<{ account: string; p: boolean }[]>`
-    SELECT account, true AS p FROM accounts UNION SELECT account, false AS p FROM liquidation_watch`;
-  return Promise.all(rows.map(async (r) => ({ account: r.account, protected: r.p && guarded(await mandateOf(r.account).catch(() => null)) })));
+/**
+ * Every account the monitor reads on Rhea: Parry's protected accounts, the unprotected demo
+ * positions the keeper liquidates, and the accounts people watch (read, scored and alerted on,
+ * never protected).
+ */
+async function watched(sql: Sql): Promise<{ account: string; protected: boolean; watched: boolean }[]> {
+  const rows = await sql<{ account: string; p: boolean; w: boolean }[]>`
+    SELECT account, true AS p, false AS w FROM accounts
+    UNION SELECT account, false AS p, false AS w FROM liquidation_watch WHERE account NOT IN (SELECT account FROM accounts)
+    UNION SELECT DISTINCT account, false AS p, true AS w FROM watched
+      WHERE account NOT IN (SELECT account FROM accounts) AND account NOT IN (SELECT account FROM liquidation_watch)`;
+  return Promise.all(rows.map(async (r) => ({ account: r.account, protected: r.p && guarded(await mandateOf(r.account).catch(() => null)), watched: r.w })));
 }
 
 async function upsert(sql: Sql, id: string, account: string, venue: string, label: string, raw: unknown, collateralUsd: number, debtUsd: number) {
@@ -53,7 +61,7 @@ async function tickRhea(sql: Sql) {
         await sql`DELETE FROM positions WHERE id = ${`${w.account}:rhea:main`}`;
         continue;
       }
-      await upsert(sql, `${w.account}:rhea:main`, w.account, "rhea", "Rhea wNEAR/USDC", { ...r, price: near, protected: w.protected }, r.collateralUsd, r.debtUsd);
+      await upsert(sql, `${w.account}:rhea:main`, w.account, "rhea", "Rhea wNEAR/USDC", { ...r, price: near, protected: w.protected, watched: w.watched }, r.collateralUsd, r.debtUsd);
     } catch (e) {
       log.warn("rhea read failed", { account: w.account, error: errorText(e) });
     }

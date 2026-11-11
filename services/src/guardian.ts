@@ -33,6 +33,8 @@ interface EnclaveDecision {
   envelope_signature?: string;
   decision_json?: string;
   decision_signature?: string;
+  /** Why the planner chose this step and skipped the earlier ones in the policy's order (internal/INTERFACES.md, section 4). */
+  explanation?: { step: string; why: string; skipped: { step: string; reason: string }[] } | null;
 }
 
 interface GuardianOutput {
@@ -141,9 +143,10 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
     }
   }
   const after = await health(d.account, d.venue);
-  await sql`INSERT INTO decisions (id, account, venue, action, plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail)
+  await sql`INSERT INTO decisions (id, account, venue, action, plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail, explanation)
     VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${sql.json(trigger)}, ${outcome}, ${sql.json(d.review as never)}, ${d.envelope ?? null},
-      ${d.envelope_signature ?? null}, ${sql.json(txs as never)}, ${before}, ${after}, ${routes ? sql.json(routes as never) : null}, ${detail})
+      ${d.envelope_signature ?? null}, ${sql.json(txs as never)}, ${before}, ${after}, ${routes ? sql.json(routes as never) : null}, ${detail},
+      ${d.explanation ? sql.json(d.explanation as never) : null})
     ON CONFLICT (id) DO NOTHING`;
   await sql`INSERT INTO alerts (account, kind, severity, key, title, body) VALUES (${d.account}, 'guardian', 'info', ${`guardian:${id}`},
     ${`Guardian ${outcome.replace("_", " ")}: ${actionName.replace("_", " ")}`}, ${d.plan}) ON CONFLICT DO NOTHING`;

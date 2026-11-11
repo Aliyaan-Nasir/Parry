@@ -17,6 +17,12 @@ export interface McpCaps {
   paidPerDay: number;
   /** Most a `paid_risk_check` may pay, in USDC units (6 decimals). */
   paidMaxUnits: number;
+  /** `watch_account` and `unwatch_account` calls per UTC day. */
+  watchPerDay: number;
+  /** `issue_certificate` calls per UTC day. */
+  certificatesPerDay: number;
+  /** Longest certificate an agent may issue, in seconds. */
+  certificateMaxTtlSecs: number;
 }
 
 export const DEFAULT_CAPS: Readonly<McpCaps> = {
@@ -27,6 +33,9 @@ export const DEFAULT_CAPS: Readonly<McpCaps> = {
   withdrawPerDay: 5,
   paidPerDay: 20,
   paidMaxUnits: 50_000,
+  watchPerDay: 20,
+  certificatesPerDay: 5,
+  certificateMaxTtlSecs: 7 * 86_400,
 };
 
 /** Counts write-tool calls per UTC day. Share one ledger across server instances (HTTP). */

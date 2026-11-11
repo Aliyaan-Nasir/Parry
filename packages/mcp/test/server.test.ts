@@ -21,8 +21,18 @@ const READ_TOOLS = [
   "simulate_rescue",
   "get_rescue_route",
   "get_status",
+  "get_rates",
+  "get_crash_replay",
+  "get_liquidation_heatmap",
+  "get_prices",
+  "verify_record",
+  "verify_certificate",
+  "get_incidents",
+  "get_route_savings",
 ];
-const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw", "paid_risk_check"];
+const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw", "paid_risk_check", "watch_account", "unwatch_account", "issue_certificate"];
+/** A read tool that needs the agent's sign-in, so it is listed only with an agent. */
+const AGENT_READ_TOOLS = ["list_watched"];
 
 async function connect(opts: ParryMcpOptions) {
   const server = createParryMcpServer(opts);
@@ -51,7 +61,7 @@ describe("tool listing", () => {
   test("write tools with an agent, each stating what it changes and its caps", async () => {
     const { client } = await connect({ parry: fakeParry().parry, agent: AGENT });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual([...READ_TOOLS, ...WRITE_TOOLS].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual([...READ_TOOLS, ...AGENT_READ_TOOLS, ...WRITE_TOOLS].sort());
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     for (const name of WRITE_TOOLS) {
       const t = byName[name]!;
@@ -310,5 +320,57 @@ describe("configuration from the environment", () => {
     expect(c.options.parry.network).toBe("mainnet");
     expect(c.notes.join(" ")).toContain("refuse every call on mainnet");
     expect(() => configFromEnv({ PARRY_NETWORK: "localnet" })).toThrow("testnet or mainnet");
+  });
+});
+
+describe("market, replay, verification and incident tools", () => {
+  test("read the API and summarise", async () => {
+    const { call } = await connect({ parry: fakeParry().parry });
+    const rates = await call("get_rates");
+    expect(rates.error).toBe(false);
+    expect(rates.text).toContain("1 Rhea assets; Hyperliquid NEAR funding 10.95 % a year");
+    const replay = await call("get_crash_replay");
+    expect(replay.text).toContain("median warning 44 h");
+    expect((replay.data!["crashes"] as { guardianSteps: number }[])[0]!.guardianSteps).toBe(0);
+    expect((await call("get_liquidation_heatmap", { network: "testnet" })).text).toContain("1 borrowers on testnet");
+    expect((await call("get_prices", { tokens: ["wNEAR"] })).text).toContain("1 price(s)");
+    expect((await call("verify_record", { id: "ab".repeat(32) })).text).toContain("certificate: verified");
+    expect((await call("get_incidents", { account: "0uabc.testnet" })).text).toContain("1 open");
+    expect((await call("get_route_savings")).text).toContain("$1.50");
+  });
+
+  test("verify_certificate checks the reader independently", async () => {
+    const { call } = await connect({ parry: fakeParry().parry });
+    const okay = await call("verify_certificate", { hash: "ab".repeat(32), reader: "lender.testnet" });
+    expect(okay.text).toStartWith("Verified: health is at least 1.3");
+    const other = await call("verify_certificate", { hash: "ab".repeat(32), reader: "someone.testnet" });
+    expect(other.text).toContain("NOT verified: reader failed");
+  });
+});
+
+describe("watch and certificate tools", () => {
+  test("sign in once with the agent key and act as the agent's protected account", async () => {
+    const fake = fakeParry();
+    const { call } = await connect({ parry: fake.parry, agent: AGENT });
+    const listed = await call("list_watched");
+    expect(listed.text).toContain("1 watched account(s)");
+    const watched = await call("watch_account", { account: "bob.testnet", score: 50, health: 1.2, label: "Bob" });
+    expect(watched.error).toBe(false);
+    expect(watched.data!["remainingToday"]).toBe(DEFAULT_CAPS.watchPerDay - 1);
+    expect((await call("unwatch_account", { account: "bob.testnet" })).error).toBe(false);
+    expect(fake.apiCalls.filter((c) => c.startsWith("POST /v1/auth/verify"))).toHaveLength(1);
+    expect(fake.apiCalls).toContain("PUT /v1/watch/bob.testnet as Bearer agent-token");
+    const cert = await call("issue_certificate", { reader: "lender.testnet", threshold: 1.3, ttl_secs: 3600 });
+    expect(cert.error).toBe(false);
+    expect(cert.data!["selfCheck"]).toBe(true);
+  });
+
+  test("certificates are capped by ttl and per day, and refused on mainnet", async () => {
+    const { call } = await connect({ parry: fakeParry().parry, agent: AGENT, caps: { certificatesPerDay: 1 } });
+    expect((await call("issue_certificate", { reader: "lender.testnet", threshold: 1.3, ttl_secs: 30 * 86_400 })).text).toContain("ttl_secs is at most");
+    expect((await call("issue_certificate", { reader: "lender.testnet", threshold: 1.3, ttl_secs: 3600 })).error).toBe(false);
+    expect((await call("issue_certificate", { reader: "lender.testnet", threshold: 1.3, ttl_secs: 3600 })).text).toContain("the cap is 1 call(s) per UTC day");
+    const main = await connect({ parry: fakeParry("mainnet").parry, agent: AGENT });
+    expect((await main.call("watch_account", { account: "bob.near", score: 50, health: 1.2 })).text).toContain("testnet only");
   });
 });

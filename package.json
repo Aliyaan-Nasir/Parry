@@ -22,6 +22,7 @@
     "deploy:testnet": "bun scripts/deploy.ts",
     "typecheck:scripts": "tsc --noEmit -p scripts",
     "verify": "bun scripts/verify.ts",
+    "replay": "bun scripts/replay.ts",
     "dev": "bun scripts/dev.ts",
     "sandbox": "bun scripts/sandbox.ts",
     "security": "bun scripts/security.ts"

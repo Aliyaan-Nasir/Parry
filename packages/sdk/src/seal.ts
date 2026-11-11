@@ -18,6 +18,19 @@ import { concatBytes, fromBase64, fromHex, fromUtf8, utf8 } from "./encoding.js"
 export type Strategy = "repay-first" | "keep-exposure" | "deleverage-only";
 export const STRATEGIES: ReadonlyArray<Strategy> = ["repay-first", "keep-exposure", "deleverage-only"];
 
+/** A protective step a sealed policy may order. */
+export type PolicyStep = "repay" | "add_collateral" | "deleverage" | "hl_reduce" | "evm_repay";
+export const POLICY_STEPS: ReadonlyArray<PolicyStep> = ["repay", "add_collateral", "deleverage", "hl_reduce", "evm_repay"];
+
+/** The step order a strategy implies when a policy names none (the enclave's default). */
+export const STRATEGY_STEPS: Readonly<Record<Strategy, ReadonlyArray<PolicyStep>>> = {
+  "repay-first": ["repay", "add_collateral", "deleverage", "hl_reduce", "evm_repay"],
+  "keep-exposure": ["add_collateral", "repay", "deleverage", "hl_reduce", "evm_repay"],
+  "deleverage-only": ["deleverage", "hl_reduce", "evm_repay"],
+};
+
+export const defaultSteps = (strategy: Strategy): PolicyStep[] => [...STRATEGY_STEPS[strategy]];
+
 export interface Policy {
   /** Act at or above this risk score (0 to 100). */
   triggerScore: number;
@@ -30,6 +43,12 @@ export interface Policy {
   hlReduceFraction?: number;
   /** Act on an Aave position at or below this health (default 1.2). */
   evmTriggerHealth?: number;
+  /**
+   * The order the planner tries protective steps in: an ordered subset of `POLICY_STEPS`, each at
+   * most once. It takes the first one the mandate allows that moves health toward the target.
+   * Omitted: the strategy's order (`STRATEGY_STEPS`), and the sealed JSON carries no `steps`.
+   */
+  steps?: PolicyStep[];
 }
 
 export const POLICY_DEFAULTS = { hlReduceFraction: 0.25, evmTriggerHealth: 1.2 } as const;
@@ -59,15 +78,22 @@ export function rustFloat(x: number): string {
   return `${sign}${digits[0]}.${digits.slice(1)}e${kk - 1}`;
 }
 
-function assertPolicy(p: Policy): Required<Policy> {
+function assertSteps(steps: readonly string[]): void {
+  if (steps.length === 0) throw new Error("steps must name at least one step");
+  for (const s of steps) if (!(POLICY_STEPS as readonly string[]).includes(s)) throw new Error(`steps: ${s} is not one of ${POLICY_STEPS.join(", ")}`);
+  if (new Set(steps).size !== steps.length) throw new Error("steps must name each step at most once");
+}
+
+function assertPolicy(p: Policy): Required<Omit<Policy, "steps">> & Pick<Policy, "steps"> {
   if (!Number.isInteger(p.triggerScore) || p.triggerScore < 0 || p.triggerScore > 100) throw new Error("triggerScore must be an integer from 0 to 100");
   if (!STRATEGIES.includes(p.strategy)) throw new Error(`strategy must be one of ${STRATEGIES.join(", ")}`);
-  const full: Required<Policy> = {
+  if (p.steps !== undefined) assertSteps(p.steps);
+  const full: Required<Omit<Policy, "steps">> & Pick<Policy, "steps"> = {
     ...p,
     hlReduceFraction: p.hlReduceFraction ?? POLICY_DEFAULTS.hlReduceFraction,
     evmTriggerHealth: p.evmTriggerHealth ?? POLICY_DEFAULTS.evmTriggerHealth,
   };
-  for (const [name, v] of Object.entries(full)) if (name !== "strategy" && !Number.isFinite(v)) throw new Error(`${name} must be a finite number`);
+  for (const [name, v] of Object.entries(full)) if (name !== "strategy" && name !== "steps" && !Number.isFinite(v)) throw new Error(`${name} must be a finite number`);
   if (full.triggerHealth <= 0 || full.targetHealth <= 0 || full.evmTriggerHealth <= 0) throw new Error("health values must be positive");
   // The risk engine hands the guardian positions under this health; a higher trigger would never fire.
   if (full.triggerHealth > MAX_TRIGGER_HEALTH || full.evmTriggerHealth > MAX_TRIGGER_HEALTH) throw new Error(`trigger health values must be at most ${MAX_TRIGGER_HEALTH}`);
@@ -81,7 +107,9 @@ export function policyJson(policy: Policy): string {
   return (
     `{"trigger_score":${p.triggerScore},"trigger_health":${rustFloat(p.triggerHealth)},` +
     `"target_health":${rustFloat(p.targetHealth)},"strategy":${JSON.stringify(p.strategy)},` +
-    `"hl_reduce_fraction":${rustFloat(p.hlReduceFraction)},"evm_trigger_health":${rustFloat(p.evmTriggerHealth)}}`
+    `"hl_reduce_fraction":${rustFloat(p.hlReduceFraction)},"evm_trigger_health":${rustFloat(p.evmTriggerHealth)}` +
+    (p.steps ? `,"steps":${JSON.stringify(p.steps)}` : "") +
+    "}"
   );
 }
 
@@ -100,6 +128,7 @@ function parsePolicy(text: string): Policy {
     strategy: v["strategy"] as Strategy,
     hlReduceFraction: num("hl_reduce_fraction", POLICY_DEFAULTS.hlReduceFraction),
     evmTriggerHealth: num("evm_trigger_health", POLICY_DEFAULTS.evmTriggerHealth),
+    ...(Array.isArray(v["steps"]) ? { steps: v["steps"] as PolicyStep[] } : {}),
   };
 }
 

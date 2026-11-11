@@ -65,6 +65,9 @@ export function contract(name: string): string {
   return env ?? deployment?.contracts[name]?.account ?? DEFAULT_CONTRACTS[network][name] ?? "";
 }
 
+/** A contract on either network: this network's deployment (or env), else the other network's default. */
+export const contractOn = (net: Network, name: string): string => (net === network ? contract(name) : (DEFAULT_CONTRACTS[net][name] ?? ""));
+
 export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deployment?.dexPool ?? -1);
 
 export const enclaveInfo = () => deployment?.enclave ?? null;
@@ -73,6 +76,12 @@ export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "te
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+/** RPC providers per network, for reads that span both (the heatmap pages mainnet lending from testnet too). */
+export const RPC_BY_NETWORK: Record<Network, string[]> = {
+  testnet: network === "testnet" ? RPC_URLS : (process.env.TESTNET_RPC_URLS ?? "https://test.rpc.fastnear.com,https://testnet-rpc.intea.rs").split(","),
+  mainnet: network === "mainnet" ? RPC_URLS : (process.env.MAINNET_RPC_URLS ?? "https://free.rpc.fastnear.com,https://rpc.intea.rs,https://near.drpc.org").split(","),
+};
 
 export const HYPERLIQUID_URL = process.env.HYPERLIQUID_URL ?? (network === "testnet" ? "https://api.hyperliquid-testnet.xyz" : "https://api.hyperliquid.xyz");
 export const HYPERLIQUID_NEAR_INDEX = network === "testnet" ? 54 : 74;

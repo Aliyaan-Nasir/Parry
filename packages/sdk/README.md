@@ -62,7 +62,14 @@ API reads:
 - `vault()`: vault state, risk score, hedge and reserves summary.
 - `vaultHistory(days)`: vault share price, NAV and risk over time.
 - `reserves()`: every reserve leaf with its Merkle proof.
-- `rates()`: lending rates and the vault's yield.
+- `rates()`: every Rhea lending asset's rates, Hyperliquid's NEAR funding and the vault's yield, each with its source.
+- `prices(tokens?)`: USD prices with 24 hour change.
+- `replay()`: the crash replay.
+- `heatmap({ network, asset })`: the liquidation heatmap and chained cascades.
+- `verify(id)`: the API's re-check of a decision id, a certificate hash or a NEAR transaction hash.
+- `routeSavings(account?)`, `vaultInsurance()`, `incidents(account)`: rescue route savings, the vault's insurance fund, grouped alerts.
+- `watchlist(token)`, `watch(token, accountId, { thresholds, label })`, `unwatch(token, accountId)`: watched accounts (signed in).
+- `issueCertificate(token, request)`, `certificates(account)`, `certificate(hash)`: health certificates.
 - `status()`: services, oracle freshness and treasury.
 - `rescueQuote(amountNear)`: the rescue swap route comparison.
 
@@ -90,6 +97,9 @@ Calls and payments:
 - `ownerRequest({ account, nonce, actions })`: an owner request for the client's network.
 - `verifyDecision(decisionOrId)`: verifies a decision with the key read from the risk board.
 - `paidRiskCheck(accountId, { payer, maxAmount })`: a risk check paid per call over x402 on NEAR.
+- `signIn(accountId, privateKey)`: a session token for the API, signed with the owner's full-access key (NEP-413).
+- `verifyCertificate(certificateOrHash, { reader })`: verifies a health certificate with the key the risk board trusted at issue time and the board's anchor.
+- `subscribe({ events, account, onEvent })`: live updates over Server-Sent Events, polling where there is no EventSource; returns a stop function.
 
 ## Functions
 
@@ -102,6 +112,8 @@ Owner actions:
 - `assertionFromWebAuthn(credential)`: a browser passkey assertion in the contract's form (low-s r and s in hex).
 - `derToRawSignature(der)`: a DER P-256 signature as 64 bytes, low-s.
 - `compressedPasskey(key)`: a passkey public key as 66 hex characters.
+- `closeRheaAction(slippageBps)`, `closeFromWalletActions(...)`, `unwindAction(tokens, to?)`: closing the Rhea position atomically or from the wallet, and unwinding the account.
+- `closePerpAction(...)`: a reduce-only order that closes a Hyperliquid perp; `repayAaveActions(...)`: the approve and repay transactions of an Aave loan, each with its `mpc_sign` action.
 
 Mandates:
 
@@ -109,11 +121,13 @@ Mandates:
 - `sealPolicy(policy, { account, sealingPublicKey })`: encrypts trigger thresholds and strategy to the enclave.
 - `openPolicy(sealed, { account, secret })`: opens a sealed policy with a known secret (tests and tools).
 - `policyJson(policy)`: the exact plaintext the enclave reads.
+- `defaultSteps(strategy)`, `STRATEGY_STEPS`: the order the planner tries protective steps in; a policy's `steps` overrides it.
 
 Verification:
 
 - `verifyDecision(decision, { enclavePublicKey })`: checks the review hash, the signed exchange, the model's signature, the envelope's signature, the envelope's review hash and the decision id.
 - `verifyReserves(reserves, { onChainRoot })`: checks every reserve proof and recomputes the root.
+- `verifyCertificate(certificate, { enclaveHistory, reader, anchor, now })`: checks a health certificate's hash, statement, signature, expiry, reader and anchor.
 - `reviewHash(review)`: the review hash the account emits with each action.
 - `envelopeDigest(envelope)`: the digest the enclave signs.
 - `recoverEip191Address(text, signature)`: the address that signed a model review.

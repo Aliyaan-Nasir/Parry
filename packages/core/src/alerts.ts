@@ -69,3 +69,31 @@ export function cascadeAlert(driver: string, pressure: number, atRiskUsd: number
     body: `About $${Math.round(atRiskUsd).toLocaleString("en-US")} of collateral would be liquidated by a 2σ daily move.`,
   };
 }
+
+/** Alerts an account gets within this long of an incident opening join it: one price move, one incident. */
+export const INCIDENT_WINDOW_MS = 15 * 60_000;
+
+const SEVERITY_RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
+
+export const worstSeverity = (xs: readonly Severity[]): Severity => xs.reduce<Severity>((w, s) => (SEVERITY_RANK[s] > SEVERITY_RANK[w] ? s : w), "info");
+
+/** Whether an alert raised at `at` (ms) joins an incident opened at `openedAt` that is still open. */
+export const joinsIncident = (openedAt: number, at: number, closed: boolean): boolean => !closed && at >= openedAt && at - openedAt <= INCIDENT_WINDOW_MS;
+
+/**
+ * The incident's title and body from its alerts: one alert keeps its own words; several say how
+ * many positions the move touched, worst first.
+ */
+export function incidentSummary(alerts: readonly { kind: AlertKind; severity: Severity; key: string; title: string; body: string }[]): { title: string; body: string; severity: Severity } {
+  const severity = worstSeverity(alerts.map((a) => a.severity));
+  if (alerts.length === 1) return { title: alerts[0]!.title, body: alerts[0]!.body, severity };
+  const sorted = [...alerts].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+  // Keys end with the position id (risk:<id>, health:<id>); market-wide alerts have their own.
+  const positions = new Set(alerts.filter((a) => a.kind === "risk" || a.kind === "health").map((a) => a.key.split(":").slice(1).join(":")));
+  const what = positions.size > 0 ? `${positions.size} position${positions.size === 1 ? "" : "s"}` : `${alerts.length} alerts`;
+  return {
+    title: `${what} affected: ${sorted[0]!.title}`,
+    body: sorted.map((a) => `${a.title}. ${a.body}`).join("\n"),
+    severity,
+  };
+}

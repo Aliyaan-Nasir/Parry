@@ -16,6 +16,7 @@ import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
 import { eventsOf, returnValue, rpc, senderFromEnv, tendGasKey, txHash, view } from "./lib/near";
 import { oraclePrices, readRhea } from "./lib/positions";
+import { hyperliquidFunding } from "./lib/markets";
 import { marginQuote } from "./lib/routes";
 
 const keeper = senderFromEnv("KEEPER");
@@ -61,11 +62,112 @@ async function vaultReport(sql: Sql): Promise<string> {
   const report = JSON.parse(run.output.report_json) as { run_id: number; score: number };
   await sql`INSERT INTO reports (kind, run_id, tx_hash, payload, extra) VALUES ('vault_report', ${report.run_id}, ${txHash(o)}, ${sql.json(report as never)},
     ${sql.json({ outlayerTx: run.tx, leaves: run.output.reserve_leaves, hedgeAddress: run.output.hedge_address } as never)}) ON CONFLICT DO NOTHING`;
-  const state = await view<{ share_price_e6: string; nav_e6: string; risk_score: number; hedge: { current_e8: string; target_e8: string } }>(contract("vault"), "vault_state");
-  const target = Number(state.hedge.target_e8);
-  await sql`INSERT INTO vault_history (t, share_price, nav, score, hedged) VALUES (date_trunc('minute', now()), ${Number(state.share_price_e6) / 1e6}, ${Number(state.nav_e6) / 1e6},
-    ${state.risk_score}, ${target > 0 ? Number(state.hedge.current_e8) / target : 0}) ON CONFLICT (t) DO NOTHING`;
+  await recordVaultHistory(sql);
   return `report ${txHash(o)}, score ${report.score}`;
+}
+
+type VaultStateView = {
+  share_price_e6: string;
+  nav_e6: string;
+  risk_score: number;
+  report_at: number;
+  staked_linear: string;
+  linear_rate_e24: string;
+  near_price_e8: string;
+  reserves: { root: string } | null;
+  hedge: { current_e8: string; target_e8: string; mark_e8: string; account_value_e6: string; hedge_ratio_bps: number; needs_margin: boolean };
+};
+
+/** The vault's `insurance()` view, or null while the deployed vault has none. */
+export async function insuranceView(): Promise<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number } | null> {
+  return view<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number }>(contract("vault"), "insurance").catch(() => null);
+}
+
+/**
+ * One point of the vault's history: share price and NAV, the staking and funding yield so far,
+ * the hedge ratio, the insurance fund, the reserves root, the basis (LiNEAR's staking yield plus
+ * the funding the short earns, a year) and the drawdown from the best share price.
+ */
+async function recordVaultHistory(sql: Sql): Promise<void> {
+  const state = await view<VaultStateView>(contract("vault"), "vault_state");
+  const y = await view<{ staking_rate_growth_bps: number; funding_e6: string }>(contract("vault"), "yield_breakdown").catch(() => null);
+  const insurance = await insuranceView();
+  const funding = await hyperliquidFunding().catch(() => null);
+  const [first] = await sql<{ t: Date | null }[]>`SELECT min(t) AS t FROM vault_history`;
+  const [best] = await sql<{ p: number | null }[]>`SELECT max(share_price) AS p FROM vault_history`;
+  const days = first?.t ? Math.max(1 / 24, (Date.now() - first.t.getTime()) / 86_400_000) : 0;
+  const n = (x: unknown) => Number(x ?? 0);
+  const sharePrice = n(state.share_price_e6) / 1e6;
+  const growth = (y?.staking_rate_growth_bps ?? 0) / 10_000;
+  const linearUsd = (n(state.staked_linear) / 1e24) * (n(state.linear_rate_e24) / 1e24) * (n(state.near_price_e8) / 1e8);
+  const stakingApr = days > 0 ? growth * (365 / days) : null;
+  const target = n(state.hedge.target_e8);
+  const short = n(state.hedge.current_e8) / 1e8;
+  const notional = short * (n(state.hedge.mark_e8) / 1e8);
+  const basis = stakingApr !== null && funding?.funding24hApr != null ? stakingApr + funding.funding24hApr : null;
+  const peak = Math.max(best?.p ?? 0, sharePrice);
+  await sql`INSERT INTO vault_history (t, share_price, nav, score, hedged, staking_yield_usd, funding_yield_usd, hedge_ratio, insurance_usd, reserves_root, basis_apr, drawdown, margin_ratio)
+    VALUES (date_trunc('minute', now()), ${sharePrice}, ${n(state.nav_e6) / 1e6}, ${state.risk_score}, ${target > 0 ? n(state.hedge.current_e8) / target : 0},
+      ${linearUsd * (growth / (1 + growth))}, ${y ? n(y.funding_e6) / 1e6 : null}, ${n(state.hedge.hedge_ratio_bps) / 10_000}, ${insurance ? n(insurance.value_usd_e6) / 1e6 : null},
+      ${state.reserves?.root ?? null}, ${basis}, ${peak > 0 ? 1 - sharePrice / peak : 0}, ${notional > 0 ? n(state.hedge.account_value_e6) / 1e6 / notional : null})
+    ON CONFLICT (t) DO NOTHING`;
+}
+
+export interface MarginDecision {
+  action: "none" | "watch" | "top_up" | "unsupported";
+  amountUsd: number;
+  reason: string;
+}
+
+/**
+ * What the keeper does about the hedge's margin. Under `early` (account value over the short's
+ * notional) it watches and says so before the vault asks; once the vault sets `needs_margin` it
+ * pays a top-up from the insurance fund (`insurance_pay` kind `margin_top_up`) back to `target`,
+ * but only when the deployed vault has the insurance fund.
+ */
+export function marginDecision(o: { ratio: number | null; needsMargin: boolean; insurance: boolean; notionalUsd: number; accountValueUsd: number; early: number; target: number }): MarginDecision {
+  if (o.ratio === null) return { action: "none", amountUsd: 0, reason: "no short open" };
+  if (o.needsMargin) {
+    const amountUsd = Math.max(0, o.target * o.notionalUsd - o.accountValueUsd);
+    if (!o.insurance) return { action: "unsupported", amountUsd, reason: "the vault needs margin, and the deployed vault has no insurance fund yet: nothing paid" };
+    return amountUsd > 0 ? { action: "top_up", amountUsd, reason: `margin ratio ${o.ratio.toFixed(3)} with needs_margin set: top up to ${o.target}` } : { action: "none", amountUsd: 0, reason: "already at the target" };
+  }
+  if (o.ratio < o.early) return { action: "watch", amountUsd: 0, reason: `margin ratio ${o.ratio.toFixed(3)} is under the early mark ${o.early}; the vault has not asked yet` };
+  return { action: "none", amountUsd: 0, reason: `margin ratio ${o.ratio.toFixed(3)}` };
+}
+
+/** Margin-ratio monitoring with the early top-up decision (no-op until the vault has `insurance_pay`). */
+async function marginWatch(sql: Sql): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
+  const state = await view<VaultStateView>(contract("vault"), "vault_state");
+  const n = (x: unknown) => Number(x ?? 0);
+  const notionalUsd = (n(state.hedge.current_e8) / 1e8) * (n(state.hedge.mark_e8) / 1e8);
+  const accountValueUsd = n(state.hedge.account_value_e6) / 1e6;
+  const insurance = await insuranceView();
+  const d = marginDecision({
+    ratio: notionalUsd > 0 ? accountValueUsd / notionalUsd : null,
+    needsMargin: !!state.hedge.needs_margin,
+    insurance: insurance !== null,
+    notionalUsd,
+    accountValueUsd,
+    early: Number(process.env.MARGIN_EARLY_RATIO ?? 0.2),
+    target: Number(process.env.MARGIN_TARGET_RATIO ?? 0.4),
+  });
+  if (d.action === "none") return d.reason;
+  await sql`INSERT INTO reports (kind, run_id, payload) VALUES ('margin_watch', ${Date.now()}, ${sql.json(d as never)}) ON CONFLICT DO NOTHING`;
+  if (d.action !== "top_up") return d.reason;
+  if (!keeper) throw new Error("KEEPER wallet is not configured");
+  // One payout an hour at most: the vault's next report shows whether it was enough.
+  const [recent] = await sql`SELECT 1 FROM reports WHERE kind = 'insurance_pay' AND created_at > now() - interval '1 hour' LIMIT 1`;
+  if (recent) return `${d.reason}; paid within the hour, waiting for the next report`;
+  const o = await keeper.call({
+    receiverId: contract("vault"),
+    methodName: "insurance_pay",
+    args: { kind: "margin_top_up", amount_usd_e6: String(Math.round(d.amountUsd * 1e6)), report_at: state.report_at },
+    tgas: 50,
+  });
+  await sql`INSERT INTO reports (kind, run_id, tx_hash, payload) VALUES ('insurance_pay', ${Date.now()}, ${txHash(o)}, ${sql.json({ kind: "margin_top_up", amountUsd: d.amountUsd } as never)}) ON CONFLICT DO NOTHING`;
+  return `paid a ${d.amountUsd.toFixed(2)} USD margin top-up in ${txHash(o)}`;
 }
 
 /**
@@ -201,6 +303,7 @@ export async function main() {
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
   every(intEnv("MARGIN_ROUTE_MS", 1_800_000), "margin-route", track("margin-route", () => marginRoute(sql)));
+  every(intEnv("MARGIN_WATCH_MS", 120_000), "margin-watch", track("margin-watch", () => marginWatch(sql)));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));
   every(intEnv("LIQUIDATOR_MS", 30_000), "liquidator", track("liquidator", () => liquidator(sql)));
   every(600_000, "mandates", track("mandates", () => mandates(sql)));

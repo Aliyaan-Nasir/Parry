@@ -6,7 +6,7 @@ import { Near } from "near-kit";
 import { nearKitCallOptions, type ContractCall } from "./calls.js";
 import { fromBase64, fromUtf8 } from "./encoding.js";
 import type { ContractIds, Network } from "./networks.js";
-import type { EnclaveInfo, EnclaveKey, MandateView, Nonces, SealingKey, VaultChainState } from "./types.js";
+import type { CertificateAnchor, EnclaveInfo, EnclaveKey, MandateView, Nonces, SealingKey, VaultChainState } from "./types.js";
 import { compressedPasskey } from "./webauthn.js";
 
 export interface ChainOptions {
@@ -60,6 +60,18 @@ export function chainReads(near: Near, contract: (name: keyof ContractIds) => st
     },
     /** Every enclave key the risk board has trusted, newest first (a new enclave build rotates it). */
     enclaveHistory: async (): Promise<EnclaveKey[]> => (await view<EnclaveKey[]>(contract("risk"), "enclave_history", { limit: 100 })) ?? [],
+    /**
+     * The risk board's anchor of a health certificate (`certificate(hash)`), null when it has none,
+     * or undefined while the deployed board has no such view.
+     */
+    certificateAnchor: async (hash: string): Promise<CertificateAnchor | null | undefined> => {
+      try {
+        return (await view<CertificateAnchor | null>(contract("risk"), "certificate", { hash })) ?? null;
+      } catch (e) {
+        if (/MethodNotFound|MethodResolveError/i.test(String((e as Error)?.message ?? e))) return undefined;
+        throw e;
+      }
+    },
   };
 }
 

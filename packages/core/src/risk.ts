@@ -9,6 +9,8 @@ import { bisect, clamp, normCdf, slope } from "./math.js";
 
 export type Tier = "safe" | "caution" | "danger" | "critical";
 export type TremorLevel = "calm" | "elevated" | "high" | "extreme";
+/** The volatility regime: what the Tremor index means for the next few hours, calibrated on real crashes. */
+export type Regime = "calm" | "stressed" | "panic";
 
 /** One collateral or debt line of a lending position. */
 export interface Line {
@@ -85,6 +87,7 @@ export interface Tremor {
   /** Annualized: sigmaHourly × sqrt(8760). */
   annual: number;
   level: TremorLevel;
+  regime: Regime;
   windows: TremorWindow[];
   /** True when no window had data and the default was used. */
   fallback: boolean;
@@ -98,6 +101,20 @@ export const TREMOR_WINDOWS: ReadonlyArray<{ hours: number; weight: number }> = 
 /** Used when there is no price history yet: a typical annual volatility for NEAR. */
 export const DEFAULT_ANNUAL_VOL = 0.7;
 const HOURS_PER_YEAR = 8760;
+
+/**
+ * The regime thresholds on annualized Tremor, chosen by `pnpm replay` from NEAR's hourly history
+ * (deployments/replay.json, `calibration.regime`): stressed is the 80th percentile of ordinary
+ * hours, panic the level that best separates crash hours from ordinary ones. docs/risk-model.md
+ * section 2 records the numbers.
+ */
+export const REGIME_THRESHOLDS = { stressed: 1.35, panic: 2.3 } as const;
+
+export function tremorRegime(annual: number, t: { stressed: number; panic: number } = REGIME_THRESHOLDS): Regime {
+  if (annual >= t.panic) return "panic";
+  if (annual >= t.stressed) return "stressed";
+  return "calm";
+}
 
 export function tremorLevel(annual: number): TremorLevel {
   if (annual < 0.4) return "calm";
@@ -130,13 +147,13 @@ export function tremor(samples: Sample[], now: number): Tremor {
   const used = windows.filter((w) => w.sigma !== null);
   if (used.length === 0) {
     const sigmaHourly = DEFAULT_ANNUAL_VOL / Math.sqrt(HOURS_PER_YEAR);
-    return { sigmaHourly, annual: DEFAULT_ANNUAL_VOL, level: tremorLevel(DEFAULT_ANNUAL_VOL), windows, fallback: true };
+    return { sigmaHourly, annual: DEFAULT_ANNUAL_VOL, level: tremorLevel(DEFAULT_ANNUAL_VOL), regime: tremorRegime(DEFAULT_ANNUAL_VOL), windows, fallback: true };
   }
   const wsum = used.reduce((s, w) => s + w.weight, 0);
   const variance = used.reduce((s, w) => s + w.weight * w.sigma! * w.sigma!, 0) / wsum;
   const sigmaHourly = Math.sqrt(variance);
   const annual = sigmaHourly * Math.sqrt(HOURS_PER_YEAR);
-  return { sigmaHourly, annual, level: tremorLevel(annual), windows, fallback: false };
+  return { sigmaHourly, annual, level: tremorLevel(annual), regime: tremorRegime(annual), windows, fallback: false };
 }
 
 /**

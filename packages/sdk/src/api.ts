@@ -12,8 +12,19 @@ import type {
   Market,
   PasskeyAssertion,
   Position,
-  Rate,
+  Certificate,
+  CertificateRequest,
+  Heatmap,
+  Incident,
+  Prices,
+  Rates,
+  Replay,
   Reserves,
+  RouteSavings,
+  VaultInsurance,
+  VerifyResult,
+  WatchRow,
+  WatchThresholds,
   RiskCheck,
   RouteComparison,
   Simulation,
@@ -23,6 +34,8 @@ import type {
   VaultState,
   Verification,
 } from "./types.js";
+
+import type { Network } from "./networks.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -41,7 +54,7 @@ export class ParryApiError extends Error {
 type Query = Record<string, string | number | undefined | null>;
 
 export interface ApiRequest {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   query?: Query;
   body?: unknown;
   headers?: Record<string, string>;
@@ -95,6 +108,7 @@ export class ParryApi {
 }
 
 const seg = (s: string) => encodeURIComponent(s);
+const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
 /** The typed reads and relays of the API, bound to one client. */
 export function apiMethods(api: ParryApi) {
@@ -123,7 +137,37 @@ export function apiMethods(api: ParryApi) {
     vaultHistory: (days = 7) => api.request<VaultPoint[]>("/v1/vault/history", { query: { days } }),
     /** Every reserve leaf with its Merkle proof. */
     reserves: () => api.request<Reserves>("/v1/vault/reserves"),
-    rates: () => api.request<Rate[]>("/v1/rates"),
+    /** Every Rhea lending asset's rates, Hyperliquid's NEAR funding and the vault's yield, each with its source. */
+    rates: () => api.request<Rates>("/v1/rates"),
+    /** Parry's risk model, guardian and vault replayed through NEAR's largest historical crashes. */
+    replay: () => api.request<Replay>("/v1/replay"),
+    /** Re-checks a decision id, a certificate hash or a NEAR transaction hash. */
+    verify: (id: string) => api.request<VerifyResult>(`/v1/verify/${seg(id)}`),
+    /** What each rescue's route choice saved against the worst quote. */
+    routeSavings: (account?: string) => api.request<RouteSavings>("/v1/routes/savings", { query: { account } }),
+    /** The vault's insurance fund (`insurance()` view) and its inflows and payouts. */
+    vaultInsurance: () => api.request<VaultInsurance>("/v1/vault/insurance"),
+    /** Every Rhea lending borrower's liquidation price, bucketed, and the chained cascades. */
+    heatmap: (q: { network?: Network; asset?: string } = {}) => api.request<Heatmap>("/v1/heatmap", { query: { network: q.network, asset: q.asset } }),
+    /** USD prices with 24-hour change for NEAR, the liquid staking tokens, USDC and every Rhea asset. */
+    prices: (tokens?: string[]) => api.request<Prices>("/v1/prices", { query: { tokens: tokens?.join(",") } }),
+    /** Related alerts grouped into incidents, newest first. */
+    incidents: (account: string) => api.request<Incident[]>("/v1/incidents", { query: { account } }),
+    /** A sign-in challenge for `accountId` (sign it with `signInNep413`, or a passkey). */
+    authChallenge: (accountId: string) => api.request<{ nonce: string; message: string; recipient: string }>("/v1/auth/challenge", { method: "POST", body: { accountId } }),
+    /** Exchanges a signed challenge for a session token. */
+    authVerify: (proof: { accountId: string; nonce: string; nep413?: { publicKey: string; signature: string }; passkey?: { authenticator_data: string; client_data_json: string; signature: string } }) =>
+      api.request<{ token: string }>("/v1/auth/verify", { method: "POST", body: proof }),
+    /** The signed-in account's watched accounts, each with its live risk (auth). */
+    watchlist: (token: string) => api.request<WatchRow[]>("/v1/watch", { headers: auth(token) }),
+    /** Watches `accountId` with these thresholds (auth). */
+    watch: (token: string, accountId: string, body: { thresholds: WatchThresholds; label?: string }) =>
+      api.request<WatchRow>(`/v1/watch/${seg(accountId)}`, { method: "PUT", body, headers: auth(token) }),
+    unwatch: (token: string, accountId: string) => api.request<{ ok: true }>(`/v1/watch/${seg(accountId)}`, { method: "DELETE", headers: auth(token) }),
+    /** Has the enclave certify that an account's health is at least a threshold, for a reader (auth). */
+    issueCertificate: (token: string, req: CertificateRequest) => api.request<Certificate>("/v1/certificates", { method: "POST", body: req, headers: auth(token) }),
+    certificates: (account: string) => api.request<Certificate[]>("/v1/certificates", { query: { account } }),
+    certificate: (hash: string) => api.request<Certificate>(`/v1/certificates/${seg(hash)}`),
     status: () => api.request<Status>("/v1/status"),
     rescueQuote: (amountNear: number) => api.request<RouteComparison>("/v1/quotes/rescue", { query: { amountNear } }),
     /** Relays a passkey-signed owner request to `owner_execute` (the relayer pays the gas). */

@@ -13,7 +13,10 @@ import { chainReads, nearClient, sendCall, type ChainReads, type SentCall } from
 import { u128 } from "./encoding.js";
 import { NETWORKS, isNetwork, type ContractIds, type Network } from "./networks.js";
 import { ownerRequest, type OwnerRequest, type OwnerRequestInput } from "./owner.js";
-import type { Decision, RiskCheck } from "./types.js";
+import type { Certificate, Decision, RiskCheck } from "./types.js";
+import { verifyCertificate, type CertificateVerification } from "./certificate.js";
+import { signInNep413 } from "./auth.js";
+import { subscribe, type SubscribeOptions } from "./subscribe.js";
 import { enclaveKeyAt, envelopeIssuedAt, verifyDecision, type DecisionVerification } from "./verify.js";
 import {
   decodePaymentResponse,
@@ -95,6 +98,16 @@ export interface Parry extends ApiMethods, ChainReads {
    * key read from the risk board, unless a key is given.
    */
   verifyDecision(decision: Decision | string, opts?: { enclavePublicKey?: string }): Promise<DecisionVerification>;
+  /**
+   * Verifies a health certificate (or the one with this hash, read from the API): its hash, the
+   * enclave signature with the key the risk board trusted at issue time, the expiry, the reader
+   * (when given) and the board's anchor (when the board has the view).
+   */
+  verifyCertificate(certificate: Certificate | string, opts?: { reader?: string; now?: number }): Promise<CertificateVerification>;
+  /** Signs in as a protected account with its NEAR owner's full-access key (NEP-413); returns the session token. */
+  signIn(accountId: string, privateKey: string): Promise<string>;
+  /** Live updates over Server-Sent Events, or polling where there is no EventSource. Returns a stop function. */
+  subscribe(opts: SubscribeOptions): () => void;
 }
 
 export function createParry(options: ParryOptions): Parry {
@@ -173,6 +186,13 @@ export function createParry(options: ParryOptions): Parry {
       const key = opts.enclavePublicKey ?? (issued !== null ? enclaveKeyAt(await chain.enclaveHistory(), issued) : null) ?? (await chain.enclave()).key.public_key;
       return verifyDecision(d, { enclavePublicKey: key });
     },
+    verifyCertificate: async (certificate, opts = {}) => {
+      const c = typeof certificate === "string" ? await reads.certificate(certificate) : certificate;
+      const [history, anchor] = await Promise.all([chain.enclaveHistory(), chain.certificateAnchor(c.hash)]);
+      return verifyCertificate(c, { enclaveHistory: history, ...(anchor !== undefined ? { anchor } : {}), ...opts });
+    },
+    signIn: (accountId, privateKey) => signInNep413(reads, accountId, privateKey),
+    subscribe: (opts) => subscribe(api, opts),
   };
 }
 
