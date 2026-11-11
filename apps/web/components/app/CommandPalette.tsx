@@ -53,7 +53,8 @@ export function CommandPalette() {
     let timer = 0;
     const onKey = (e: globalThis.KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const typing = !!target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      // A field inside a closed dialog (the palette just dismissed) can keep focus for a moment: it is not typing.
+      const typing = !!target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) && !target.closest("dialog:not([open])");
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
