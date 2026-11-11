@@ -14,6 +14,17 @@ cd enclave && cargo test     # the guardian program, against the same risk fixtu
 
 `deployments/testnet.json` lists every deployed account, code hash and transaction; `deployments/testnet-proofs.json` records each scenario of the test matrix with its transactions; [`AGENTS.md`](AGENTS.md) maps every NEAR primitive to its code.
 
+## NEAR at the core
+
+Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes from a NEAR primitive, and the README's "Only on NEAR" table links a testnet transaction for each.
+
+- **Accounts:** every protected account is a NEP-655 universal account derived from one global contract hash, created gaslessly through a NEP-366 relayer and owned by a passkey verified on chain.
+- **Cross-chain without bridges:** Chain Signatures sign Hyperliquid orders and Aave transactions on Base for the account's own derived addresses, and the MPC network's `verify_foreign_transaction` confirms the result back on NEAR.
+- **Verifiable compute and AI:** the guardian runs in an OutLayer TEE with keys bound to its build, and every rescue is reviewed by a NEAR AI Cloud verifiable model whose TEE signature and hardware attestation are checked.
+- **Protocol-level keys:** the services sign on gas keys (NEP-611) with parallel nonce lanes, and the treasury signs its top-ups with a post-quantum ML-DSA-65 key.
+- **The agent economy:** risk checks paid per call over x402 on NEAR, an MCP server, a NEAR Agent Market listing, and NEAR Intents (1Click quotes, and on mainnet a confidential rescue reserve on the Intents Agent API).
+- **DeFi on NEAR:** Rhea lending's exact mainnet code, the Rhea exchange, wNEAR and LiNEAR.
+
 ## Technical implementation
 
 - **A guardian that can only protect.**
