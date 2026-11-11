@@ -34,6 +34,16 @@ export default function TermsPage() {
         <li>Risk scores and predictions are estimates, not promises.</li>
       </ul>
 
+      <h2>The vault and its insurance fee</h2>
+      <p>
+        The vault charges no management or performance fee. One fee applies: 10% of the vault&apos;s positive yield (staking and
+        funding) goes into its insurance fund, and only when that yield is positive. The vault&apos;s operator can change that
+        share, never above 50%, and every change is an event on the vault contract. The fund pays out for three things only: a
+        streak of negative funding on the hedge, hedge slippage beyond the price band, and topping up the hedge&apos;s margin on
+        Hyperliquid; each payout and each day is capped, every inflow and payout is an event on the vault contract, and the fund
+        is part of the proof of reserves. The fund lowers, but does not remove, the risk of losing value in the vault.
+      </p>
+
       <h2>Liability</h2>
       <p>
         To the fullest extent the law allows, the authors of Parry are not liable for any loss arising from using it, including
