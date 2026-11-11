@@ -24,7 +24,7 @@ export function DitherField({ className, cell = 6 }: { className?: string; cell?
     let w = 0;
     let h = 0;
     // The brass colour as RGB, read from the theme (a 1 pixel canvas resolves any CSS colour).
-    const probe = document.createElement("canvas").getContext("2d");
+    const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     const rgb = (): [number, number, number] => {
       const css = getComputedStyle(document.documentElement).getPropertyValue("--parry-brass-fill").trim() || "#c99a45";
       if (!probe) return [201, 154, 69];
