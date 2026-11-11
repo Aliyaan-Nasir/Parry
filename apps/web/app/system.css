@@ -248,6 +248,22 @@
 }
 
 /* The marquee: two rows moving in opposite directions, paused on hover and for reduced motion. */
+/* Route transitions: a page rises into place over the slow motion step. */
+.route-in {
+  animation: parry-route-in var(--dur-2) var(--ease-out) both;
+}
+@keyframes parry-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-in {
+    animation: none;
+  }
+}
+
 @keyframes parry-marquee {
   to {
     transform: translateX(-50%);
