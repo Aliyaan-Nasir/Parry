@@ -283,14 +283,17 @@ export class Sender {
 
   /**
    * Moves NEAR from the account into its own gas key once the key falls under `minNear`, back up
-   * to `targetNear` (a full-access gas key may fund itself). The top-up service keeps the account
-   * itself funded from the treasury.
+   * to `targetNear` (a full-access gas key may fund itself), never past what the account can spare
+   * above its storage and a small reserve. The top-up service keeps the account itself funded
+   * from the treasury.
    */
   async refillGasKey(minNear: number, targetNear: number): Promise<string> {
     const b = await this.gasKeyBalance();
     if (b === null) return "no gas key";
     if (toNear(b) >= minNear) return `gas key ${toNear(b).toFixed(2)} NEAR`;
-    const add = yocto(targetNear) - b;
+    const spare = ((await balanceOf(this.accountId)) ?? 0n) - yocto(0.2);
+    const add = yocto(targetNear) - b < spare ? yocto(targetNear) - b : spare;
+    if (add < yocto(0.05)) return `gas key ${toNear(b).toFixed(2)} NEAR, account too low to refill`;
     await this.send((tx) => tx.transferToGasKey(this.publicKey, `${add} yocto` as never));
     return `gas key refilled with ${toNear(add).toFixed(2)} NEAR`;
   }
