@@ -36,6 +36,24 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 
 `deployments/testnet.json` lists every deployed account, code hash and transaction; `deployments/testnet-proofs.json` records each scenario of the test matrix with its transactions; [`AGENTS.md`](AGENTS.md) maps every NEAR primitive to its code.
 
+## Replayed through NEAR's worst crashes
+
+Six real NEAR crashes, hour by hour from Binance's public candles, run through Parry's risk model, a repay-first guardian and the vault (`pnpm replay` fetches and computes; `pnpm replay --print` prints the committed results; the live page is `/replay`).
+The logic is [`packages/core/src/replay.ts`](packages/core/src/replay.ts); the results, with every source, are [`deployments/replay.json`](deployments/replay.json).
+
+| Crash | Drop | Liquidated without Parry | Warning | Guardian steps | Min health with Parry | Vault drawdown (unhedged) | Min margin ratio | Insurance paid |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 21 Dec 2020 to 24 Dec 2020 | 39.8 % | 2020-12-21 10:00 | 7 h | 7 | 1.080 | 2.7 % (39.8 %) | 0.500 | $0.00 |
+| 21 May 2021 to 23 May 2021 | 45.6 % | 2021-05-21 14:00 | 10 h | 9 | 1.236 | 3.1 % (45.6 %) | 0.500 | $0.00 |
+| 19 Jan 2022 to 22 Jan 2022 | 39.1 % | 2022-01-21 20:00 | 47 h | 7 | 1.193 | 2.7 % (39.1 %) | 0.500 | $5.49 |
+| 9 May 2022 to 12 May 2022 | 51.7 % | 2022-05-11 06:00 | 44 h | 7 | 0.971 (liquidated) | 3.8 % (51.7 %) | 0.500 | $5.07 |
+| 31 Jan 2025 to 3 Feb 2025 | 38.6 % | 2025-02-02 18:00 | 33 h | 6 | 1.149 | 2.6 % (38.6 %) | 0.500 | $2.93 |
+| 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 0.500 | $0.68 |
+
+- The model warned before every liquidation: median 24.5 hours, shortest 7 hours; at the first warning, its predicted time to liquidation over the actual one has a median of 1.0.
+- Parry avoided 5 of 6 liquidations; the miss is a real one-hour 32 % wick on 11 May 2022, after the guardian had used its actions for the day (the daily cap the owner sets).
+- The hedged vault's worst drawdown was 2.6 % to 3.8 % against 38.6 % to 51.7 % for the same NEAR held unhedged.
+
 ## NEAR at the core
 
 Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes from a NEAR primitive, and the README's "Only on NEAR" table links a testnet transaction for each.
@@ -63,14 +81,24 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
   The review's hash goes on chain with the action, and anyone can re-check a decision: [`verifyDecisionRecord`](apps/api/src/verify.ts#L93), `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server.
 - **Keys bound to the build.**
   OutLayer derives the enclave's signing and sealing keys from the wasm: [`enclave/manifest.json`](enclave/manifest.json); the risk board accepts reports only from that key: [`submit`](contracts/risk/src/lib.rs#L273).
+- **Sharper in round three.**
+  The Tremor index carries a regime (calm, stressed, panic) fitted to those crashes ([`tremorRegime`](packages/core/src/risk.ts)).
+  Cascade pressure comes from every Rhea borrower read from the lending contract on mainnet and testnet, each liquidation sized by Rhea's own rule (back to health 1 at its discount, only the NEAR share sold), accounts already under water set aside ([`packages/core/src/heatmap.ts`](packages/core/src/heatmap.ts)); the app draws it as the cascade map.
+  The owner orders the rescue steps; the planner takes the first allowed step that moves health, sizes it to land on the target, re-checks after each step, and records why it skipped the earlier ones ([`enclave/src/plan.rs`](enclave/src/plan.rs), `Decision.explanation`).
+  The vault's hedge ratio follows funding within its bounds with the reason in each report, its margin is topped up early, and an insurance fund (10 % of positive yield) pays only negative funding streaks, slippage beyond the band and margin top-ups, under caps ([`contracts/vault/src/insurance.rs`](contracts/vault/src/insurance.rs)).
+  The owner can close a Rhea position by selling collateral in rounds that each keep health above 1, or unwind the whole account, with every failed step rolled back ([`contracts/account/src/close.rs`](contracts/account/src/close.rs)).
+  The enclave signs private health certificates: "health is at least X" for one named reader at one block, with no amounts, optionally anchored on the risk board, checkable on `/verify`, in the SDK and over MCP.
 - **Tests.**
   229 contract unit tests (each audit fix has an `audit_*` test that fails without it), 15 sandbox flows on real protocol code including a mainnet rehearsal, 16 enclave tests and 2 cross-language vectors, 152 TypeScript tests (10 of them need `TEST_DATABASE_URL`); the risk model is one fixture file both languages pass: [`packages/core/fixtures/risk-cases.json`](packages/core/fixtures/risk-cases.json).
   The test matrix's scenarios run end to end with recorded transactions: [`scripts/scenarios.ts`](scripts/scenarios.ts), [`deployments/testnet-proofs.json`](deployments/testnet-proofs.json).
 
 ## Design
 
-- One palette (ink, bone and brass) from one token file, [`packages/brand/tokens.json`](packages/brand/tokens.json), drives the site, the app and the README figures ([`tools/make_readme_art.py`](tools/make_readme_art.py)); every text colour clears WCAG AA in both themes.
-- The app reads like a risk desk: health, liquidation price, time to liquidation and the guardian's log with each decision's verification, in plain words.
+- One palette (ink, bone and brass) from one token file, [`packages/brand/tokens.json`](packages/brand/tokens.json), drives the site, the app and the README figures ([`tools/make_readme_art.py`](tools/make_readme_art.py)); every text colour clears WCAG AA in both themes, and risk colours appear only inside the risk instrument.
+- The signature element is the risk instrument: a health scale with a hatched liquidation edge, a sprung needle, a 24 hour ghost projection with its band, draggable trigger and target handles, and the guardian's past actions marked on it ([`RiskInstrument`](apps/web/components/instrument/RiskInstrument.tsx)).
+- Protect is built around it: drag the trigger and target, order the rescue steps by dragging, and read in plain words what the guardian would do now with that draft.
+- The landing explains by doing: drag the hero chart to push the price and watch Parry turn the strike aside; the Protect story pins the real components step by step.
+- Every page works at phone width in both themes with no sideways scroll, under reduced motion, and from the keyboard (Cmd or Ctrl+K reaches every page and action); the public pages score 100 on Lighthouse accessibility, best practices and SEO.
 - The risk model is written down with every formula and threshold: [`docs/risk-model.md`](docs/risk-model.md).
 
 ## Impact
