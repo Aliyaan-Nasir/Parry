@@ -17,7 +17,7 @@
     "test:sandbox": "cd contracts && cargo test -p parry-sandbox-tests",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "lint": "pnpm -r --if-present lint",
+    "lint": "pnpm -r --if-present lint && eslint scripts",
     "build": "pnpm -r --if-present build",
     "deploy:testnet": "bun scripts/deploy.ts",
     "typecheck:scripts": "tsc --noEmit -p scripts",
@@ -33,7 +33,9 @@
     "near-kit": "0.20.2",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "eslint": "9.39.5",
+    "typescript-eslint": "8.72.2"
   },
   "pnpm": {
     "auditConfig": {

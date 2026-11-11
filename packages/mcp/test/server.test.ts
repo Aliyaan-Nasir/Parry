@@ -32,7 +32,7 @@ async function connect(opts: ParryMcpOptions) {
   const call = async (name: string, args: Record<string, unknown> = {}) => {
     const r = await client.callTool({ name, arguments: args });
     const text = (r.content as { type: string; text: string }[])[0]?.text ?? "";
-    return { error: r.isError === true, text, data: r.structuredContent as Record<string, any> | undefined };
+    return { error: r.isError === true, text, data: r.structuredContent as Record<string, unknown> | undefined };
   };
   return { client, call };
 }
@@ -122,8 +122,9 @@ describe("read tools", () => {
 
     const reserves = await call("get_reserves");
     expect(Object.keys(reserves.data!).sort()).toEqual(["onChainRoot", "reserves", "verification"]);
-    expect(reserves.data!["verification"].ok).toBe(true);
-    expect(reserves.data!["verification"].onChainMatches).toBe(true);
+    const verification = reserves.data!["verification"] as { ok: boolean; onChainMatches: boolean };
+    expect(verification.ok).toBe(true);
+    expect(verification.onChainMatches).toBe(true);
     expect(reserves.text).toStartWith("Verified");
 
     const log = await call("get_guardian_log", { account: "0uabc.testnet", limit: 5 });
@@ -152,7 +153,7 @@ describe("read tools", () => {
     expect(v.error).toBe(false);
     expect(v.text).toStartWith("Verified.");
     expect(v.data!["enclavePublicKey"]).toBe(enclaveKey);
-    expect(v.data!["verification"].checks.map((c: { status: string }) => c.status)).toEqual(["pass", "pass", "pass", "pass", "pass", "pass"]);
+    expect((v.data!["verification"] as { checks: { status: string }[] }).checks.map((c) => c.status)).toEqual(["pass", "pass", "pass", "pass", "pass", "pass"]);
   });
 
   test("API failures come back as tool errors", async () => {
@@ -210,7 +211,7 @@ describe("write tools", () => {
     expect(r.error).toBe(false);
     const sent = f.sent[0]!;
     expect(sent).toMatchObject({ receiverId: "0uagent.testnet", methodName: "owner_call", deposit: "1", gas: "300000000000000" });
-    const mandate = (sent.args["actions"] as { set_mandate: { mandate: Record<string, any> } }[])[0]!.set_mandate.mandate;
+    const mandate = (sent.args["actions"] as { set_mandate: { mandate: { sealed: string } } }[])[0]!.set_mandate.mandate;
     expect(mandate).toMatchObject({ guardian_key: enclaveKey, powers: ["repay", "add_collateral"], max_actions_per_day: 4, min_health_after_bps: 11_000, max_slippage_bps: 100 });
     expect(openPolicy(mandate["sealed"], { account: "0uagent.testnet", secret: sealingSecret })).toMatchObject({ triggerScore: 55, strategy: "repay-first" });
     expect((await call("set_mandate", args)).error).toBe(false);

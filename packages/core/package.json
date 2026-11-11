@@ -23,7 +23,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@types/bun": "1.3.1",

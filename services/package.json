@@ -14,7 +14,8 @@
   "scripts": {
     "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@near-intents-agent-api/sdk": "0.8.2",

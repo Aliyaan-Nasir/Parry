@@ -47,7 +47,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --conditions=parry-source"
+    "test": "bun test --conditions=parry-source",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

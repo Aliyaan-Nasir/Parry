@@ -8,6 +8,7 @@
 import { decodeSignedDelegateAction, Near, parseKey } from "near-kit";
 import type { FinalExecutionOutcome, PrivateKey, TransactionBuilder } from "near-kit";
 import { network, RPC_URLS } from "./config";
+import type { Sql } from "./db";
 
 type RpcError = { cause?: { name?: string; info?: unknown }; code?: number; message?: string; data?: unknown };
 
@@ -338,7 +339,7 @@ function balanceIn(v: unknown): string | null {
  * Keeps a service's gas key funded and records its balance for the status page. Each gas-key
  * service (monitor, keeper, relayer) runs this every 10 minutes.
  */
-export async function tendGasKey(sql: import("./db").Sql, name: string, sender: Sender | null): Promise<void> {
+export async function tendGasKey(sql: Sql, name: string, sender: Sender | null): Promise<void> {
   if (!sender?.lanes) return;
   const min = Number(process.env.GAS_KEY_MIN_NEAR ?? 0.5);
   const target = Number(process.env.GAS_KEY_TARGET_NEAR ?? 1.5);

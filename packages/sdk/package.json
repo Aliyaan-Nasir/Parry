@@ -46,7 +46,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --conditions=parry-source"
+    "test": "bun test --conditions=parry-source",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0",
