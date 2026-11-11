@@ -46,4 +46,6 @@ export async function useQuota(sql: Sql, kind: string, who: string, limit: numbe
 export async function setStatus(sql: Sql, name: string, ok: boolean, detail: string): Promise<void> {
   await sql`INSERT INTO service_status (name, ok, detail, checked_at) VALUES (${name}, ${ok}, ${detail}, now())
     ON CONFLICT (name) DO UPDATE SET ok = excluded.ok, detail = excluded.detail, checked_at = now()`;
+  await sql`INSERT INTO service_uptime (name, hour, checks, ok) VALUES (${name}, date_trunc('hour', now()), 1, ${ok ? 1 : 0})
+    ON CONFLICT (name, hour) DO UPDATE SET checks = service_uptime.checks + 1, ok = service_uptime.ok + excluded.ok`;
 }

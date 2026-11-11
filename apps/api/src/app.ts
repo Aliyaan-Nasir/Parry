@@ -410,9 +410,22 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
       }),
     );
     const treasury = wallets.find((w) => w.name === "treasury");
+    // The last 48 hours, hour by hour: the share of each service's reports that were ok.
+    const hours = await sql<{ name: string; hour: Date; checks: number; ok: number }[]>`
+      SELECT name, hour, checks, ok FROM service_uptime WHERE hour > now() - interval '48 hours' ORDER BY name, hour`;
+    const uptime = services.map((s) => {
+      const mine = hours.filter((h) => h.name === s.name);
+      const checks = mine.reduce((n, h) => n + h.checks, 0);
+      return {
+        name: s.name,
+        ratio: checks ? mine.reduce((n, h) => n + h.ok, 0) / checks : null,
+        hours: mine.map((h) => ({ hour: h.hour.toISOString(), checks: h.checks, ok: h.ok })),
+      };
+    });
     return c.json({
       network,
       services: services.map((s) => ({ name: s.name, ok: s.ok && Date.now() - s.checked_at.getTime() < 300_000, detail: s.detail, checkedAt: s.checked_at.toISOString() })),
+      uptime,
       oracle: near ? { publishTime: new Date(near.publish_time * 1000).toISOString(), ageSeconds: Math.round(Date.now() / 1000 - near.publish_time), fresh: Date.now() / 1000 - near.publish_time < 120 } : null,
       indexer: { lastBlock: Number(cursor?.b ?? 0), lagBlocks: head ? head.header.height - Number(cursor?.b ?? 0) : null },
       lanes,

@@ -328,6 +328,8 @@ export interface RouteComparison {
 export interface Status {
   network: string;
   services: { name: string; ok: boolean; detail: string; checkedAt: string }[];
+  /** Each service's last 48 hours by the hour: its reports and how many were ok (an hour with no reports is absent). */
+  uptime?: { name: string; ratio: number | null; hours: { hour: string; checks: number; ok: number }[] }[];
   oracle: { publishTime: string; ageSeconds: number; fresh: boolean } | null;
   indexer: { lastBlock: number; lagBlocks: number };
   /** Each service's gas key: its nonce lanes, 0 when unknown. */

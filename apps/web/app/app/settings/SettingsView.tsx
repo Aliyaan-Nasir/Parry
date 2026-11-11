@@ -1,5 +1,6 @@
 "use client";
 
+import { WatchlistManager } from "@/components/app/WatchlistManager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AccountAddress } from "@/components/app/AccountAddress";
@@ -489,6 +490,7 @@ export function SettingsView() {
     <>
       <Identities />
       <CurrencyCard account={account} signer={signer} settings={settings.data} />
+      <WatchlistManager />
       {account && signer ? <AccountSettings account={account} signer={signer} /> : null}
     </>
   );

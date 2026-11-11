@@ -2,7 +2,9 @@
 
 import { DataList, DataRow, Note, QueryError } from "@/components/app/bits";
 import { TimeAgo } from "@/components/app/Feeds";
-import { Badge } from "@/components/ui/Badge";
+import { useLive } from "@/components/providers/LiveProvider";
+import { formatRelativeTime } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useStatus } from "@/lib/queries";
@@ -25,14 +27,63 @@ const SERVICE_LABEL: Record<string, string> = {
   api: "API",
   enclave: "Enclave",
   treasury: "Treasury",
+  heatmap: "Heatmap sweep",
+  incidents: "Incidents",
+  stream: "Live stream",
 };
 
 function Up({ ok, yes = "Up", no = "Down" }: { ok: boolean; yes?: string; no?: string }) {
+  return <span className={cn("text-[13px]", ok ? "text-fg" : "text-critical")}>{ok ? yes : no}</span>;
+}
+
+type Hour = { hour: string; checks: number; ok: number };
+
+/** 48 bars, one an hour, oldest first: full when every report that hour was ok, red when some were not, faint when none came. */
+function UptimeBars({ hours, now }: { hours: Hour[]; now: number }) {
+  const at = new Map(hours.map((h) => [Math.floor(Date.parse(h.hour) / 3_600_000), h]));
+  const last = Math.floor(now / 3_600_000);
   return (
-    <Badge tone={ok ? "safe" : "critical"}>
-      <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      {ok ? yes : no}
-    </Badge>
+    <span className="flex h-6 items-end gap-[2px]" role="img" aria-label={`${hours.length} of the last 48 hours reported`}>
+      {Array.from({ length: 48 }, (_, i) => {
+        const h = at.get(last - 47 + i);
+        const ratio = h && h.checks ? h.ok / h.checks : null;
+        return (
+          <span
+            key={i}
+            title={h ? `${new Date((last - 47 + i) * 3_600_000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit" })}: ${h.ok} of ${h.checks} reports ok` : "no reports"}
+            className={cn("w-[3px] rounded-[1px]", ratio === null ? "h-2 bg-line" : ratio === 1 ? "h-6 bg-fg/55" : ratio > 0.9 ? "h-6 bg-caution" : "h-6 bg-critical")}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+/** How this browser hears about changes: the API's event stream, or polling. */
+function LiveHealth() {
+  const live = useLive();
+  const now = useNow();
+  return (
+    <Card as="section" aria-labelledby="live-title" className="grid content-start gap-4">
+      <CardHeader titleAs="h2" title={<span id="live-title">Live updates</span>} description="Server-Sent Events from the API; while the stream is down, every page keeps polling on its own interval." />
+      <DataList>
+        <DataRow label="Mode">
+          <span className={cn("text-sm", live.mode === "stream" ? "text-fg" : "text-muted")}>{live.mode === "stream" ? "Streaming" : live.mode === "connecting" ? "Connecting" : "Polling"}</span>
+        </DataRow>
+        <DataRow label="Connected">
+          <span className="text-sm">{live.since && now ? formatRelativeTime(new Date(live.since).toISOString(), now) : "not now"}</span>
+        </DataRow>
+        <DataRow label="Events received">
+          <span className="num">{live.events}</span>
+        </DataRow>
+        <DataRow label="Last event">
+          <span className="text-sm">{live.lastEventAt && now ? formatRelativeTime(new Date(live.lastEventAt).toISOString(), now) : "none yet"}</span>
+        </DataRow>
+        <DataRow label="Reconnects">
+          <span className="num">{live.reconnects}</span>
+        </DataRow>
+      </DataList>
+    </Card>
   );
 }
 
@@ -50,6 +101,7 @@ function CardSkeleton() {
 export function StatusBoard() {
   const q = useStatus();
   const s = q.data;
+  const now = useNow();
   if (q.isError && !s) return <QueryError title="Service status could not be loaded" error={q.error} onRetry={() => void q.refetch()} />;
   const down = s?.services.filter((x) => !x.ok).length ?? 0;
   const isGasKey = (name: string) => / gas key$/.test(name);
@@ -63,7 +115,7 @@ export function StatusBoard() {
           <CardHeader
             titleAs="h2"
             title={<span id="services-title">Services</span>}
-            description="Each service reports its own state; one silent for five minutes counts as down. Refreshed every 15 seconds."
+            description="Each service reports its own state; one silent for five minutes counts as down. The bars are the last 48 hours, an hour each."
             actions={s ? <Up ok={down === 0} yes="All up" no={`${down} down`} /> : <Skeleton width="7ch" />}
           />
         </div>
@@ -75,23 +127,30 @@ export function StatusBoard() {
           <p className="border-t border-line px-5 py-5 text-sm text-muted sm:px-6">No service has reported yet.</p>
         ) : (
           <ul className="divide-y divide-line border-t border-line">
-            {s.services.map((x) => (
-              <li key={x.name} className="grid gap-1 px-5 py-3.5 sm:grid-cols-[12rem_1fr_auto] sm:items-center sm:gap-4 sm:px-6">
-                <span className="flex items-center justify-between gap-3 sm:contents">
-                  <span className="text-sm font-semibold text-fg">{SERVICE_LABEL[x.name] ?? x.name}</span>
-                  <span className="sm:order-3 sm:flex sm:items-center sm:gap-3">
-                    <TimeAgo iso={x.checkedAt} className="hidden sm:inline" />
-                    <Up ok={x.ok} />
+            {s.services.map((x) => {
+              const up = s.uptime?.find((u) => u.name === x.name);
+              return (
+                <li key={x.name} className="grid gap-x-6 gap-y-1.5 px-5 py-3 sm:grid-cols-[10rem_auto_4rem_minmax(0,1fr)_5rem] sm:items-center sm:px-6">
+                  <span className="flex items-center justify-between gap-3 sm:contents">
+                    <span className="text-sm text-fg">{SERVICE_LABEL[x.name] ?? x.name}</span>
+                    <span className="sm:order-5 sm:text-right">
+                      <Up ok={x.ok} />
+                    </span>
                   </span>
-                </span>
-                <span className="min-w-0 text-[13px] leading-5 text-muted [overflow-wrap:anywhere] sm:order-2">{x.detail || "No detail"}</span>
-              </li>
-            ))}
+                  <span className="sm:order-2">{up && now ? <UptimeBars hours={up.hours} now={now} /> : null}</span>
+                  <span className="num text-[12.5px] text-muted sm:order-3 sm:text-right">{up?.ratio != null ? `${(up.ratio * 100).toFixed(up.ratio === 1 ? 0 : 1)}%` : ""}</span>
+                  <span className="min-w-0 text-[12.5px] leading-5 text-muted [overflow-wrap:anywhere] sm:order-4">
+                    {x.detail || "No detail"} <TimeAgo iso={x.checkedAt} className="ml-1 text-muted/80" />
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <LiveHealth />
         <Card as="section" aria-labelledby="oracle-title" className="grid content-start gap-4">
           <CardHeader titleAs="h2" title={<span id="oracle-title">Oracle</span>} description="The NEAR price lending and the guardian read. Stale after 120 seconds." />
           {!s ? (
@@ -178,7 +237,7 @@ export function StatusBoard() {
           actions={
             s?.treasury ? (
               <span className="flex flex-wrap items-center gap-1.5">
-                {s.treasury.postQuantumKey ? <Badge tone="neutral">Post-quantum key (ML-DSA-65)</Badge> : null}
+                {s.treasury.postQuantumKey ? <span className="text-[12.5px] text-muted">Post-quantum key (ML-DSA-65)</span> : null}
                 <Up ok={!s.treasury.low} yes="Funded" no="Low" />
               </span>
             ) : null

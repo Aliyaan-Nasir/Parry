@@ -1,5 +1,6 @@
 "use client";
 
+import { useParryAccount } from "@/components/providers/AccountProvider";
 import { usePrices } from "@/lib/live";
 import { useWatchlist } from "@/lib/watchlist";
 import { cn } from "@/lib/cn";
@@ -9,9 +10,11 @@ import { cn } from "@/lib/cn";
  * with its 24 h change. It never grows taller than one line; it scrolls sideways on narrow screens.
  */
 export function WatchlistBar({ className }: { className?: string }) {
-  const [list] = useWatchlist();
+  const { account } = useParryAccount();
+  const [list] = useWatchlist(account);
   const { data } = usePrices();
-  const tokens = (data?.tokens ?? []).filter((t) => list.includes(t.symbol.toUpperCase()));
+  const all = data?.tokens ?? [];
+  const tokens = list.flatMap((sym) => all.filter((t) => t.symbol.toUpperCase() === sym).slice(0, 1));
   if (!tokens.length) return <div className={cn("h-5", className)} />;
   return (
     <ul className={cn("flex min-w-0 items-center gap-5 overflow-x-auto whitespace-nowrap text-[12px] [mask-image:linear-gradient(90deg,#000_85%,transparent)] [scrollbar-width:none]", className)} aria-label="Watched token prices">

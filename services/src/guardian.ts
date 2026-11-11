@@ -144,7 +144,7 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
   }
   const after = await health(d.account, d.venue);
   await sql`INSERT INTO decisions (id, account, venue, action, plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail, explanation)
-    VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${sql.json(trigger)}, ${outcome}, ${sql.json(d.review as never)}, ${d.envelope ?? null},
+    VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${sql.json(trigger)}, ${outcome}, ${sql.json({ ...(d.review as object), review_hash: d.review_hash } as never)}, ${d.envelope ?? null},
       ${d.envelope_signature ?? null}, ${sql.json(txs as never)}, ${before}, ${after}, ${routes ? sql.json(routes as never) : null}, ${detail},
       ${d.explanation ? sql.json(d.explanation as never) : null})
     ON CONFLICT (id) DO NOTHING`;

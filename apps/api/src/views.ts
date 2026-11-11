@@ -3,6 +3,7 @@
 import { contract, network } from "@parry/services/lib/config";
 import { view } from "@parry/services/lib/near";
 import type { Sql } from "@parry/services/lib/db";
+import { reviewHash } from "./verify";
 
 export type Tier = "safe" | "caution" | "danger" | "critical";
 
@@ -75,7 +76,8 @@ export const decision = (r: DecisionRow) => ({
   review: {
     model: r.review.model,
     chatId: r.review.chat_id,
-    reviewHash: r.review.review_hash ?? "",
+    // Decisions stored before the guardian kept the hash with the review: recompute it.
+    reviewHash: r.review.review_hash || (r.review.signed_text ? reviewHash(r.review as unknown as Record<string, string>) : ""),
     requestHash: r.review.request_hash,
     responseHash: r.review.response_hash,
     verdict: r.review.verdict,
