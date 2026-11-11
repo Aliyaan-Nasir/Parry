@@ -125,8 +125,9 @@ export function ProtectStory() {
                 data-step={i}
                 className="flex min-h-[46vh] flex-col justify-center border-l border-line py-10 pl-7 lg:min-h-[62vh]"
               >
-                <div className={cn("transition-opacity duration-[var(--dur-2)]", step === i ? "opacity-100" : "opacity-40")}>
-                  <h3 className="display-sm text-3xl text-fg">{s.title}</h3>
+                <div>
+                  {/* The step in view reads in full colour; the others step back to the muted ink (still legible). */}
+                  <h3 className={cn("display-sm text-3xl transition-colors duration-[var(--dur-2)]", step === i ? "text-fg" : "text-muted")}>{s.title}</h3>
                   <p className="mt-3 max-w-md text-lg leading-relaxed text-muted">{s.body}</p>
                 </div>
                 <div className="mt-6 lg:hidden">

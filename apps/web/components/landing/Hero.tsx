@@ -96,17 +96,54 @@ export function Hero() {
   );
 }
 
+const MARK_SCALE = 2.2;
+const STILL = stillSeries();
+const STILL_STRIKE = 150;
+
+/** The ghost: where health was heading without Parry, from the strike down through liquidation. */
+const ghostOf = (x: number, h: number) => `M${x} ${y(h)} Q ${x + 70} ${y(h - 0.08)} ${x + 130} ${y(LIQ - 0.05)}`;
+
 function Deflection() {
-  const [series, setSeries] = useState<Sample[]>(stillSeries);
-  const [strike, setStrike] = useState<{ i: number; at: number } | null>({ i: 150, at: 0 });
-  const [health, setHealth] = useState(TARGET);
   const [hint, setHint] = useState(true);
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ active: boolean; want: number | null }>({ active: false, want: null });
+  // The scene redraws 45 times a second straight into these nodes: React renders only the still frame.
+  const plainRef = useRef<SVGPathElement>(null);
+  const rescueRef = useRef<SVGPathElement>(null);
+  const ghostRef = useRef<SVGPathElement>(null);
+  const strikeRef = useRef<SVGGElement>(null);
+  const guardRef = useRef<SVGGElement>(null);
+  const dotRef = useRef<SVGCircleElement>(null);
+  const healthRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let strikeI: number | null = STILL_STRIKE;
+    const draw = (buf: readonly Sample[], h: number) => {
+      plainRef.current?.setAttribute("d", pathOf(buf, false));
+      rescueRef.current?.setAttribute("d", pathOf(buf, true));
+      const last = buf[buf.length - 1]!;
+      dotRef.current?.setAttribute("cy", String(y(last.h)));
+      dotRef.current?.style.setProperty("fill", last.rescued ? "var(--parry-brass-fill)" : "var(--parry-text)");
+      if (healthRef.current) healthRef.current.textContent = h.toFixed(2);
+      const on = strikeI !== null && strikeI >= 0;
+      strikeRef.current?.setAttribute("display", on ? "inline" : "none");
+      ghostRef.current?.setAttribute("display", on ? "inline" : "none");
+      if (on) {
+        const x = xAt(strikeI!);
+        strikeRef.current?.setAttribute("transform", `translate(${x} ${y(TRIGGER)})`);
+        ghostRef.current?.setAttribute("d", ghostOf(x, buf[strikeI!]?.h ?? TRIGGER));
+      }
+    };
+    const swing = () => {
+      // Restart the guard's swing: drop the class, force a style pass, put it back.
+      const g = guardRef.current;
+      if (!g) return;
+      g.classList.remove("hero-guard");
+      void g.getBoundingClientRect();
+      g.classList.add("hero-guard");
+    };
     // The still frame stays under reduced motion; otherwise the scene plays.
     svg.dataset.anim = "play";
     let raf = 0;
@@ -149,7 +186,8 @@ function Deflection() {
           phase = "strike";
           phaseAt = now;
           from = h;
-          setStrike({ i: SAMPLES - 1, at: now });
+          strikeI = SAMPLES - 1;
+          swing();
         } else if (want !== null && h > TRIGGER + 0.25) {
           phase = "calm";
           phaseAt = now;
@@ -172,9 +210,8 @@ function Deflection() {
       h = Math.max(LIQ + 0.02, Math.min(TOP - 0.05, h));
       const rescued = phase === "deflect" || (phase === "calm" && buf[buf.length - 1]!.rescued && t < 1.2);
       buf = [...buf.slice(1), { h, rescued }];
-      setSeries(buf);
-      setHealth(h);
-      setStrike((s) => (s ? { ...s, i: s.i - 1 } : s));
+      if (strikeI !== null) strikeI -= 1;
+      draw(buf, h);
     };
     raf = requestAnimationFrame(step);
     const io = new IntersectionObserver(([e]) => (visible = !!e?.isIntersecting));
@@ -192,12 +229,8 @@ function Deflection() {
     drag.current.want = Math.max(BOTTOM + 0.04, Math.min(TOP - 0.05, fromY(((e.clientY - r.top) / r.height) * H)));
   };
 
-  const last = series[series.length - 1]!;
-  const strikeX = strike && strike.i >= 0 ? xAt(strike.i) : null;
-  const strikeH = strike && strike.i >= 0 ? series[Math.max(0, strike.i)]?.h ?? TRIGGER : TRIGGER;
-  // The ghost: where health was heading without Parry, from the strike down through liquidation.
-  const ghost = strikeX !== null ? `M${strikeX} ${y(strikeH)} Q ${strikeX + 70} ${y(strikeH - 0.08)} ${strikeX + 130} ${y(LIQ - 0.05)}` : null;
-  const markScale = 2.2;
+  const last = STILL[STILL.length - 1]!;
+  const stillX = xAt(STILL_STRIKE);
 
   return (
     <div className="relative mx-auto mt-16 max-w-[1100px]">
@@ -205,7 +238,10 @@ function Deflection() {
         <div className="flex items-center justify-between gap-4 px-5 pt-4 text-[13px] sm:px-7 sm:pt-5">
           <span className="text-muted">A protected position on Rhea</span>
           <span className="text-muted">
-            Health <span className="num ml-1 text-base text-fg">{health.toFixed(2)}</span>
+            Health{" "}
+            <span ref={healthRef} className="num ml-1 text-base text-fg">
+              {TARGET.toFixed(2)}
+            </span>
           </span>
         </div>
         <svg
@@ -258,20 +294,18 @@ function Deflection() {
           </text>
 
           <g mask="url(#hero-mask)">
-            {ghost ? <path d={ghost} fill="none" style={{ stroke: "var(--parry-muted)" }} strokeWidth={1.6} strokeDasharray="4 6" opacity={0.75} /> : null}
-            <path d={pathOf(series, false)} fill="none" style={{ stroke: "var(--parry-text)" }} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
-            <path data-part="recovery" d={pathOf(series, true)} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
+            <path ref={ghostRef} d={ghostOf(stillX, STILL[STILL_STRIKE]?.h ?? TRIGGER)} fill="none" style={{ stroke: "var(--parry-muted)" }} strokeWidth={1.6} strokeDasharray="4 6" opacity={0.75} />
+            <path ref={plainRef} d={pathOf(STILL, false)} fill="none" style={{ stroke: "var(--parry-text)" }} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
+            <path ref={rescueRef} data-part="recovery" d={pathOf(STILL, true)} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
           </g>
           {/* The guard turning the strike aside. */}
-          {strikeX !== null ? (
-            <g transform={`translate(${strikeX} ${y(TRIGGER)})`}>
-              <circle r={26} style={{ fill: "var(--parry-brass-fill)" }} opacity={0.12} />
-              <g key={strike?.at} transform={`translate(${-14.25 * markScale} ${-12.5 * markScale}) scale(${markScale})`} className="hero-guard">
-                <path d={MARK.guard} style={{ fill: "var(--parry-brass-fill)" }} />
-              </g>
+          <g ref={strikeRef} transform={`translate(${stillX} ${y(TRIGGER)})`}>
+            <circle r={26} style={{ fill: "var(--parry-brass-fill)" }} opacity={0.12} />
+            <g ref={guardRef} transform={`translate(${-14.25 * MARK_SCALE} ${-12.5 * MARK_SCALE}) scale(${MARK_SCALE})`} className="hero-guard">
+              <path d={MARK.guard} style={{ fill: "var(--parry-brass-fill)" }} />
             </g>
-          ) : null}
-          <circle cx={xAt(SAMPLES - 1)} cy={y(last.h)} r={5} style={{ fill: last.rescued ? "var(--parry-brass-fill)" : "var(--parry-text)" }} />
+          </g>
+          <circle ref={dotRef} cx={xAt(SAMPLES - 1)} cy={y(last.h)} r={5} style={{ fill: last.rescued ? "var(--parry-brass-fill)" : "var(--parry-text)" }} />
         </svg>
       </div>
       <p className={`mt-4 text-center text-sm text-muted transition-opacity duration-500 ${hint ? "opacity-100" : "opacity-0"}`}>

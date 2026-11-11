@@ -253,9 +253,9 @@
   animation: parry-route-in var(--dur-2) var(--ease-out) both;
 }
 @keyframes parry-route-in {
+  /* Movement only: a page that starts transparent would hold back its largest paint. */
   from {
-    opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

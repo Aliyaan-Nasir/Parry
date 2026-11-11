@@ -125,6 +125,14 @@ describe.skipIf(!url)("new routes on a database", () => {
     expect((await app.request("/v1/heatmap?network=elsewhere")).status).toBe(400);
   });
 
+  test("the replay summary leaves out the hourly series", async () => {
+    const r = await app.request("/v1/replay?summary=1");
+    if (r.status === 503) return; // no committed replay in this checkout
+    const body = (await r.json()) as { crashes: unknown[]; summary: { crashes: number } };
+    expect(body.crashes).toEqual([]);
+    expect(body.summary.crashes).toBeGreaterThan(0);
+  });
+
   test("the replay file is served as written", async () => {
     const r = await app.request("/v1/replay");
     if (r.status === 503) return; // no committed replay in this checkout

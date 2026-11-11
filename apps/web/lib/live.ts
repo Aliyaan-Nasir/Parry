@@ -19,7 +19,7 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T | 
 }
 
 export type { Certificate as CertificateLive, Heatmap as HeatmapLive, Incident as IncidentLive, Prices as PricesLive, Rates as RatesLive, Replay as ReplayLive, ReplayCrash, RouteSavings as SavingsLive, Stats as StatsLive, VaultInsurance as InsuranceLive, VerifyResult as VerifyLive } from "@parry/sdk";
-import type { Certificate, Heatmap, Incident, Prices, Rates, Replay, RouteSavings, Stats, VaultInsurance, VerifyResult } from "@parry/sdk";
+import type { Certificate, DecisionPage, Heatmap, Incident, Prices, Rates, Replay, RouteSavings, Stats, VaultInsurance, VaultPoint, VaultState, VerifyResult } from "@parry/sdk";
 
 export type Check = VerifyResult["checks"][number];
 
@@ -27,6 +27,7 @@ export const live = {
   stats: () => getJson<Stats>("/v1/stats"),
   rates: () => getJson<Rates>("/v1/rates"),
   replay: () => getJson<Replay>("/v1/replay"),
+  replaySummary: () => getJson<Replay>("/v1/replay?summary=1"),
   heatmap: (network: "testnet" | "mainnet") => getJson<Heatmap>(`/v1/heatmap?network=${network}`),
   prices: (tokens?: readonly string[]) => getJson<Prices>(`/v1/prices${tokens?.length ? `?tokens=${tokens.join(",")}` : ""}`),
   insurance: () => getJson<VaultInsurance>("/v1/vault/insurance"),
@@ -34,17 +35,26 @@ export const live = {
   certificates: (account?: string) => getJson<Certificate[]>(`/v1/certificates${account ? `?account=${account}` : ""}`),
   savings: (account?: string) => getJson<RouteSavings>(`/v1/routes/savings${account ? `?account=${account}` : ""}`),
   incidents: (account: string) => getJson<Incident[]>(`/v1/incidents?account=${account}`),
+  vault: () => getJson<VaultState>("/v1/vault"),
+  vaultHistory: (days: number) => getJson<VaultPoint[]>(`/v1/vault/history?days=${days}`),
+  decisions: (limit: number) => getJson<DecisionPage>(`/v1/guardian/decisions?limit=${limit}`),
 };
 
 const minute = 60_000;
 
 export const useStatsLive = () => useQuery({ queryKey: ["live", "stats"], queryFn: live.stats, refetchInterval: minute, retry: 1 });
 export const useRatesLive = () => useQuery({ queryKey: ["live", "rates"], queryFn: live.rates, refetchInterval: 2 * minute, retry: 1 });
+export const useReplaySummary = () => useQuery({ queryKey: ["live", "replay-summary"], queryFn: live.replaySummary, staleTime: 30 * minute, retry: 1 });
 export const useReplay = () => useQuery({ queryKey: ["live", "replay"], queryFn: live.replay, staleTime: 30 * minute, retry: 1 });
 export const useHeatmap = (network: "testnet" | "mainnet") => useQuery({ queryKey: ["live", "heatmap", network], queryFn: () => live.heatmap(network), refetchInterval: 5 * minute, retry: 1 });
 export const usePrices = (tokens?: readonly string[]) => useQuery({ queryKey: ["live", "prices", tokens?.join(",") ?? ""], queryFn: () => live.prices(tokens), refetchInterval: minute, retry: 1 });
 export const useInsurance = () => useQuery({ queryKey: ["live", "insurance"], queryFn: live.insurance, refetchInterval: 2 * minute, retry: 1 });
 export const useVerify = (id: string | null) => useQuery({ queryKey: ["live", "verify", id], queryFn: () => live.verify(id!), enabled: !!id, retry: 0 });
-export const useCertificates = (account?: string) => useQuery({ queryKey: ["live", "certificates", account ?? ""], queryFn: () => live.certificates(account), refetchInterval: 2 * minute, retry: 1 });
+export const useCertificates = (account?: string) => useQuery({ queryKey: ["live", "certificates", account ?? ""], queryFn: () => live.certificates(account), enabled: !!account, refetchInterval: 2 * minute, retry: 1 });
 export const useSavings = (account?: string) => useQuery({ queryKey: ["live", "savings", account ?? ""], queryFn: () => live.savings(account), refetchInterval: 2 * minute, retry: 1 });
 export const useIncidents = (account: string | null) => useQuery({ queryKey: ["live", "incidents", account], queryFn: () => live.incidents(account!), enabled: !!account, refetchInterval: minute, retry: 1 });
+
+// Plain JSON reads for the public site, so its pages never load the SDK (its schemas and crypto).
+export const useVaultLive = () => useQuery({ queryKey: ["live", "vault"], queryFn: live.vault, refetchInterval: 2 * minute, retry: 1 });
+export const useVaultHistoryLive = (days: number) => useQuery({ queryKey: ["live", "vault-history", days], queryFn: () => live.vaultHistory(days), staleTime: 5 * minute, retry: 1 });
+export const useDecisionsLive = (limit: number) => useQuery({ queryKey: ["live", "decisions", limit], queryFn: () => live.decisions(limit), refetchInterval: minute, retry: 1 });

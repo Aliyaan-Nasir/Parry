@@ -23,35 +23,55 @@ export function DitherField({ className, cell = 6 }: { className?: string; cell?
     let last = 0;
     let w = 0;
     let h = 0;
-    const color = () => getComputedStyle(document.documentElement).getPropertyValue("--parry-brass-fill").trim() || "#c99a45";
-    let fill = color();
+    // The brass colour as RGB, read from the theme (a 1 pixel canvas resolves any CSS colour).
+    const probe = document.createElement("canvas").getContext("2d");
+    const rgb = (): [number, number, number] => {
+      const css = getComputedStyle(document.documentElement).getPropertyValue("--parry-brass-fill").trim() || "#c99a45";
+      if (!probe) return [201, 154, 69];
+      probe.clearRect(0, 0, 1, 1);
+      probe.fillStyle = css;
+      probe.fillRect(0, 0, 1, 1);
+      const d = probe.getImageData(0, 0, 1, 1).data;
+      return [d[0]!, d[1]!, d[2]!];
+    };
+    let fill = rgb();
+    let image: ImageData | null = null;
     const resize = () => {
       const r = canvas.getBoundingClientRect();
       w = Math.max(1, Math.ceil(r.width / cell));
       h = Math.max(1, Math.ceil(r.height / cell));
       canvas.width = w;
       canvas.height = h;
-      fill = color();
+      image = ctx.createImageData(w, h);
+      fill = rgb();
     };
+    // One pass over a pixel buffer, put on the canvas once: cheap enough for every frame.
     const draw = (t: number) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = fill;
+      if (!image) return;
+      const px = image.data;
       const cx = w * (0.5 + 0.18 * Math.sin(t / 7000));
       const cy = h * (0.92 + 0.05 * Math.cos(t / 9000));
       const rx = w * 0.62;
       const ry = h * 0.75;
+      const [r, g, b] = fill;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const dx = (x - cx) / rx;
           const dy = (y - cy) / ry;
           const v = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy)) ** 1.6;
-          if (v > BAYER[(y & 3) * 4 + (x & 3)]!) ctx.fillRect(x, y, 1, 1);
+          const o = (y * w + x) * 4;
+          const on = v > BAYER[(y & 3) * 4 + (x & 3)]!;
+          px[o] = r;
+          px[o + 1] = g;
+          px[o + 2] = b;
+          px[o + 3] = on ? 255 : 0;
         }
       }
+      ctx.putImageData(image, 0, 0);
     };
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
-      if (!visible || t - last < 42) return;
+      if (!visible || document.hidden || t - last < 84) return;
       last = t;
       draw(t);
     };
@@ -63,7 +83,7 @@ export function DitherField({ className, cell = 6 }: { className?: string; cell?
     ro.observe(canvas);
     const io = new IntersectionObserver(([e]) => (visible = !!e?.isIntersecting));
     io.observe(canvas);
-    const theme = new MutationObserver(() => (fill = color()));
+    const theme = new MutationObserver(() => (fill = rgb()));
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     if (reduced) draw(0);
     else raf = requestAnimationFrame(loop);

@@ -145,6 +145,11 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
   app.get("/v1/replay", async (c) => {
     if (!existsSync(REPLAY)) return c.json({ error: "no replay yet: run pnpm replay" }, 503);
     const file = await cached(`replay:${statSync(REPLAY).mtimeMs}`, 3_600_000, async () => JSON.parse(readFileSync(REPLAY, "utf8")) as unknown);
+    // ?summary=1: the headline figures and sources without the hourly series (a few hundred bytes, not 150 KB).
+    if (c.req.query("summary") === "1") {
+      const { crashes: _crashes, ...rest } = file as { crashes?: unknown[] } & Record<string, unknown>;
+      return c.json({ ...rest, crashes: [] });
+    }
     return c.json(file as Record<string, unknown>);
   });
 

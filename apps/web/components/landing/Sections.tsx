@@ -1,6 +1,5 @@
 "use client";
 
-import type { CertificateBody } from "@parry/sdk";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import proofs from "@/lib/proofs.generated.json";
@@ -10,8 +9,7 @@ import { Terminal } from "@/components/fx/Terminal";
 import { Heatmap } from "@/components/instrument/Heatmap";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { SectionHead } from "./Story";
-import { getJson, useCertificates, useHeatmap, useInsurance, useRatesLive, useReplay, type Check } from "@/lib/live";
-import { useDecisions, useVault, useVaultHistory } from "@/lib/queries";
+import { getJson, useDecisionsLive, useHeatmap, useVaultHistoryLive, useVaultLive, useInsurance, useRatesLive, useReplaySummary, type Check } from "@/lib/live";
 import { formatUsdCompact } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -54,8 +52,8 @@ export function CascadeSlice() {
 
 /** The vault, drawn: NEAR into LiNEAR on one side, the short on the other, the insurance fund beneath. */
 export function Earn() {
-  const vault = useVault();
-  const history = useVaultHistory(30);
+  const vault = useVaultLive();
+  const history = useVaultHistoryLive(30);
   const rates = useRatesLive();
   const insurance = useInsurance();
   const v = vault.data;
@@ -190,15 +188,19 @@ function VaultDiagram({ ratio, insuranceUsd, shareBps }: { ratio: number; insura
 
 /** A real signed decision from testnet, its checks run in front of the visitor. */
 export function ReviewProof() {
-  const decisions = useDecisions(null, 10);
-  const decision = decisions.data?.pages.flatMap((p) => p.items).find((d) => d.outcome === "executed") ?? null;
+  const decisions = useDecisionsLive(10);
+  const decision = decisions.data?.items.find((d) => d.outcome === "executed") ?? null;
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [shown, setShown] = useState(0);
   const ref = useRevealed<HTMLDivElement>();
-  const certs = useCertificates();
-  const cert = certs.data?.[0] ?? null;
-  // The certificate is the exact JSON text the enclave signed.
-  const body = cert ? (JSON.parse(cert.certificate) as CertificateBody) : null;
+  // What one certificate says, field by field: the enclave signs exactly these and nothing more.
+  const example: [string, string][] = [
+    ["Statement", "health is at least 1.3"],
+    ["For", "lender.near"],
+    ["At block", "the latest final block"],
+    ["Expires", "when the owner chose, 1 hour to 7 days"],
+    ["Signed by", "the guardian enclave's key"],
+  ];
   useEffect(() => {
     if (!decision) return;
     let cancelled = false;
@@ -263,24 +265,14 @@ export function ReviewProof() {
             <p className="mt-3 text-sm leading-relaxed text-muted">
               The guardian enclave reads the position on chain at a given block and signs one sentence for one named reader: health is at least the threshold. No amounts, no collateral, no debt.
             </p>
-            {cert ? (
-              <dl className="mt-6 divide-y divide-line border-t border-line text-sm">
-                {[
-                  ["Statement", body!.statement],
-                  ["For", body!.reader],
-                  ["Block", body!.block_height.toLocaleString()],
-                  ["Expires", new Date(body!.expires_at * 1000).toUTCString().slice(5, 22)],
-                  ["Signed by", `${cert.enclavePublicKey.slice(0, 18)}...`],
-                ].map(([k, val]) => (
-                  <div key={k} className="flex justify-between gap-6 py-3">
-                    <dt className="text-muted">{k}</dt>
-                    <dd className="num truncate text-right text-fg">{val}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <div className="mt-6 border-t border-line pt-5 text-sm text-muted">Issued certificates appear here once the enclave issues them on testnet.</div>
-            )}
+            <dl className="mt-6 divide-y divide-line border-t border-line text-sm" aria-label="What a certificate holds">
+              {example.map(([k, val]) => (
+                <div key={k} className="flex justify-between gap-6 py-3">
+                  <dt className="text-muted">{k}</dt>
+                  <dd className="text-right text-fg">{val}</dd>
+                </div>
+              ))}
+            </dl>
             <Link href="/verify" className="mt-5 inline-block text-sm text-brass underline-offset-4 hover:underline">
               Verify a decision or certificate
             </Link>
@@ -339,7 +331,7 @@ export function NearBento() {
 
 /** The crash replay's headline result. */
 export function ReplayHeadline() {
-  const { data } = useReplay();
+  const { data } = useReplaySummary();
   const s = data?.summary;
   return (
     <section className="py-24 sm:py-32">
