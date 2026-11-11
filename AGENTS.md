@@ -7,19 +7,19 @@ This file is for AI agents and engineers working in the repository; the product 
 ## Layout
 
 - `contracts/`: Rust contracts (near-sdk 5.30, one Cargo workspace).
-  - `account`: the protected account (global code, one NEP-655 universal account per person): owner by passkey or NEAR account, mandate, guardian actions, the deleverage promise chain, Chain Signatures for Hyperliquid and EVM.
+  - `account`: the protected account (global code, one NEP-655 universal account per person): owner by passkey or NEAR account, mandate, guardian actions, the deleverage promise chain, Chain Signatures for Hyperliquid and EVM, and the owner's exits (`close.rs`: close in rounds, unwind).
   - `accounts`: the factory that derives and creates universal accounts.
-  - `vault`: the delta-neutral vault (LiNEAR staking, Hyperliquid short signed by Chain Signatures, NEP-141 `EARN` shares, withdrawal queue, risk-driven pausing, reserves views).
-  - `risk`: the risk board (accepts only enclave-signed reports: scores, marks, vault reports, guardian decisions, the sealing key).
+  - `vault`: the delta-neutral vault (LiNEAR staking, Hyperliquid short signed by Chain Signatures, NEP-141 `EARN` shares, withdrawal queue, risk-driven pausing, reserves views, the insurance fund in `insurance.rs`).
+  - `risk`: the risk board (accepts only enclave-signed reports: scores, marks, vault reports, guardian decisions, health certificate anchors, the sealing key).
   - `oracle`: the testnet price oracle with the Pyth interface and the market shock.
   - `token`: test USDC with a faucet.
   - `common`: shared types and math (mandate, envelope, Rhea and Pyth wire types, Hyperliquid agent digest, EIP-1559 encoding, fixed-point math).
   - `tests`: sandbox tests on a local node with the real lending, exchange, wNEAR and LiNEAR code.
-- `enclave/`: the guardian program for OutLayer (Rust, `wasm32-wasip2`): risk model, planner, AI review, sealed policies, reserves tree, signed outputs.
-- `packages/core`: the risk model, planner, hedge math and reserves tree in TypeScript (the enclave's Rust mirrors it; both pass `packages/core/fixtures/risk-cases.json`).
+- `enclave/`: the guardian program for OutLayer (Rust, `wasm32-wasip2`): risk model, planner (the owner's step order, each step sized to the target, with its reasons), AI review, sealed policies, health certificates, reserves tree, signed outputs.
+- `packages/core`: the risk model (with the Tremor regime), planner, hedge math, reserves tree, liquidation heatmap and the crash replay in TypeScript (the enclave's Rust mirrors the model; both pass `packages/core/fixtures/risk-cases.json`).
 - `packages/sdk` (`@parry/sdk`), `packages/mcp` (`@parry/mcp`), `packages/brand` (design tokens).
 - `services/`: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up, and the Agent Market worker (Bun, one package, `bun services/src/main.ts <name>`).
-- `apps/api`: the API (Hono on Bun, contract in `docs/api.md`), `apps/web`: the site and app (Next.js 16).
+- `apps/api`: the API (Hono on Bun, contract in `docs/api.md`; `routes.ts` holds rates, replay, heatmap, verify, watch, certificates, insurance, incidents and the event stream), `apps/web`: the site and app (Next.js 16; design notes in `apps/web/app/system.css`, the risk instrument in `components/instrument/`).
 - `scripts/`: `deploy.ts` (testnet, or a guarded mainnet plan and deploy), `enclave.ts` (OutLayer), `sandbox.ts` (local node with the whole stack), `dev.ts` (run everything), `scenarios.ts` (the test matrix's scenarios, with recorded proofs), `evm-position.ts` (an Aave loan on Base Sepolia from an account's derived address), `verify.ts` (check the README's claims), `security.ts`.
 - `skills/parry/SKILL.md`: the agent skill; `tools/make_readme_art.py`: the README figures, drawn from the brand tokens.
 - `deployments/<network>.json`: deployed accounts, code hashes, transactions and commits.
@@ -38,7 +38,8 @@ pnpm verify                    # check the README's claims against testnet
 docker compose up              # the whole stack against testnet (read-only without keys)
 pnpm dev                       # the same without Docker (needs Postgres)
 bun scripts/sandbox.ts         # a local node with the stack; then `pnpm dev --sandbox`
-bun scripts/scenarios.ts       # the testnet scenarios end to end (`--sandbox` for the local node)
+bun scripts/scenarios.ts       # the testnet scenarios end to end (`--only 8,14`, `--sandbox` for the local node)
+pnpm replay                    # fetch the crash candles and recompute deployments/replay.json (`--print` shows the table)
 bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends nothing (MAINNET.md)
 ```
 
@@ -57,7 +58,8 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | MPC foreign-transaction verification | `services/src/lib/evm.ts` (`verify_foreign_transaction`), `services/src/guardian.ts` (`verifyEvm`) |
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
 | NEAR AI Cloud verifiable review | `enclave/src/ai.rs` (signature over the exact exchange), `apps/api/src/verify.ts` (`modelAttestation`: TDX and GPU attestation with NEAR AI's inference SDK) |
-| Sealed mandates | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
+| Sealed mandates (thresholds, strategy, step order) | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
+| Private health certificates | `enclave/src/modes.rs` (`certificate`), `contracts/risk/src/lib.rs` (`certificate`), `@parry/sdk` `verifyCertificate` |
 | Gas keys (NEP-611, parallel lanes) | `services/src/lib/near.ts` (`Sender`, `tendGasKey`), `scripts/deploy.ts` (lanes) |
 | Post-quantum keys (ML-DSA-65) | `scripts/deploy.ts` (the treasury's signing key), `apps/api/src/app.ts` (`postQuantum`) |
 | NEP-366 relayer | `services/src/relayer.ts` |
@@ -74,6 +76,7 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 - Every service exposes `/live` and `/health` and records its state in `service_status`.
 - Secrets live only in gitignored `.env`, `.env.services` and `.env.sandbox`; every app has a `.env.example`.
 - Prose: no em dash; one sentence per line in long Markdown.
+- The public site never loads the SDK, Framer Motion or Lenis up front (it reads plain JSON through `apps/web/lib/live.ts`): keep it that way, or mobile Lighthouse drops.
 
 ## Traps
 

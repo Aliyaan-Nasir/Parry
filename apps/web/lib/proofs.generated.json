@@ -7,7 +7,7 @@
       "links": [
         {
           "label": "transaction",
-          "url": "https://testnet.nearblocks.io/txns/Bh14DgFZQoT1uJPj16rSLxvZ1UHDMXKuHeA1mgvZxemA"
+          "url": "https://testnet.nearblocks.io/txns/Nryr9CQom6gwuu9j7uSPpA5vhEfvSPkHRNN73TXmivc"
         }
       ]
     },
@@ -17,7 +17,7 @@
       "links": [
         {
           "label": "account's Hyperliquid order",
-          "url": "https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL"
+          "url": "https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR"
         },
         {
           "label": "Aave repay",
@@ -41,7 +41,7 @@
       "links": [
         {
           "label": "keys run",
-          "url": "https://testnet.nearblocks.io/txns/9ww9V9DhgU43vN1Kjp9ckP1kHeX8nNDnWwBU3pwaSYYT"
+          "url": "https://testnet.nearblocks.io/txns/AZr51DDTUSFnW1EE3WngUEnp1Mz6Uir4asau9Q3TkBj5"
         }
       ]
     },
@@ -51,7 +51,7 @@
       "links": [
         {
           "label": "AI-reviewed rescue",
-          "url": "https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A"
+          "url": "https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU"
         }
       ]
     },
@@ -61,15 +61,19 @@
       "links": [
         {
           "label": "supply",
-          "url": "https://testnet.nearblocks.io/txns/14gNW6irm4NX3k5DXfn5bk58mPkzQEKc7AijXwt6KtWU"
+          "url": "https://testnet.nearblocks.io/txns/Gbai9LqqkYThSBAnQ7Sy5JPkQA5tJEdTvo8h5Vsjyuh"
         },
         {
           "label": "borrow",
-          "url": "https://testnet.nearblocks.io/txns/ABPyym2uRx6KWXugUvyKYsjfZ4tL3xmtakaHUvkJMFSb"
+          "url": "https://testnet.nearblocks.io/txns/3oYUQrGnEv9aMWaWfX6dZ1ccYoFweCUJo8dD9SBJmpWA"
         },
         {
           "label": "guardian repay",
-          "url": "https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A"
+          "url": "https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU"
+        },
+        {
+          "label": "deleverage",
+          "url": "https://testnet.nearblocks.io/txns/G55opn8WcdRfVS5d2kxwYzxcDjkAF6jF26kkmEdtAdym"
         }
       ]
     },

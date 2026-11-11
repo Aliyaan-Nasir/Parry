@@ -50,10 +50,21 @@ Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_K
 | `simulate_rescue(account)` | see what the guardian would do now, unsigned |
 | `get_rescue_route(amount_near)` | compare the Rhea pool with a dry-run NEAR Intents 1Click quote for a rescue swap |
 | `get_status()` | read every service's health, the oracle's freshness, the gas-key lanes and the treasury |
+| `get_rates()` | read Rhea's supply and borrow rates per asset, Hyperliquid NEAR funding and the vault's staking and funding yield, each with its source |
+| `get_crash_replay()` | read how the risk model, the guardian and the vault fared through six real NEAR crashes |
+| `get_liquidation_heatmap(network?)` | see where Rhea borrowers would be liquidated as NEAR falls, and the cascade chains, on mainnet or testnet |
+| `get_prices(tokens?)` | read NEAR ecosystem token prices with their 24 h change |
+| `verify_record(id)` | re-check a guardian decision, a health certificate or a NEAR transaction by its id |
+| `verify_certificate(hash, reader?)` | check a health certificate's hash, the enclave's signature, its statement, its reader and its expiry |
+| `get_closing(account)` | read a close in flight and whether a round is stuck |
+| `get_incidents(account)` | read alerts grouped into incidents |
+| `get_route_savings(account?)` | read what picking the better rescue route has saved |
+| `list_watched()` | list the accounts the agent watches, with their risk and thresholds |
 
 ## Write tools (testnet, the agent's own account only)
 
-`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`, `close_position(slippage_bps?)` (closes the Rhea position in rounds), `unwind_account(tokens?)`, and `paid_risk_check(account)`, which pays per call over x402 on NEAR.
+`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`, `close_position(slippage_bps?)` (closes the Rhea position in rounds), `unwind_account(tokens?)`, `watch_account(account, score, health, label?)`, `unwatch_account(account)`, `issue_certificate(reader, threshold, ttl_secs, anchor?)` (refused when health is below the threshold), and `paid_risk_check(account)`, which pays per call over x402 on NEAR.
+`set_mandate` takes an optional `policy.steps`: the order the guardian tries protective steps in, sealed with the policy.
 Every refusal says why; nothing is sent when a call is refused.
 
 ## How to explain a risk result

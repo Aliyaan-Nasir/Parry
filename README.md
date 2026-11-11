@@ -25,14 +25,17 @@ Run it with `docker compose up` or `pnpm dev` (below); the hosted app's address 
 5. On **Guardian**, the rescue appears with its plan, the model's verdict and its transactions.
    **Verify** checks the review's signature, its hash on chain and the enclave's signature in front of you.
 6. Health is back above the target.
-   On **Vault**, deposit test NEAR and see the hedge, the risk score and the proof of reserves.
+   On **Vault**, deposit test NEAR and see the hedge, the insurance fund, the share price history and the proof of reserves.
+7. When you are done, **Close the position** sells collateral in rounds that each keep health above 1 (or repays from your wallet), and **Unwind the account** takes everything back.
+
+Without an account: **Check** any NEAR account's risk at `/check`, re-check any decision, certificate or transaction at `/verify`, and see Parry replayed through NEAR's worst crashes at `/replay`.
 
 ## Built for four tracks
 
 - **DeFi:** liquidation protection for Rhea lending, Hyperliquid perps and Aave, plus a delta-neutral vault with an on-chain risk score and proof of reserves.
 - **Agent Economy:** an MCP server with read tools and capped write tools, risk checks paid per call over x402 on NEAR, an agent skill, `llms.txt`, and a NEAR Agent Market listing that answers hires.
 - **AI Security:** the AI can only approve or block; it never holds a key that moves funds. Its review is bound to the exact bytes by the model's TEE signature, and the account contract enforces the mandate whatever any service or model says.
-- **Privacy:** trigger thresholds and strategy are sealed to the enclave's key, so nobody watching the chain learns when a position will be defended; rescue swaps compare against NEAR Intents' confidential routes.
+- **Privacy:** trigger thresholds, strategy and step order are sealed to the enclave's key, so nobody watching the chain learns when a position will be defended; private health certificates prove "health is at least X" to one named reader without revealing any amount; rescue swaps compare against NEAR Intents' confidential routes.
 
 ## What Parry does
 
@@ -40,16 +43,39 @@ Run it with `docker compose up` or `pnpm dev` (below); the hosted app's address 
 A protected account is your own NEAR smart account, owned by a passkey or a NEAR account.
 It holds a Rhea lending position, and can also hold a Hyperliquid perp and an Aave loan on Base Sepolia through Chain Signatures.
 You give the guardian a mandate: the powers it has (repay from a reserve, add collateral, deleverage, reduce or hedge the perp, repay the Aave loan), how much of each token it may use in total and per day, how many actions a day, and when the mandate ends.
-Your trigger and target are sealed to the guardian's enclave, so nobody watching the chain learns when your position will be defended.
+Your trigger and target, and the order the guardian tries its steps in, are sealed to the guardian's enclave, so nobody watching the chain learns when your position will be defended.
+The guardian takes the first step you allow that moves health, sizes it to land on your target, checks again after each step, and writes down why it chose that step.
+You can close a position or unwind the whole account yourself at any time; each round is all or nothing.
+
+**Prove.**
+The enclave signs private health certificates: "health is at least X" for one named reader, at one block, until an expiry, with no amounts; you can anchor its hash on the risk board, and anyone can check it on `/verify`, in the SDK or over MCP.
 
 **Earn.**
 The vault stakes NEAR into LiNEAR and shorts the NEAR perp on Hyperliquid with an order the vault itself builds and Chain Signatures signs, so its value follows dollars plus staking yield and funding.
 Shares are the NEP-141 token `EARN`, valued at net asset value; withdrawals go through a queue and pay out in kind.
 The enclave publishes the vault's risk score and a proof-of-reserves Merkle root on chain, and the vault stops taking deposits when the risk is high.
+The hedge ratio follows funding within its bounds, and the hedge's margin is topped up before it runs low.
+The vault's one fee: 10 % of positive yield goes into an insurance fund that pays only for negative funding streaks, hedge slippage beyond the band and margin top-ups, under per-payout and per-day caps.
 
 **Watch.**
 Anyone can check any NEAR account's lending risk without signing up: health, liquidation price, the probability of liquidation within 24 hours, the median time to it, and a 0 to 100 score.
+Watch any accounts with your own thresholds, see where Rhea borrowers would be liquidated on the cascade map (read from the lending contract on mainnet and testnet), and follow rates, funding and prices live.
 Agents pay per check over x402 on NEAR, or use the MCP server.
+
+## Replayed through NEAR's worst crashes
+
+Six real NEAR crashes, hour by hour from Binance's public candles, run through Parry's risk model, a guardian and the vault (`pnpm replay`; results with every source in [`deployments/replay.json`](deployments/replay.json)).
+
+| Crash | Drop | Liquidated without Parry | Warning | Guardian steps | Min health with Parry | Vault drawdown (unhedged) | Min margin ratio | Insurance paid |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 21 Dec 2020 to 24 Dec 2020 | 39.8 % | 2020-12-21 10:00 | 7 h | 7 | 1.080 | 2.7 % (39.8 %) | 0.500 | $0.00 |
+| 21 May 2021 to 23 May 2021 | 45.6 % | 2021-05-21 14:00 | 10 h | 9 | 1.236 | 3.1 % (45.6 %) | 0.500 | $0.00 |
+| 19 Jan 2022 to 22 Jan 2022 | 39.1 % | 2022-01-21 20:00 | 47 h | 7 | 1.193 | 2.7 % (39.1 %) | 0.500 | $5.49 |
+| 9 May 2022 to 12 May 2022 | 51.7 % | 2022-05-11 06:00 | 44 h | 7 | 0.971 (liquidated) | 3.8 % (51.7 %) | 0.500 | $5.07 |
+| 31 Jan 2025 to 3 Feb 2025 | 38.6 % | 2025-02-02 18:00 | 33 h | 6 | 1.149 | 2.6 % (38.6 %) | 0.500 | $2.93 |
+| 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 0.500 | $0.68 |
+
+The model warned before every liquidation (median 24.5 hours, shortest 7), Parry avoided 5 of 6 (the miss is a one-hour 32 % wick after the guardian had used its actions for the day), and the hedged vault's worst drawdown stayed under 4 %.
 
 ## How a rescue happens
 
@@ -83,12 +109,12 @@ Each row is a NEAR primitive Parry depends on, the code that uses it, and a test
 <!-- proofs:start -->
 | Primitive | What Parry does with it | Code | On testnet |
 | --- | --- | --- | --- |
-| NEP-655 universal accounts and global contracts | every protected account is derived from one published code hash and created by the relayer | [`accounts/src/lib.rs`](contracts/accounts/src/lib.rs) | [transaction](https://testnet.nearblocks.io/txns/Bh14DgFZQoT1uJPj16rSLxvZ1UHDMXKuHeA1mgvZxemA) |
-| Chain Signatures | a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address | [`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs) | [account's Hyperliquid order](https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL), [Aave repay](https://testnet.nearblocks.io/txns/76HZsxGy3bW2ZS8eEbmYkT8R85hg6pvsgvkGby7eF3kw) |
+| NEP-655 universal accounts and global contracts | every protected account is derived from one published code hash and created by the relayer | [`accounts/src/lib.rs`](contracts/accounts/src/lib.rs) | [transaction](https://testnet.nearblocks.io/txns/Nryr9CQom6gwuu9j7uSPpA5vhEfvSPkHRNN73TXmivc) |
+| Chain Signatures | a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address | [`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs) | [account's Hyperliquid order](https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR), [Aave repay](https://testnet.nearblocks.io/txns/76HZsxGy3bW2ZS8eEbmYkT8R85hg6pvsgvkGby7eF3kw) |
 | MPC foreign-transaction verification | the MPC network confirms the Aave repay landed on Base Sepolia | [`services/src/lib/evm.ts`](services/src/lib/evm.ts) | [transaction](https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a) |
-| OutLayer TEE | the guardian runs with keys bound to its build | [`enclave/`](enclave) | [keys run](https://testnet.nearblocks.io/txns/9ww9V9DhgU43vN1Kjp9ckP1kHeX8nNDnWwBU3pwaSYYT) |
-| NEAR AI Cloud verifiable models | every rescue is reviewed, and the review's TEE signature is checked before acting | [`enclave/src/ai.rs`](enclave/src/ai.rs) | [AI-reviewed rescue](https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A) |
-| Rhea lending and exchange | positions, repays and the atomic deleverage, on lending's exact mainnet code | [`guardian.rs`](contracts/account/src/guardian.rs) | [supply](https://testnet.nearblocks.io/txns/14gNW6irm4NX3k5DXfn5bk58mPkzQEKc7AijXwt6KtWU), [borrow](https://testnet.nearblocks.io/txns/ABPyym2uRx6KWXugUvyKYsjfZ4tL3xmtakaHUvkJMFSb), [guardian repay](https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A) |
+| OutLayer TEE | the guardian runs with keys bound to its build | [`enclave/`](enclave) | [keys run](https://testnet.nearblocks.io/txns/AZr51DDTUSFnW1EE3WngUEnp1Mz6Uir4asau9Q3TkBj5) |
+| NEAR AI Cloud verifiable models | every rescue is reviewed, and the review's TEE signature is checked before acting | [`enclave/src/ai.rs`](enclave/src/ai.rs) | [AI-reviewed rescue](https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU) |
+| Rhea lending and exchange | positions, repays and the atomic deleverage, on lending's exact mainnet code | [`guardian.rs`](contracts/account/src/guardian.rs) | [supply](https://testnet.nearblocks.io/txns/Gbai9LqqkYThSBAnQ7Sy5JPkQA5tJEdTvo8h5Vsjyuh), [borrow](https://testnet.nearblocks.io/txns/3oYUQrGnEv9aMWaWfX6dZ1ccYoFweCUJo8dD9SBJmpWA), [guardian repay](https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU), [deleverage](https://testnet.nearblocks.io/txns/G55opn8WcdRfVS5d2kxwYzxcDjkAF6jF26kkmEdtAdym) |
 | x402 on NEAR | paid risk checks settled with a signed delegate `ft_transfer` | [`apps/api/src/x402.ts`](apps/api/src/x402.ts) | [transaction](https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf) |
 | Gas keys (NEP-611) | each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself | [`near.ts`](services/src/lib/near.ts) | [keeper, 8 lanes](https://testnet.nearblocks.io/txns/ForLagMhcnjao6PzVgkRQQBaEpxo7iJ9bfcNXisUa3K1), [monitor, 4 lanes](https://testnet.nearblocks.io/txns/C4GFLKTB9Tkd6gU6eWjD6z5EHVsnBe4DA1iMvn8mTSHC), [relayer, 8 lanes](https://testnet.nearblocks.io/txns/7X4kzrKobrNoqZobrSG9JqDt2C4bNo1JvB16tZR3DtWp) |
 | Post-quantum keys (ML-DSA-65) | the treasury, which holds the most NEAR, signs with an ML-DSA-65 key | [`deploy.ts`](scripts/deploy.ts), [`topup.ts`](services/src/topup.ts) | [key added](https://testnet.nearblocks.io/txns/CK3M4AqawEHZg7WVBNEK75DNVCUhzSLpnE33ZQm3MtDs), [a top-up it signed](https://testnet.nearblocks.io/txns/GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D) |
@@ -110,9 +136,9 @@ Every contract is a reproducible build in SourceScan's pinned image (`contracts/
 | Contract | Account | Code hash | Deployed in | Reproducible build |
 | --- | --- | --- | --- | --- |
 | Factory for protected accounts (NEP-655 universal accounts) | [`accounts.parry.testnet`](https://testnet.nearblocks.io/address/accounts.parry.testnet) | `5UTERdVdWxYY7MMD2xojiM5m8Kv25BxdXLzFvjoFcopo` | [wusyGMGb...](https://testnet.nearblocks.io/txns/wusyGMGb5NkcHH2YaHvQM7Wp9ytwYDiD466U7k3YWTq) | matched by `near contract verify` (2026-11-11) |
-| Protected-account code, published by hash (global contract) | global code | `7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a` | [BuMSLcZ2...](https://testnet.nearblocks.io/txns/BuMSLcZ2x13ayxe4vmBPWdZwue5xC1cK8N4yQzEGdmzT) | matched by `near contract verify` (2026-11-11) |
-| Risk board: enclave-signed scores, marks, decisions and the sealing key | [`risk.parry.testnet`](https://testnet.nearblocks.io/address/risk.parry.testnet) | `EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg` | [AGq9Z6vx...](https://testnet.nearblocks.io/txns/AGq9Z6vx6fo9LNq4EfyJSWJ9HVu2poNpPX3tMPHi7x6j) | matched by `near contract verify` (2026-11-11) |
-| Delta-neutral vault, `EARN` shares | [`vault.parry.testnet`](https://testnet.nearblocks.io/address/vault.parry.testnet) | `9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz` | [Hv7w1BYL...](https://testnet.nearblocks.io/txns/Hv7w1BYLhBCBbYnCxeGWXuT5TkFd2dbPRc9nS4MPhhp8) | matched by `near contract verify` (2026-11-11) |
+| Protected-account code, published by hash (global contract) | global code | `J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF` | [FK6ErZiX...](https://testnet.nearblocks.io/txns/FK6ErZiXHLYbcDKx7HWaiW5zngXiJjX5z2fUjjpLX6XX) | matched by `near contract verify` (2026-11-11) |
+| Risk board: enclave-signed scores, marks, decisions and the sealing key | [`risk.parry.testnet`](https://testnet.nearblocks.io/address/risk.parry.testnet) | `CLuq6pzqb2ZcFF3KiLUpQLVm347LVeoPWjmnyQNzJsqV` | [G4e3nK8G...](https://testnet.nearblocks.io/txns/G4e3nK8GLKXdtSovEGCnXJ1BiyKsk4Nroebn9znp4yxN) | matched by `near contract verify` (2026-11-11) |
+| Delta-neutral vault, `EARN` shares | [`vault.parry.testnet`](https://testnet.nearblocks.io/address/vault.parry.testnet) | `8RYKZV9NEwxsvJifSPsS2TYjgnL9pEoHyZHHhwiH1JGQ` | [EQt3ub13...](https://testnet.nearblocks.io/txns/EQt3ub13wusUrDZrsjep3BXihknBx8k3wLSgqPQBXvKt) | matched by `near contract verify` (2026-11-11) |
 | Pyth-interface price oracle with the testnet market shock | [`oracle.parry.testnet`](https://testnet.nearblocks.io/address/oracle.parry.testnet) | `2K81bAZJvapFWyQGQ2nPYA5tGRKPyZ4qiNFfNseqz8iM` | [8cvn41iv...](https://testnet.nearblocks.io/txns/8cvn41ivD68XY9NMAh1xM7xcNXd8Fr5eHixw3BMmLgE1) | matched by `near contract verify` (2026-11-11) |
 | Rhea lending, mainnet's exact wasm | [`lending.parry.testnet`](https://testnet.nearblocks.io/address/lending.parry.testnet) | `6Nek1MZ8cwJJ2xMQAUWup9V5AToYS9rkTxJfwo6BCpFa` | [EoyGJoed...](https://testnet.nearblocks.io/txns/EoyGJoedMf222e1YjpD1Xbdy3q7fYXZcW55SYGEWeCgb) | mainnet's code hash |
 | Test USDC with a faucet | [`usdc.parry.testnet`](https://testnet.nearblocks.io/address/usdc.parry.testnet) | `EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7` | [EuEKFymr...](https://testnet.nearblocks.io/txns/EuEKFymrVmpLJBZvAm1dDBgKvxJcJyFH7eTSP4Yg8cBM) | matched by `near contract verify` (2026-11-11) |
@@ -195,7 +221,7 @@ Claude Desktop (`claude_desktop_config.json`):
 ```
 
 From a clone, the same server runs with `pnpm -F @parry/mcp build && node packages/mcp/dist/bin.js`, and the API serves it over Streamable HTTP at `/mcp`.
-Read tools: `risk_check`, `get_position_risk`, `get_market`, `get_vault`, `get_reserves`, `get_guardian_log`, `verify_guardian_decision`, `simulate_rescue`, `get_rescue_route`, `get_status`; write tools: `create_protected_account`, `set_mandate`, `vault_deposit`, `vault_withdraw`, `close_position`, `unwind_account`, `paid_risk_check`.
+Read tools: `risk_check`, `get_position_risk`, `get_market`, `get_vault`, `get_reserves`, `get_guardian_log`, `verify_guardian_decision`, `simulate_rescue`, `get_rescue_route`, `get_status`, `get_rates`, `get_crash_replay`, `get_liquidation_heatmap`, `get_prices`, `verify_record`, `verify_certificate`, `get_closing`, `get_incidents`, `get_route_savings`, `list_watched`; write tools (capped): `create_protected_account`, `set_mandate`, `vault_deposit`, `vault_withdraw`, `close_position`, `unwind_account`, `paid_risk_check`, `watch_account`, `unwatch_account`, `issue_certificate`.
 The agent skill installs with `npx skills add Aliyaan-Nasir/Parry`, and the site serves [`llms.txt`](apps/web/public/llms.txt).
 
 ## Security

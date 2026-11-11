@@ -150,6 +150,11 @@ const SCENARIOS: [number, string, string][] = [
   [11, "The vault pauses deposits from its risk score", ""],
   [12, "A paid risk check over x402 on NEAR", ""],
   [13, "Core flows through the SDK and the MCP server", ""],
+  [14, "Closing a Rhea position in rounds by selling collateral", ""],
+  [15, "Closing a Rhea position from the wallet", ""],
+  [16, "Unwinding a protected account", ""],
+  [17, "A health certificate: issued by the enclave, anchored on the risk board, verified", ""],
+  [18, "An insurance inflow into the vault's fund", ""],
 ];
 
 function scenariosTable(): string {
