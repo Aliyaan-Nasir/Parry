@@ -125,6 +125,8 @@ impl Vault {
         let nonce = (env::block_timestamp_ms()).max(self.last_hedge_nonce + 1);
         self.last_hedge_nonce = nonce;
         self.hedge_order_signed = true;
+        let size_e8 = parry_common::hyperliquid::parse_e8(&order.size).unwrap_or(0);
+        self.insurance_on_order(report.at, size_e8, report.hedge.mark_e8.0);
         let digest = hex::encode(order_digest(&order, nonce, self.network == "mainnet"));
         Event::HedgeOrder {
             nonce,
@@ -177,7 +179,7 @@ impl Vault {
             rate_e24,
             self.active_shares(),
             self.token.total_supply,
-            self.hedge.hedge_ratio_bps,
+            self.effective_hedge_ratio_bps(),
         );
         let cap = leverage_cap_e8(h.account_value_e6.0, self.effective_max_leverage_x100(), h.mark_e8.0);
         let target_e8 = raw.min(cap);

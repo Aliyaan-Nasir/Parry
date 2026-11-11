@@ -47,13 +47,31 @@ pub struct Perp {
     pub entry: f64,
     pub liquidation: Option<f64>,
     pub unrealized: f64,
-    pub funding_since_open: f64,
+    /// Funding the position has received over the account's life on this coin (negative:
+    /// paid). Hyperliquid's `cumFunding.allTime`, which does not restart when the position is
+    /// closed and opened again.
+    pub funding_all_time: f64,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Clearinghouse {
     pub account_value: f64,
+    /// Maintenance margin the cross account uses (`crossMaintenanceMarginUsed`).
+    pub maintenance_margin: f64,
     pub perp: Option<Perp>,
+}
+
+impl Clearinghouse {
+    /// Maintenance margin over account value in basis points (10000 is liquidation), 0 for an
+    /// empty account.
+    pub fn margin_ratio_bps(&self) -> u32 {
+        if self.account_value <= 0.0 {
+            return 0;
+        }
+        (self.maintenance_margin / self.account_value * 10_000.0)
+            .round()
+            .clamp(0.0, u32::MAX as f64) as u32
+    }
 }
 
 pub fn clearinghouse(io: &dyn Io, address: &str, coin: &str) -> Result<Clearinghouse> {
@@ -73,11 +91,12 @@ pub fn clearinghouse(io: &dyn Io, address: &str, coin: &str) -> Result<Clearingh
                 liquidation: f(&p["liquidationPx"]),
                 unrealized: f(&p["unrealizedPnl"]).unwrap_or(0.0),
                 // Hyperliquid reports funding paid as positive: received funding is its negative.
-                funding_since_open: -f(&p["cumFunding"]["sinceOpen"]).unwrap_or(0.0),
+                funding_all_time: -f(&p["cumFunding"]["allTime"]).unwrap_or(0.0),
             })
     });
     Ok(Clearinghouse {
         account_value,
+        maintenance_margin: f(&v["crossMaintenanceMarginUsed"]).unwrap_or(0.0),
         perp,
     })
 }
@@ -146,4 +165,20 @@ pub fn funding_and_oracle(io: &dyn Io, coin: &str) -> Result<(f64, f64)> {
             0.0
         },
     ))
+}
+
+/// The sum of `coin`'s hourly funding rates since `start_secs`, and how many there were. A
+/// positive sum means longs paid shorts.
+pub fn funding_sum(io: &dyn Io, coin: &str, start_secs: u64) -> Result<(f64, usize)> {
+    let v = info(
+        io,
+        &json!({ "type": "fundingHistory", "coin": coin, "startTime": start_secs * 1000 }),
+    )?;
+    let rows = v.as_array().ok_or("funding history is not a list")?;
+    let rates: Vec<f64> = rows
+        .iter()
+        .filter_map(|r| r["fundingRate"].as_str()?.parse::<f64>().ok())
+        .filter(|r| r.is_finite())
+        .collect();
+    Ok((rates.iter().sum(), rates.len()))
 }

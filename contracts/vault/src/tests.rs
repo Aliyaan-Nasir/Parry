@@ -407,15 +407,17 @@ fn later_deposits_are_priced_against_nav() {
     let a = deposit(&mut v, ALICE, 100 * NEAR);
     assert_eq!(a, 300 * USD * 1_000_000_000_000_000_000);
 
-    // The LiNEAR rate grew 10% and the hedge earned 30 USD: NAV is 300 × 1.1 + 30 = 360 USD.
+    // The LiNEAR rate grew 10% and the hedge earned 30 USD. Reading the rate, the insurance fund
+    // takes 10% of the 30 USD of staking yield: NAV is 300 × 1.1 − 3 + 30 = 357 USD.
     report(&mut v, 2, NOW + 10, 20, Hl::pnl(30 * USD as i128));
     let r2 = RATE * 11 / 10;
     let b = deposit_at(&mut v, BOB, 100 * NEAR, NOW + 11, PRICE, r2);
-    let nav = nav::nav_e6(nav::near_to_linear(100 * NEAR, RATE), r2, PRICE, 30 * USD as i128, Rounding::Up);
-    assert_eq!(nav, 360 * USD);
+    let fund = v.insurance().linear.0;
+    assert_eq!(fund, nav::near_to_linear(NEAR, r2), "1 NEAR of the 10 NEAR yield, as LiNEAR");
+    let alice_linear = nav::near_to_linear(100 * NEAR, RATE) - fund;
+    let nav = nav::nav_e6(alice_linear, r2, PRICE, 30 * USD as i128, Rounding::Up);
+    assert!(nav.abs_diff(357 * USD) <= 1, "{nav}");
     assert_eq!(b, 300 * USD * a / nav);
-    // Bob paid 300 USD for 300/360 of Alice's shares.
-    assert_eq!(b, a * 5 / 6);
 }
 
 #[test]
@@ -1366,8 +1368,10 @@ fn views_report_state_reserves_and_yield() {
     let s = v.vault_state();
     assert_eq!((s.risk_score, s.report_at, s.report_age_secs), (Some(33), Some(NOW + 100), Some(60)));
     assert_eq!(s.linear_rate_e24.0, RATE * 101 / 100);
-    // 100 LiNEAR × 1.212 × 3 = 363.6 USD, plus 7 USD of hedge equity.
-    assert_eq!(s.nav_e6.0, 370_600_000);
+    // 100 LiNEAR × 1.212 × 3 = 363.6 USD, less the insurance fund's 10% of the 3.6 USD staking
+    // yield, plus 7 USD of hedge equity.
+    assert_eq!(s.nav_e6.0, 370_240_000);
+    assert!(s.insurance_value_usd_e6.0.abs_diff(360_000) <= 1, "rounded down");
     assert_eq!(s.hedge.current_e8.0, 90 * E8 as i128);
     assert_eq!(s.hedge.leverage_x100, 27);
     let reserves = v.reserves().unwrap();
@@ -1536,4 +1540,553 @@ fn audit_deposit_values_the_hedge_at_the_deposit_price() {
         v.vault_state().nav_e6.0,
         nav::nav_e6(2 * linear, RATE, 295_000_000, 4_500_000, Rounding::Down)
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Insurance fund
+// ---------------------------------------------------------------------------------------------
+
+/// A report with extra top-level fields (the hedge ratio, its reason, the margin ratio).
+fn report_with(v: &mut Vault, run_id: u64, at: u64, score: u8, hl: Hl, extra: Value) {
+    let mut r: Value = serde_json::from_str(&report_json(run_id, at, score, hl)).unwrap();
+    for (k, x) in extra.as_object().unwrap() {
+        r[k] = x.clone();
+    }
+    set(RISK, 0, at);
+    v.on_vault_report(r.to_string());
+}
+
+/// A short hedge (so funding deltas count) with `funding_e6` received over its life.
+fn short_funded(funding_e6: i128) -> Hl {
+    Hl { size_e8: -90 * E8 as i128, funding_e6, ..Hl::default() }
+}
+
+/// Alice holds 100 LiNEAR (120 NEAR at 1.2); the hedge is short.
+fn funded_vault() -> Vault {
+    let mut v = deploy();
+    register(&mut v, ALICE);
+    report(&mut v, 1, NOW, 20, short_funded(0));
+    deposit(&mut v, ALICE, 120 * NEAR);
+    v
+}
+
+#[test]
+fn insurance_takes_ten_percent_of_positive_yield_outside_the_share_price() {
+    let mut v = funded_vault();
+    let linear_before = v.staked_linear;
+    let price_before = v.share_price().0;
+
+    // The rate grows 1% (1.2 NEAR of yield on 100 LiNEAR): 0.12 NEAR moves to the fund as LiNEAR
+    // when the vault reads the rate.
+    let r2 = RATE * 101 / 100;
+    set_results(NOW + 5, vec![rate(r2)]);
+    v.on_withdraw_rate(0);
+    let fund_linear = nav::near_to_linear(12 * NEAR / 100, r2);
+    assert_eq!(v.insurance().linear.0, fund_linear);
+    assert_eq!(v.staked_linear, linear_before - fund_linear);
+    // A rate seen before (or lower) skims nothing more.
+    set_results(NOW + 6, vec![rate(RATE)]);
+    v.on_withdraw_rate(0);
+    set_results(NOW + 6, vec![rate(r2)]);
+    v.on_withdraw_rate(0);
+    assert_eq!(v.insurance().linear.0, fund_linear);
+
+    // The next report: the hedge received 50 USD of funding, 5 USD of it moves to the fund.
+    report(&mut v, 2, NOW + 10, 20, Hl { value_e6: MARGIN + 50 * USD, ..short_funded(50 * USD as i128) });
+    let e = vault_event("insurance_inflow");
+    assert_eq!(
+        e,
+        json!({ "linear": fund_linear.to_string(), "usdc_e6": (5 * USD).to_string(), "report_at": NOW + 10 })
+    );
+    let i = v.insurance();
+    assert_eq!(i.usdc_e6.0, 5 * USD);
+    assert_eq!(i.share_bps, 1_000);
+    // The depositors keep the other 45 USD of the funding in their hedge equity.
+    assert_eq!(v.hedge_status().equity_e6.0, 45 * USD as i128);
+    // The share price excludes the fund: the staking growth less the fund's tenth, plus 45 USD.
+    set(ALICE, 0, NOW + 11);
+    let s = v.vault_state();
+    let expected = nav::nav_e6(linear_before - fund_linear, r2, PRICE, 45 * USD as i128, Rounding::Down);
+    assert_eq!(s.nav_e6.0, expected);
+    assert!(v.share_price().0 > price_before);
+    assert_eq!(s.insurance_value_usd_e6.0, i.value_usd_e6.0);
+    // 5 USD of USDC and 0.12 NEAR of LiNEAR at 3 USD.
+    assert!(i.value_usd_e6.0.abs_diff(5 * USD + 360_000) <= 1, "{}", i.value_usd_e6.0);
+
+    let h = v.insurance_history(None, None);
+    assert_eq!(h.len(), 1);
+    assert_eq!((h[0].event.as_str(), h[0].report_at), ("insurance_inflow", Some(NOW + 10)));
+
+    // A report with no new yield moves nothing and announces nothing.
+    report(&mut v, 3, NOW + 20, 20, Hl { value_e6: MARGIN + 50 * USD, ..short_funded(50 * USD as i128) });
+    assert!(!has_vault_event("insurance_inflow"));
+}
+
+#[test]
+fn funding_deltas_need_a_position_in_both_reports() {
+    let mut v = deploy();
+    report(&mut v, 1, NOW, 20, Hl { funding_e6: 100 * USD as i128, ..Hl::default() });
+    // A position opens: no delta against a report without one.
+    report(&mut v, 2, NOW + 10, 20, short_funded(0));
+    assert!(v.insurance.funding_window.is_empty());
+    report(&mut v, 3, NOW + 20, 20, short_funded(-30 * USD as i128));
+    assert_eq!(v.insurance.funding_window, vec![-30 * USD as i128]);
+    assert_eq!(v.insurance().negative_funding_e6.0, 30 * USD);
+    assert_eq!(v.insurance().recent_funding_e6.0, -30 * USD as i128);
+    // The window keeps the newest 12 deltas.
+    for k in 0..13 {
+        report(
+            &mut v,
+            4 + k,
+            NOW + 30 + k,
+            20,
+            short_funded(-30 * USD as i128 + (k as i128 + 1) * USD as i128),
+        );
+    }
+    assert_eq!(v.insurance.funding_window.len(), insurance::FUNDING_WINDOW);
+}
+
+/// A vault whose fund holds 10 USD of USDC and about 3.6 USD of LiNEAR, after the hedge received
+/// funding and then paid 30 USD of it.
+fn vault_with_fund() -> Vault {
+    let mut v = funded_vault();
+    set_results(NOW + 5, vec![rate(RATE * 101 / 100)]);
+    v.on_withdraw_rate(0);
+    set_results(NOW + 6, vec![rate(RATE * 111 / 100)]);
+    v.on_withdraw_rate(0);
+    report(&mut v, 2, NOW + 10, 20, short_funded(100 * USD as i128));
+    report(&mut v, 3, NOW + 20, 20, short_funded(70 * USD as i128));
+    assert_eq!(v.insurance().usdc_e6.0, 10 * USD);
+    v
+}
+
+fn pay(v: &mut Vault, who: &str, kind: &str, amount: u128, report_at: u64, secs: u64) -> String {
+    set(who, 0, secs);
+    panic_of(|| {
+        v.insurance_pay(kind.into(), U128(amount), report_at);
+    })
+}
+
+#[test]
+fn negative_funding_payout_returns_value_to_the_depositors() {
+    let mut v = vault_with_fund();
+    let at = NOW + 20;
+    assert!(pay(&mut v, ALICE, "negative_funding", USD, at, NOW + 21).contains("keeper only"));
+    assert!(pay(&mut v, KEEPER, "negative_funding", USD, at - 10, NOW + 21).contains("latest report"));
+    assert!(pay(&mut v, KEEPER, "fees", USD, at, NOW + 21).contains("kind must be"));
+    // The last reports show 70 USD received net: nothing is payable.
+    assert!(pay(&mut v, KEEPER, "negative_funding", USD, at, NOW + 21).contains("no net negative funding"));
+
+    // Funding turns: 100 USD more paid, the window is net negative.
+    report(&mut v, 4, NOW + 30, 20, short_funded(-30 * USD as i128));
+    let at = NOW + 30;
+    assert!(
+        pay(&mut v, KEEPER, "negative_funding", 131 * USD, at, NOW + 31).contains("above the fund's value")
+    );
+
+    let equity_before = v.hedge_status().equity_e6.0;
+    let linear_before = v.staked_linear;
+    set(KEEPER, 0, NOW + 31);
+    let reason = v.insurance_pay("negative_funding".into(), U128(3 * USD), at);
+    assert!(reason.contains("not covered yet"), "{reason}");
+    let e = vault_event("insurance_paid");
+    assert_eq!(
+        (e["kind"].as_str(), e["amount_usd_e6"].as_str()),
+        (Some("negative_funding"), Some("3000000"))
+    );
+    // Paid from the fund's USDC: the depositors' hedge equity rises by 3 USD.
+    assert_eq!(v.hedge_status().equity_e6.0, equity_before + 3 * USD as i128);
+    assert_eq!(v.insurance().usdc_e6.0, 7 * USD);
+    assert_eq!(v.insurance().covered_negative_funding_e6.0, 3 * USD);
+
+    let fund_linear = v.insurance().linear.0;
+    set(KEEPER, 0, NOW + 32);
+    // 25% of the day's value (about 14 USD at the first payout) caps the day at about 3.5 USD.
+    let msg = panic_of(|| {
+        v.insurance_pay("negative_funding".into(), U128(USD), at);
+    });
+    assert!(msg.contains("per-day cap"), "{msg}");
+    // The next day the cap starts over at a quarter of what is left (about 11 USD).
+    let day2 = NOW + 86_400;
+    report(&mut v, 5, day2, 20, short_funded(-40 * USD as i128));
+    assert!(pay(&mut v, KEEPER, "negative_funding", 3 * USD, day2, day2 + 1).contains("per-day cap"));
+    set(KEEPER, 0, day2 + 1);
+    v.insurance_pay("negative_funding".into(), U128(2 * USD), day2);
+    assert_eq!(v.insurance().paid_today_e6.0, 2 * USD);
+    assert_eq!(v.insurance().paid_total_e6.0, 5 * USD);
+    assert_eq!(v.insurance().usdc_e6.0, 5 * USD);
+    assert_eq!(v.insurance().linear.0, fund_linear);
+    assert_eq!(v.staked_linear, linear_before);
+    let history = v.insurance_history(None, Some(2));
+    assert_eq!(
+        history.iter().map(|h| h.event.as_str()).collect::<Vec<_>>(),
+        vec!["insurance_paid", "insurance_paid"]
+    );
+    assert_eq!(history[0].at, day2 + 1);
+}
+
+#[test]
+fn payouts_past_the_usdc_use_the_funds_linear() {
+    let mut v = vault_with_fund();
+    v.insurance.max_payout_e6 = 1_000 * USD;
+    v.insurance.cap_per_day_bps = 10_000;
+    report(&mut v, 4, NOW + 30, 20, short_funded(-60 * USD as i128));
+    let linear_before = v.staked_linear;
+    let fund_linear = v.insurance().linear.0;
+    set(KEEPER, 0, NOW + 31);
+    v.insurance_pay("negative_funding".into(), U128(12 * USD), NOW + 30);
+    // 10 USD of USDC, then 2 USD of LiNEAR at the last rate and price.
+    let moved = nav::near_to_linear(nav::usd_e6_to_near(2 * USD, PRICE), v.linear_rate_e24);
+    assert_eq!(v.insurance().usdc_e6.0, 0);
+    assert_eq!(v.insurance().linear.0, fund_linear - moved);
+    assert_eq!(v.staked_linear, linear_before + moved);
+    // At most the negative funding not yet covered: 160 USD paid over the reports, 12 covered.
+    // (A fund large enough that the value and the day's cap do not bind first.)
+    v.insurance.linear = 1_000 * NEAR;
+    v.insurance.day_value_e6 = 10_000 * USD;
+    let msg = pay(&mut v, KEEPER, "negative_funding", 149 * USD, NOW + 30, NOW + 32);
+    assert!(msg.contains("not yet covered"), "{msg}");
+    assert_eq!(pay(&mut v, KEEPER, "negative_funding", 148 * USD, NOW + 30, NOW + 32), "no panic");
+}
+
+#[test]
+fn per_payout_cap_binds() {
+    let mut v = vault_with_fund();
+    v.insurance.max_payout_e6 = 2 * USD;
+    report(&mut v, 4, NOW + 30, 20, short_funded(-60 * USD as i128));
+    assert!(
+        pay(&mut v, KEEPER, "negative_funding", 2 * USD + 1, NOW + 30, NOW + 31).contains("per-payout cap")
+    );
+    assert_eq!(pay(&mut v, KEEPER, "negative_funding", 2 * USD, NOW + 30, NOW + 31), "no panic");
+}
+
+#[test]
+fn hedge_slippage_payout_is_bounded_by_the_signed_order() {
+    let mut v = vault_with_fund();
+    v.insurance.cap_per_day_bps = 10_000;
+    let big = Hl { value_e6: 10_000 * USD, margin_e6: 10_000 * USD, ..short_funded(70 * USD as i128) };
+    report(&mut v, 4, NOW + 30, 20, big);
+    assert!(pay(&mut v, KEEPER, "hedge_slippage", USD, NOW + 30, NOW + 31).contains("no hedge order"));
+    set(KEEPER, 0, NOW + 31);
+    v.rebalance();
+    set_results(NOW + 31, vec![rate(RATE * 111 / 100)]);
+    v.on_rebalance_rate();
+    let order = v.insurance.last_order.clone().unwrap();
+    assert_eq!(order.report_at, NOW + 30);
+    // The fill shows only in a later report.
+    assert!(pay(&mut v, KEEPER, "hedge_slippage", USD, NOW + 30, NOW + 32).contains("later report"));
+    report(&mut v, 5, NOW + 40, 20, big);
+    // Bound: size × mark × band (2%).
+    let bound = order.size_e8.0 * order.mark_e8.0 / 10_000_000_000 * 200 / 10_000;
+    assert!(bound > 0 && bound < 10 * USD, "{bound}");
+    assert!(pay(&mut v, KEEPER, "hedge_slippage", bound + 1, NOW + 30, NOW + 41).contains("band"));
+    assert_eq!(pay(&mut v, KEEPER, "hedge_slippage", bound, NOW + 30, NOW + 41), "no panic");
+    assert!(pay(&mut v, KEEPER, "hedge_slippage", 1, NOW + 30, NOW + 42).contains("already compensated"));
+}
+
+#[test]
+fn margin_top_up_earmarks_value_while_margin_is_needed() {
+    let mut v = vault_with_fund();
+    v.insurance.cap_per_day_bps = 10_000;
+    assert!(pay(&mut v, KEEPER, "margin_top_up", USD, NOW + 20, NOW + 21).contains("does not need margin"));
+    report(&mut v, 4, NOW + 30, 90, short_funded(70 * USD as i128));
+    let equity = v.hedge_status().equity_e6.0;
+    let nav_before = v.vault_state().nav_e6.0;
+    set(KEEPER, 0, NOW + 31);
+    v.insurance_pay("margin_top_up".into(), U128(11 * USD), NOW + 30);
+    let i = v.insurance();
+    assert_eq!(i.margin_reserved_usdc_e6.0, 10 * USD);
+    assert!(i.margin_reserved_linear.0 > 0);
+    assert!(i.margin_reserved_usd_e6.0.abs_diff(11 * USD) <= 1);
+    // Earmarked value is neither the fund's nor the depositors'.
+    assert_eq!(v.hedge_status().equity_e6.0, equity);
+    set(ALICE, 0, NOW + 32);
+    assert_eq!(v.vault_state().nav_e6.0, nav_before);
+
+    // The owner takes the earmarked LiNEAR to route it to the hedge account.
+    let reserved = i.margin_reserved_linear.0;
+    set(ALICE, 1, NOW + 33);
+    assert!(panic_of(|| {
+        v.release_margin_reserve(U128(1));
+    })
+    .contains("owner only"));
+    set(OWNER, 1, NOW + 33);
+    assert!(panic_of(|| {
+        v.release_margin_reserve(U128(reserved + 1));
+    })
+    .contains("exceeds"));
+    v.release_margin_reserve(U128(reserved));
+    assert_eq!(ft_transfers(), vec![(LINEAR.to_string(), OWNER.to_string(), reserved)]);
+    set_results(NOW + 34, vec![PromiseResult::Failed]);
+    assert!(!v.on_margin_released(U128(reserved)));
+    assert_eq!(v.insurance().margin_reserved_linear.0, reserved, "a failed transfer restores it");
+}
+
+#[test]
+fn insurance_payouts_need_a_fresh_report() {
+    let mut v = vault_with_fund();
+    report(&mut v, 4, NOW + 30, 20, short_funded(-60 * USD as i128));
+    assert!(pay(&mut v, KEEPER, "negative_funding", USD, NOW + 30, NOW + 30 + 901)
+        .contains("older than 15 minutes"));
+}
+
+#[test]
+fn insurance_settings_are_owner_only_and_bounded() {
+    let mut v = deploy();
+    set(ALICE, 1, NOW);
+    assert!(panic_of(|| v.set_insurance(500, 2_000, U128(USD))).contains("owner only"));
+    set(OWNER, 1, NOW);
+    assert!(panic_of(|| v.set_insurance(5_001, 2_000, U128(USD))).contains("at most 5000"));
+    assert!(panic_of(|| v.set_insurance(500, 0, U128(USD))).contains("1 to 10000"));
+    assert!(panic_of(|| v.set_insurance(500, 2_000, U128(0))).contains("positive"));
+    v.set_insurance(500, 2_000, U128(USD));
+    let c = v.config();
+    assert_eq!(
+        (c.insurance_share_bps, c.insurance_cap_per_day_bps, c.insurance_max_payout_e6.0),
+        (500, 2_000, USD)
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Report-carried hedge ratio
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn the_report_sets_the_hedge_ratio_inside_the_bounds() {
+    let mut v = deploy();
+    register(&mut v, ALICE);
+    let big = Hl { value_e6: 100_000 * USD, margin_e6: 100_000 * USD, ..Hl::default() };
+    report(&mut v, 1, NOW, 20, big);
+    deposit(&mut v, ALICE, 1_200 * NEAR);
+    let s = v.hedge_status();
+    assert_eq!((s.hedge_ratio_bps, s.hedge_ratio_min_bps, s.hedge_ratio_max_bps), (9_000, 7_000, 9_000));
+    assert_eq!(s.hedge_ratio_reason, "the configured hedge ratio");
+    assert_eq!(v.config().hedge_ratio_min_bps, 7_000);
+
+    let why = "7-day funding is -8.0% a year: shorts pay, hedge leans to 82% (min 70%)";
+    report_with(
+        &mut v,
+        2,
+        NOW + 10,
+        20,
+        big,
+        json!({ "hedge_ratio_bps": 8_200, "hedge_ratio_reason": why, "margin_ratio": 640 }),
+    );
+    assert_eq!(vault_event("hedge_ratio_set"), json!({ "hedge_ratio_bps": 8_200, "reason": why }));
+    let r = v.report.clone().unwrap();
+    // 1000 LiNEAR... 1200 NEAR staked; 82% is 984 NEAR.
+    assert_eq!(v.hedge_plan(RATE, &r).target_e8, 984 * E8);
+    let s = v.hedge_status();
+    assert_eq!(
+        (s.hedge_ratio_bps, s.hedge_ratio_reason.as_str(), s.margin_ratio_bps),
+        (8_200, why, Some(640))
+    );
+
+    // Outside the bounds it is brought inside them.
+    report_with(&mut v, 3, NOW + 20, 20, big, json!({ "hedge_ratio_bps": 5_000 }));
+    assert_eq!(v.hedge_status().hedge_ratio_bps, 7_000);
+    report_with(&mut v, 4, NOW + 30, 20, big, json!({ "hedge_ratio_bps": 10_000 }));
+    assert_eq!(v.hedge_status().hedge_ratio_bps, 9_000);
+    // A report without one goes back to the configured ratio.
+    report(&mut v, 5, NOW + 40, 20, big);
+    assert_eq!(v.hedge_status().hedge_ratio_bps, 9_000);
+    assert_eq!(v.hedge_status().margin_ratio_bps, None);
+
+    let long = "x".repeat(281);
+    set(RISK, 0, NOW + 50);
+    let mut r: Value = serde_json::from_str(&report_json(6, NOW + 50, 20, big)).unwrap();
+    r["hedge_ratio_reason"] = json!(long);
+    assert!(panic_of(|| v.on_vault_report(r.to_string())).contains("at most 280"));
+}
+
+#[test]
+fn hedge_ratio_floor_is_owner_set_within_bounds() {
+    let mut v = deploy();
+    set(ALICE, 1, NOW);
+    assert!(panic_of(|| v.set_hedge_ratio_min(6_000)).contains("owner only"));
+    set(OWNER, 1, NOW);
+    assert!(panic_of(|| v.set_hedge_ratio_min(9_100)).contains("at most hedge_ratio_bps"));
+    assert!(panic_of(|| v.set_hedge_ratio_min(4_000)).contains("5000 to 10000"));
+    v.set_hedge_ratio_min(6_000);
+    assert!(panic_of(|| v.set_hedge_ratio(5_500)).contains("at least hedge_ratio_min_bps"));
+    v.set_hedge_ratio(8_000);
+    assert_eq!(v.hedge_status().hedge_ratio_bps, 8_000);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Claim totals
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn pending_claims_are_totalled_for_the_reserves() {
+    let mut v = deploy();
+    let a = two_holders(&mut v);
+    fund_buffer(&mut v, 10 * USD);
+    report(&mut v, 2, NOW + 40, 20, Hl::pnl(60 * USD as i128));
+    set(ALICE, 1, NOW + 50);
+    v.request_withdraw(U128(a));
+    report(&mut v, 3, NOW + 70, 20, Hl::pnl(60 * USD as i128));
+    process(&mut v, NOW + 71, RATE);
+    // 20 USD owed, then the LiNEAR transfer fails.
+    set_results(NOW + 72, vec![PromiseResult::Failed]);
+    v.on_payout(id(ALICE), "linear".into(), U128(100 * NEAR));
+    set(ALICE, 0, NOW + 73);
+    let s = v.vault_state();
+    assert_eq!((s.claims_linear.0, s.claims_usdc_e6.0), (100 * NEAR, 20 * USD));
+    fund_buffer(&mut v, 5 * USD);
+    set(ALICE, 0, NOW + 74);
+    v.claim();
+    let s = v.vault_state();
+    assert_eq!((s.claims_linear.0, s.claims_usdc_e6.0), (0, 15 * USD));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Migration from the deployed layout
+// ---------------------------------------------------------------------------------------------
+
+/// Rewrites `v`'s state in the layout deployed before the insurance fund.
+fn as_deployed(v: Vault) {
+    let mut old = migrate::VaultV1 {
+        owner_id: v.owner_id,
+        network: v.network,
+        risk: v.risk,
+        keeper: v.keeper,
+        linear: v.linear,
+        wnear: v.wnear,
+        usdc: v.usdc,
+        oracle: v.oracle,
+        signer: v.signer,
+        hedge: v.hedge,
+        deposit_cap: v.deposit_cap,
+        min_deposit: v.min_deposit,
+        token: v.token,
+        staked_linear: v.staked_linear,
+        pending_deposit_near: v.pending_deposit_near,
+        settled_pnl_e6: v.settled_pnl_e6,
+        loss_backing_linear: v.loss_backing_linear,
+        buffer_usdc: v.buffer_usdc,
+        linear_rate_e24: v.linear_rate_e24,
+        first_linear_rate_e24: v.first_linear_rate_e24,
+        near_price_e8: v.near_price_e8,
+        report: v.report,
+        last_run_id: v.last_run_id,
+        hedge_order_signed: v.hedge_order_signed,
+        last_hedge_nonce: v.last_hedge_nonce,
+        manual_paused: v.manual_paused,
+        risk_paused: v.risk_paused,
+        leverage_reduced: v.leverage_reduced,
+        needs_margin: v.needs_margin,
+        withdrawals: v.withdrawals,
+        withdrawal_head: v.withdrawal_head,
+        next_withdrawal_id: v.next_withdrawal_id,
+        queued_shares: v.queued_shares,
+        claims: v.claims,
+    };
+    old.withdrawals.flush();
+    old.claims.flush();
+    near_sdk::env::state_write(&old);
+    near_sdk::env::storage_remove(b"layout");
+}
+
+#[test]
+fn migrate_keeps_every_balance_and_adds_the_fund() {
+    let mut v = deploy();
+    let a = two_holders(&mut v);
+    report(&mut v, 2, NOW + 40, 20, short_funded(5 * USD as i128));
+    set(ALICE, 1, NOW + 50);
+    v.request_withdraw(U128(a / 2));
+    set(BOB, 0, NOW + 60);
+    let before = v.vault_state();
+    let queue = v.queue(None, None);
+    let config = v.config();
+    as_deployed(v);
+
+    set(ALICE, 0, NOW + 61);
+    assert!(panic_of(|| {
+        Vault::migrate();
+    })
+    .contains("owner only"));
+    set(OWNER, 0, NOW + 61);
+    let mut v = Vault::migrate();
+    let after = v.vault_state();
+    assert_eq!(
+        (after.total_shares, after.staked_linear, after.nav_e6, after.queued_shares, after.queue_length),
+        (before.total_shares, before.staked_linear, before.nav_e6, before.queued_shares, before.queue_length)
+    );
+    assert_eq!(v.ft_balance_of(id(ALICE)).0, a - a / 2);
+    assert_eq!(v.queue(None, None), queue);
+    assert_eq!(v.config().hedge, config.hedge);
+    assert_eq!(v.config().hedge_ratio_min_bps, 7_000);
+    let i = v.insurance();
+    assert_eq!((i.linear.0, i.usdc_e6.0, i.share_bps, i.cap_per_day_bps), (0, 0, 1_000, 2_500));
+    assert!(v.insurance_history(None, None).is_empty());
+    // The rate already seen is the fund's starting mark: nothing from before is skimmed.
+    set_results(NOW + 62, vec![rate(RATE)]);
+    v.on_withdraw_rate(0);
+    assert_eq!(v.insurance().linear.0, 0);
+
+    // The vault keeps working: reports, deposits and the queue.
+    near_sdk::env::state_write(&v);
+    // The first report after the migration sets the fund's funding mark; the next one's 10 USD
+    // of funding puts 1 USD in the fund.
+    report(&mut v, 3, NOW + 70, 20, short_funded(15 * USD as i128));
+    assert_eq!(v.insurance().usdc_e6.0, 0);
+    report(&mut v, 4, NOW + 71, 20, short_funded(25 * USD as i128));
+    assert_eq!(v.insurance().usdc_e6.0, USD);
+    assert_eq!(process(&mut v, NOW + 72, RATE), 1);
+    deposit_at(&mut v, BOB, 10 * NEAR, NOW + 73, PRICE, RATE);
+
+    // It runs once.
+    set(OWNER, 0, NOW + 80);
+    assert!(panic_of(|| {
+        Vault::migrate();
+    })
+    .contains("already migrated"));
+}
+
+#[test]
+fn migrate_can_run_from_the_vault_account_in_the_deploy_batch() {
+    let mut v = deploy();
+    two_holders(&mut v);
+    as_deployed(v);
+    set(VAULT, 0, NOW + 1);
+    let v = Vault::migrate();
+    assert_eq!(v.config().owner_id, id(OWNER));
+}
+
+#[test]
+fn a_new_vault_needs_no_migration() {
+    let v = deploy();
+    near_sdk::env::state_write(&v);
+    set(OWNER, 0, NOW);
+    assert!(panic_of(|| {
+        Vault::migrate();
+    })
+    .contains("already migrated"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Audit regressions (insurance)
+// ---------------------------------------------------------------------------------------------
+
+/// The deployed enclave reports funding since the position opened; the enclave built with the
+/// fund reports the coin's lifetime funding. Measured against the report stored before the
+/// migration, the first report after it would read the difference as funding received (and skim
+/// a tenth of it) or paid (and open negative-funding payouts). The fund takes deltas only between
+/// reports it measured itself.
+#[test]
+fn audit_migration_does_not_read_a_funding_jump_as_yield() {
+    let mut v = deploy();
+    two_holders(&mut v);
+    report(&mut v, 2, NOW + 10, 20, short_funded(0));
+    as_deployed(v);
+    set(OWNER, 0, NOW + 20);
+    let mut v = Vault::migrate();
+    report(&mut v, 3, NOW + 30, 20, short_funded(300 * USD as i128));
+    assert!(!has_vault_event("insurance_inflow"));
+    assert_eq!(v.insurance().usdc_e6.0, 0);
+    assert!(v.insurance.funding_window.is_empty());
+    // From there on, real deltas count.
+    report(&mut v, 4, NOW + 40, 20, short_funded(310 * USD as i128));
+    assert_eq!(v.insurance().usdc_e6.0, USD);
 }

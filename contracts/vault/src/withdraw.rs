@@ -160,8 +160,10 @@ impl Vault {
         let mut c = self.claims.get(&account).cloned().unwrap_or_default();
         if token == TOKEN_LINEAR {
             c.linear = U128(c.linear.0 + amount.0);
+            self.claims_linear += amount.0;
         } else {
             c.usdc = U128(c.usdc.0 + amount.0);
+            self.claims_usdc_e6 += amount.0;
         }
         self.claims.insert(account.clone(), c);
         Event::PayoutFailed { account: &account, token: &token, amount }.emit();
@@ -178,6 +180,9 @@ impl Vault {
         let sent = Claim { linear: c.linear, usdc: U128(c.usdc.0 + from_buffer), usdc_owed: U128(0) };
         require!(sent.linear.0 > 0 || sent.usdc.0 > 0, "nothing to claim yet: the USDC buffer is empty");
         self.buffer_usdc -= from_buffer;
+        // Claims recorded before these totals existed are not in them: saturate.
+        self.claims_linear = self.claims_linear.saturating_sub(sent.linear.0);
+        self.claims_usdc_e6 = self.claims_usdc_e6.saturating_sub(sent.usdc.0);
         c = Claim { linear: U128(0), usdc: U128(0), usdc_owed: U128(c.usdc_owed.0 - from_buffer) };
         if c.is_empty() {
             self.claims.remove(&account);
@@ -287,6 +292,7 @@ impl Vault {
             let mut c = self.claims.get(&w.account).cloned().unwrap_or_default();
             c.usdc_owed = U128(c.usdc_owed.0 + owed);
             self.claims.insert(w.account.clone(), c);
+            self.claims_usdc_e6 += owed;
         }
         self.withdrawals.remove(&w.id);
         Event::WithdrawalProcessed {

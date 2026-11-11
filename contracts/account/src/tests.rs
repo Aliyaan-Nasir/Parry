@@ -1119,3 +1119,511 @@ fn audit_deleverage_is_priced_by_the_oracle_not_by_the_enclave_marks() {
     assert!(logs_contain("slippage bound"));
     assert!(a.pending().is_none());
 }
+
+// ---------------------------------------------------------------------------------------------
+// Close and unwind
+// ---------------------------------------------------------------------------------------------
+
+const INNER: u128 = 1_000_000_000_000; // USDC inner units per token unit (6 + 12 decimals)
+
+fn wnear_priced() -> rhea::PricedAsset {
+    rhea::PricedAsset {
+        token_id: id("wrap.testnet"),
+        inner_decimals: 24,
+        volatility_ratio_bps: 7_500,
+        price: parry_common::pyth::PythPrice {
+            price: near_sdk::json_types::I64(300_000_000),
+            conf: near_sdk::json_types::U64(1),
+            expo: -8,
+            publish_time: NOW as i64,
+        },
+        rate_e24: None,
+    }
+}
+
+fn usdc_priced() -> rhea::PricedAsset {
+    rhea::PricedAsset {
+        token_id: id("usdc.parry.testnet"),
+        inner_decimals: 18,
+        volatility_ratio_bps: 9_500,
+        price: parry_common::pyth::PythPrice {
+            price: near_sdk::json_types::I64(100_000_000),
+            conf: near_sdk::json_types::U64(1),
+            expo: -8,
+            publish_time: NOW as i64,
+        },
+        rate_e24: None,
+    }
+}
+
+#[test]
+fn close_plan_sells_just_enough_to_repay_everything() {
+    // 100 NEAR at $3 against 50 USDC: health 3.4, one round closes it.
+    let p = close::plan_close(100 * NEAR, 50 * USDC * INNER, &wnear_priced(), 0, &usdc_priced(), 12, 200)
+        .unwrap();
+    // The debt plus 0.5 bps and one unit for interest, rounded up to a USDC unit.
+    assert_eq!(p.repay, 50 * USDC + 50 * USDC / 20_000 + 1);
+    assert_eq!(p.min_out, p.repay);
+    assert!(p.last);
+    // Worth the repay plus 2% at the oracle price, rounded up to a yoctoNEAR.
+    let want = p.repay * 10_200 * 1_000_000_000_000_000_000 / 30_000;
+    assert!(p.sell.abs_diff(want) <= 1, "{} vs {want}", p.sell);
+}
+
+#[test]
+fn close_plan_keeps_health_above_one_when_it_cannot_close_at_once() {
+    // 100 NEAR at $3 against 150 USDC: health 1.425. Selling enough for all the debt would take
+    // health under 1, which the lending contract refuses: the round sells what keeps it at 1.02.
+    let p = close::plan_close(100 * NEAR, 150 * USDC * INNER, &wnear_priced(), 0, &usdc_priced(), 12, 200)
+        .unwrap();
+    assert!(!p.last);
+    let left = (100 * NEAR - p.sell) as f64 / 1e24;
+    let health = left * 3.0 * 0.75 / (150.0 / 0.95);
+    assert!((1.0199..1.0201).contains(&health), "health after the withdrawal {health}");
+    // Its oracle value less 2%.
+    let value = p.sell as f64 / 1e24 * 3.0;
+    assert!(((p.min_out as f64 / 1e6) - value * 0.98).abs() < 1e-5);
+    // At health 1.02 or below nothing can be sold.
+    let tight =
+        close::plan_close(100 * NEAR, 220 * USDC * INNER, &wnear_priced(), 0, &usdc_priced(), 12, 200);
+    assert!(tight.unwrap_err().contains("too close to 1"));
+}
+
+/// Answers for the close's first read: the position, then per protocol token its oracle price
+/// and asset config.
+fn close_read(collateral: u128, debt_inner: u128) -> Vec<PromiseResult> {
+    let asset = |ratio: u32| ok_json(json!({ "config": { "volatility_ratio": ratio } }));
+    vec![
+        ok_json(json!({
+            "account_id": me(), "supplied": [],
+            "collateral": [{ "token_id": "wrap.testnet", "balance": collateral.to_string() }],
+            "borrowed": [{ "token_id": "usdc.parry.testnet", "balance": debt_inner.to_string() }],
+        })),
+        oracle_price(300_000_000),
+        asset(7_500),
+        oracle_price(100_000_000),
+        asset(9_500),
+    ]
+}
+
+fn start_close(a: &mut Account) {
+    set("alice.testnet", 1, NOW);
+    a.owner_call(vec![OwnerAction::CloseRhea { slippage_bps: 200, pool_id: 7 }]);
+}
+
+/// Runs a close through the swap; returns the round's (sell, repay).
+fn close_through_swap(a: &mut Account, debt_inner: u128) -> (u128, u128) {
+    start_close(a);
+    let id = a.closing().map(|c| c.id).unwrap_or(0);
+    assert!(a.closing().is_none(), "nothing is stored before the read");
+    let c = calls();
+    assert_eq!((c[0].0.as_str(), c[0].1.as_str()), ("lending.parry.testnet", "get_account"));
+    assert_eq!(c.iter().filter(|x| x.1 == "get_price_no_older_than").count(), 2);
+    let read = c.iter().find(|x| x.1 == "on_close_read").unwrap().2.clone();
+    let id = read["id"].as_u64().unwrap_or(id);
+    set_with_results(NOW + 1, close_read(100 * NEAR, debt_inner));
+    a.on_close_read(id, 200, 7, vec![id_tok("wrap.testnet"), id_tok("usdc.parry.testnet")]);
+    let cl = a.closing().unwrap();
+    assert_eq!(cl.stage, "withdraw");
+    let c = calls();
+    assert_eq!(
+        (c[0].1.as_str(), c[0].2["amount_with_inner_decimal"].as_str()),
+        ("simple_withdraw", Some(cl.sell.0.to_string().as_str()))
+    );
+    set_with_results(NOW + 2, vec![ok_json(json!(true))]);
+    a.on_close_withdrawn(id);
+    let c = calls();
+    assert_eq!(
+        (c[0].0.as_str(), c[0].2["receiver_id"].as_str().unwrap()),
+        ("wrap.testnet", "ref-finance-101.testnet")
+    );
+    set_with_results(NOW + 3, vec![ok_json(json!(cl.sell.0.to_string()))]);
+    a.on_close_deposited(id);
+    let c = calls();
+    assert_eq!(c[0].1, "swap");
+    assert_eq!(c[0].2["actions"][0]["min_amount_out"], cl.min_out.0.to_string());
+    assert_eq!(c[0].2["actions"][0]["pool_id"], 7);
+    (cl.sell.0, cl.repay.0)
+}
+
+fn id_tok(s: &str) -> AccountId {
+    id(s)
+}
+
+fn closing_id(a: &Account) -> u64 {
+    a.closing().unwrap().id
+}
+
+#[test]
+fn close_rhea_repays_everything_and_returns_the_collateral() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let (sell, repay) = close_through_swap(&mut a, 50 * USDC * INNER);
+    let id = closing_id(&a);
+    // A guardian action waits while the owner closes.
+    let e = envelope(1, repay_action());
+    assert!(refused(&mut a, &e, g.sign(&e), NOW + 4).contains("closing the position"));
+
+    let out = repay + 300_000;
+    set_with_results(NOW + 5, vec![ok_json(json!(out.to_string()))]);
+    a.on_close_swapped(id);
+    let c = calls();
+    assert_eq!((c[0].1.as_str(), c[0].2["token_id"].as_str().unwrap()), ("withdraw", "usdc.parry.testnet"));
+    set_with_results(NOW + 6, vec![ok_json(json!(out.to_string()))]);
+    a.on_close_out(id);
+    let c = calls();
+    // Repays the debt plus its margin; the rest of the swap stays in the account.
+    assert_eq!((c[0].1.as_str(), c[0].2["msg"].as_str()), ("ft_transfer_call", Some("\"OnlyRepay\"")));
+    assert_eq!(c[0].2["amount"], repay.to_string());
+    set_with_results(NOW + 7, vec![ok_json(json!(repay.to_string()))]);
+    a.on_close_repaid(id);
+    assert_eq!(calls()[0].1, "get_account");
+    let left = 100 * NEAR - sell;
+    set_with_results(
+        NOW + 8,
+        vec![ok_json(json!({
+            "collateral": [{ "token_id": "wrap.testnet", "balance": left.to_string() }],
+            "supplied": [{ "token_id": "usdc.parry.testnet", "balance": "1000" }],
+            "borrowed": [],
+        }))],
+    );
+    a.on_close_verified(id);
+    let c = calls();
+    assert_eq!(
+        (c[0].1.as_str(), c[0].2["amount_with_inner_decimal"].as_str()),
+        ("simple_withdraw", Some(left.to_string().as_str()))
+    );
+    set_with_results(NOW + 9, vec![ok_json(json!(true))]);
+    assert!(a.on_close_returned(id, U128(left)));
+    let closed = get_logs().into_iter().find(|l| l.contains("position_closed")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(closed.strip_prefix("EVENT_JSON:").unwrap()).unwrap();
+    assert_eq!(v["data"]["debt_repaid"], repay.to_string());
+    assert_eq!(v["data"]["collateral_sold"], sell.to_string());
+    assert_eq!(v["data"]["collateral_returned"], left.to_string());
+    assert!(a.closing().is_none());
+    // The guardian may act again (the mandate stays).
+    assert_eq!(refused(&mut a, &e, g.sign(&e), NOW + 10), "accepted");
+}
+
+fn repay_action() -> GuardianAction {
+    repay(USDC)
+}
+
+#[test]
+fn close_restores_the_collateral_when_the_swap_fails() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let (sell, _) = close_through_swap(&mut a, 50 * USDC * INNER);
+    let id = closing_id(&a);
+    set_with_results(NOW + 5, vec![PromiseResult::Failed]);
+    a.on_close_swapped(id);
+    assert_eq!(a.closing().unwrap().stage, "restore_swap");
+    let c = calls();
+    assert_eq!((c[0].1.as_str(), c[0].2["token_id"].as_str().unwrap()), ("withdraw", "wrap.testnet"));
+    assert_eq!(c[0].2["amount"], sell.to_string());
+    set_with_results(NOW + 6, vec![ok_json(json!(sell.to_string()))]);
+    a.on_close_restore_withdrawn(id, U128(sell));
+    let c = calls();
+    assert_eq!(
+        (c[0].2["receiver_id"].as_str(), c[0].2["msg"].as_str()),
+        (Some("lending.parry.testnet"), Some("\"OnlyIncreaseCollateral\""))
+    );
+    set_with_results(NOW + 7, vec![ok_json(json!(sell.to_string()))]);
+    assert!(a.on_close_restored(id));
+    assert!(logs_contain("close_rolled_back") && logs_contain("\"stage\":\"swap\""));
+    assert!(a.closing().is_none());
+}
+
+#[test]
+fn close_rolls_back_when_the_withdrawal_or_deposit_fails() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    start_close(&mut a);
+    let cid = calls().iter().find(|x| x.1 == "on_close_read").unwrap().2["id"].as_u64().unwrap();
+    set_with_results(NOW + 1, close_read(100 * NEAR, 50 * USDC * INNER));
+    a.on_close_read(cid, 200, 7, vec![id("wrap.testnet"), id("usdc.parry.testnet")]);
+    let sell = a.closing().unwrap().sell.0;
+    set_with_results(NOW + 2, vec![PromiseResult::Failed]);
+    a.on_close_withdrawn(cid);
+    let c = calls();
+    assert_eq!(c[0].1, "execute");
+    assert_eq!(c[0].2["actions"][0]["IncreaseCollateral"]["amount"], sell.to_string());
+    assert!(logs_contain("close_rolled_back") && logs_contain("\"stage\":\"withdraw\""));
+    assert!(a.closing().is_none());
+
+    // The exchange took only part of the deposit: that part comes back, then all is re-supplied.
+    start_close(&mut a);
+    set_with_results(NOW + 3, close_read(100 * NEAR, 50 * USDC * INNER));
+    a.on_close_read(cid + 1, 200, 7, vec![id("wrap.testnet"), id("usdc.parry.testnet")]);
+    set_with_results(NOW + 4, vec![ok_json(json!(true))]);
+    a.on_close_withdrawn(cid + 1);
+    set_with_results(NOW + 5, vec![ok_json(json!((sell / 2).to_string()))]);
+    a.on_close_deposited(cid + 1);
+    assert_eq!(calls()[0].2["amount"], (sell / 2).to_string());
+    set_with_results(NOW + 6, vec![ok_json(json!((sell / 2).to_string()))]);
+    a.on_close_restore_withdrawn(cid + 1, U128(sell / 2));
+    assert_eq!(calls()[0].2["amount"], sell.to_string());
+    // The lending contract refuses the collateral back: it waits in the account for a retry.
+    set_with_results(NOW + 7, vec![ok_json(json!("0"))]);
+    assert!(!a.on_close_restored(cid + 1));
+    assert_eq!(a.closing().unwrap().stage, "stuck_resupply");
+    set("anyone.testnet", 0, NOW + 8);
+    a.retry_close();
+    set_with_results(NOW + 9, vec![ok_json(json!(sell.to_string()))]);
+    assert!(a.on_close_restored(cid + 1));
+    assert!(logs_contain("\"stage\":\"deposit\""));
+    assert!(a.closing().is_none());
+}
+
+#[test]
+fn a_refused_repay_or_exchange_withdrawal_waits_for_a_retry() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let (_, repay) = close_through_swap(&mut a, 50 * USDC * INNER);
+    let id = closing_id(&a);
+    set_with_results(NOW + 5, vec![ok_json(json!(repay.to_string()))]);
+    a.on_close_swapped(id);
+    // The exchange could not send the USDC (it re-credited the deposit).
+    set_with_results(NOW + 6, vec![ok_json(json!("0"))]);
+    a.on_close_out(id);
+    assert_eq!(a.closing().unwrap().stage, "stuck_withdraw_out");
+    testing_env!(ctx("anyone.testnet", 0, NOW + 7).prepaid_gas(near_sdk::Gas::from_tgas(100)).build());
+    let msg = panic_text(|| {
+        a.retry_close();
+    });
+    assert!(msg.contains(&format!("attach at least {} TGas", close::retry_close_gas().as_tgas())), "{msg}");
+    set("anyone.testnet", 0, NOW + 7);
+    a.retry_close();
+    assert_eq!(calls()[0].1, "withdraw");
+    set_with_results(NOW + 8, vec![ok_json(json!(repay.to_string()))]);
+    a.on_close_out(id);
+    // The lending contract refuses the repay: the USDC is back in the account.
+    set_with_results(NOW + 9, vec![ok_json(json!("0"))]);
+    a.on_close_repaid(id);
+    assert_eq!(a.closing().unwrap().stage, "stuck_repay");
+    set("anyone.testnet", 0, NOW + 10);
+    a.retry_close();
+    assert_eq!(calls()[0].2["msg"], "\"OnlyRepay\"");
+    // The owner can also settle by hand and clear it.
+    set("alice.testnet", 1, NOW + 11);
+    a.owner_call(vec![OwnerAction::ClearPending]);
+    assert!(a.closing().is_none());
+}
+
+#[test]
+fn a_round_that_cannot_close_reports_progress() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let (sell, _) = close_through_swap(&mut a, 150 * USDC * INNER);
+    let cl = a.closing().unwrap();
+    assert!(!cl.last);
+    let out = cl.min_out.0 + 10;
+    set_with_results(NOW + 5, vec![ok_json(json!(out.to_string()))]);
+    a.on_close_swapped(cl.id);
+    set_with_results(NOW + 6, vec![ok_json(json!(out.to_string()))]);
+    a.on_close_out(cl.id);
+    // Repays all the swap gave (less than the debt).
+    assert_eq!(calls()[0].2["amount"], out.to_string());
+    set_with_results(NOW + 7, vec![ok_json(json!(out.to_string()))]);
+    a.on_close_repaid(cl.id);
+    let debt_left = 150 * USDC * INNER - out * INNER;
+    set_with_results(
+        NOW + 8,
+        vec![ok_json(json!({
+            "collateral": [{ "token_id": "wrap.testnet", "balance": (100 * NEAR - sell).to_string() }],
+            "borrowed": [{ "token_id": "usdc.parry.testnet", "balance": debt_left.to_string() }],
+        }))],
+    );
+    a.on_close_verified(cl.id);
+    assert!(calls().is_empty());
+    let line = get_logs().into_iter().find(|l| l.contains("close_progress")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(line.strip_prefix("EVENT_JSON:").unwrap()).unwrap();
+    assert_eq!(v["data"]["debt_left"], (debt_left / INNER).to_string());
+    assert_eq!(v["data"]["collateral_left"], (100 * NEAR - sell).to_string());
+    assert!(a.closing().is_none(), "the next close_rhea continues");
+}
+
+#[test]
+fn close_refusals() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let msg = |a: &mut Account, actions: Vec<OwnerAction>, tgas: u64| {
+        testing_env!(ctx("alice.testnet", 1, NOW).prepaid_gas(near_sdk::Gas::from_tgas(tgas)).build());
+        panic_text(|| {
+            a.owner_call(actions);
+        })
+    };
+    let close = |slippage_bps| OwnerAction::CloseRhea { slippage_bps, pool_id: 7 };
+    assert!(
+        msg(&mut a, vec![close(200), OwnerAction::RevokeMandate], 900).contains("must be the only action")
+    );
+    assert!(msg(&mut a, vec![close(0)], 900).contains("1 to 1000"));
+    assert!(msg(&mut a, vec![close(1_001)], 900).contains("1 to 1000"));
+    let need = close::close_gas(2).as_tgas();
+    assert!(msg(&mut a, vec![close(200)], need - 1).contains(&format!("attach at least {need} TGas")));
+    assert_eq!(msg(&mut a, vec![close(200)], need), "accepted");
+
+    // Refusals at the read move nothing.
+    let refused_read = |a: &mut Account, results: Vec<PromiseResult>, want: &str| {
+        set_with_results(NOW + 1, results);
+        a.on_close_read(1, 200, 7, vec![id("wrap.testnet"), id("usdc.parry.testnet")]);
+        assert!(calls().is_empty());
+        assert!(logs_contain("close_rolled_back") && logs_contain(want), "{want}: {:?}", get_logs());
+        assert!(a.closing().is_none());
+    };
+    let mut r = close_read(100 * NEAR, 0);
+    r[0] = ok_json(json!({ "collateral": [{ "token_id": "wrap.testnet", "balance": "1" }], "borrowed": [] }));
+    refused_read(&mut a, r, "nothing is borrowed");
+    refused_read(&mut a, close_read(100 * NEAR, 220 * USDC * INNER), "too close to 1");
+    let mut r = close_read(100 * NEAR, 50 * USDC * INNER);
+    r[1] = ok_json(json!(null));
+    refused_read(&mut a, r, "no fresh oracle price");
+    let mut r = close_read(100 * NEAR, 50 * USDC * INNER);
+    r[0] = ok_json(json!({
+        "collateral": [{ "token_id": "wrap.testnet", "balance": "5" }, { "token_id": "usdc.parry.testnet", "balance": "5" }],
+        "borrowed": [{ "token_id": "usdc.parry.testnet", "balance": "5" }],
+    }));
+    refused_read(&mut a, r, "one collateral and one debt asset");
+
+    // While a deleverage is in flight, no close starts.
+    run_guardian(&mut a, &g, 1, delev(29_500_000));
+    assert!(msg(&mut a, vec![close(200)], 900).contains("a deleverage is in flight"));
+}
+
+#[test]
+fn unwind_revokes_withdraws_and_sends_everything_to_the_owner() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let tokens = vec![id("usdc.parry.testnet"), id("wrap.testnet")];
+    set("alice.testnet", 1, NOW);
+    a.owner_call(vec![OwnerAction::Unwind { tokens: tokens.clone(), to: None }]);
+    assert!(a.mandate().is_none(), "the guardian is revoked at once");
+    assert!(logs_contain("mandate_revoked"));
+    assert_eq!(calls()[0].1, "get_account");
+
+    set_with_results(
+        NOW + 1,
+        vec![ok_json(json!({
+            "supplied": [{ "token_id": "usdc.parry.testnet", "balance": (5 * USDC * INNER).to_string() }],
+            "collateral": [{ "token_id": "wrap.testnet", "balance": (40 * NEAR).to_string() }],
+            "borrowed": [],
+        }))],
+    );
+    a.on_unwind_read(id("alice.testnet"), tokens.clone());
+    let w: Vec<_> = calls().into_iter().filter(|c| c.1 == "simple_withdraw").collect();
+    assert_eq!(w.len(), 2);
+    assert_eq!(w[0].2["token_id"], "wrap.testnet");
+    assert_eq!(w[0].2["amount_with_inner_decimal"], (40 * NEAR).to_string());
+    assert_eq!(w[1].2["amount_with_inner_decimal"], (5 * USDC * INNER).to_string());
+
+    // The wNEAR withdrawal fails; the USDC one goes through.
+    set_with_results(NOW + 2, vec![PromiseResult::Failed, ok_json(json!(true))]);
+    a.on_unwind_withdrawn(
+        id("alice.testnet"),
+        tokens.clone(),
+        vec![id("wrap.testnet"), id("usdc.parry.testnet")],
+    );
+    assert!(logs_contain("unwind_partial") && logs_contain("lending withdrawal failed"));
+    let views: Vec<_> = calls().into_iter().filter(|c| c.1 == "ft_balance_of").collect();
+    assert_eq!(views.len(), 2);
+
+    set_with_results(
+        NOW + 3,
+        vec![ok_json(json!((65 * USDC).to_string())), ok_json(json!((30 * NEAR).to_string()))],
+    );
+    a.on_unwind_balances(id("alice.testnet"), tokens.clone());
+    let t: Vec<_> = calls().into_iter().filter(|c| c.1 == "ft_transfer").collect();
+    assert_eq!(t.len(), 2);
+    assert_eq!(
+        (t[0].0.as_str(), t[0].2["receiver_id"].as_str(), t[0].2["amount"].as_str()),
+        ("usdc.parry.testnet", Some("alice.testnet"), Some("65000000"))
+    );
+
+    // The wNEAR transfer fails: that balance stays, the rest goes.
+    set_with_results(NOW + 4, vec![ok_json(json!(null)), PromiseResult::Failed]);
+    let sent = vec![
+        close::TokenAmount { token: id("usdc.parry.testnet"), amount: U128(65 * USDC) },
+        close::TokenAmount { token: id("wrap.testnet"), amount: U128(30 * NEAR) },
+    ];
+    assert!(a.on_unwind_sent(id("alice.testnet"), sent));
+    assert!(logs_contain("the transfer failed"));
+    let line = get_logs().into_iter().find(|l| l.contains("\"unwound\"")).unwrap();
+    let v: serde_json::Value = serde_json::from_str(line.strip_prefix("EVENT_JSON:").unwrap()).unwrap();
+    assert_eq!(v["data"]["tokens"], json!([{ "token": "usdc.parry.testnet", "amount": "65000000" }]));
+    // The NEAR above the storage reserve and its margin goes to the owner: what is left is
+    // exactly that reserve.
+    let near: u128 = v["data"]["near"].as_str().unwrap().parse().unwrap();
+    assert!(near > 0);
+    let storage = near_sdk::env::storage_byte_cost().as_yoctonear() * near_sdk::env::storage_usage() as u128;
+    let left = near_sdk::env::account_balance().as_yoctonear();
+    assert_eq!(left, storage + close::UNWIND_NEAR_MARGIN.as_yoctonear());
+    let transfers: Vec<_> = get_created_receipts()
+        .into_iter()
+        .filter(|r| r.actions.iter().any(|x| matches!(x, MockAction::Transfer { .. })))
+        .collect();
+    assert_eq!(transfers[0].receiver_id, id("alice.testnet"));
+}
+
+#[test]
+fn unwind_leaves_collateral_that_backs_a_loan() {
+    let mut a = near_owned();
+    set("alice.testnet", 1, NOW);
+    a.owner_call(vec![OwnerAction::Unwind { tokens: vec![], to: None }]);
+    set_with_results(
+        NOW + 1,
+        vec![ok_json(json!({
+            "supplied": [{ "token_id": "wrap.testnet", "balance": "7" }],
+            "collateral": [{ "token_id": "wrap.testnet", "balance": (40 * NEAR).to_string() }],
+            "borrowed": [{ "token_id": "usdc.parry.testnet", "balance": "1" }],
+        }))],
+    );
+    a.on_unwind_read(id("alice.testnet"), vec![]);
+    let w: Vec<_> = calls().into_iter().filter(|c| c.1 == "simple_withdraw").collect();
+    assert_eq!(w.len(), 1);
+    assert_eq!(w[0].2["amount_with_inner_decimal"], "7", "only the supply");
+    assert!(logs_contain("backs a loan"));
+}
+
+#[test]
+fn unwind_target_and_limits() {
+    // A passkey owner must name where everything goes.
+    let pk = Passkey::new();
+    set("factory.testnet", 0, NOW);
+    near_sdk::env::storage_remove(b"rt");
+    let mut a = Account::new(Owner::Passkey { key: pk.public() }, "testnet".into(), protocol());
+    let request = |nonce: u64, actions: Vec<OwnerAction>| {
+        serde_json::to_string(&OwnerRequest {
+            account: me(),
+            network: "testnet".into(),
+            nonce,
+            created_at: NOW,
+            actions,
+        })
+        .unwrap()
+    };
+    let r = request(1, vec![OwnerAction::Unwind { tokens: vec![], to: None }]);
+    set("relayer.parry.testnet", 0, NOW);
+    let msg = panic_text(|| {
+        a.owner_execute(r.clone(), pk.assert(&r));
+    });
+    assert!(msg.contains("must name `to`"), "{msg}");
+    let r = request(2, vec![OwnerAction::Unwind { tokens: vec![], to: Some(id("bob.testnet")) }]);
+    set("relayer.parry.testnet", 0, NOW);
+    a.owner_execute(r.clone(), pk.assert(&r));
+    let read = calls().into_iter().find(|c| c.1 == "on_unwind_read").unwrap();
+    assert_eq!(read.2["to"], "bob.testnet");
+
+    let mut a = near_owned();
+    let unwind = |tokens: Vec<AccountId>| vec![OwnerAction::Unwind { tokens, to: None }];
+    set("alice.testnet", 1, NOW);
+    let msg = panic_text(|| {
+        a.owner_call(unwind(vec![id("wrap.testnet"), id("wrap.testnet")]));
+    });
+    assert!(msg.contains("listed twice"), "{msg}");
+    let need = close::unwind_gas(2, 1).as_tgas();
+    testing_env!(ctx("alice.testnet", 1, NOW).prepaid_gas(near_sdk::Gas::from_tgas(need - 1)).build());
+    let msg = panic_text(|| {
+        a.owner_call(unwind(vec![id("wrap.testnet")]));
+    });
+    assert!(msg.contains(&format!("attach at least {need} TGas")), "{msg}");
+}

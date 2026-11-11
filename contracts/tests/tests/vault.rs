@@ -102,12 +102,15 @@ struct Earn {
 
 impl Earn {
     async fn new() -> Result<Self> {
-        let s = Stack::new().await?;
+        Self::with_codes(Stack::new().await?, &wasm("parry_vault")).await
+    }
 
+    /// The stack `s` with LiNEAR and a vault running `vault_code`.
+    async fn with_codes(s: Stack, vault_code: &[u8]) -> Result<Self> {
         let linear = s.user("linear", 30).await?.deploy(&fixture("linear")).await?.into_result()?;
         ok(linear.call("new").args_json(json!({ "owner_id": s.root.id() })).transact().await?)?;
 
-        let vault = s.user("vault", 30).await?.deploy(&wasm("parry_vault")).await?.into_result()?;
+        let vault = s.user("vault", 30).await?.deploy(vault_code).await?.into_result()?;
         ok(vault
             .call("new")
             .args_json(json!({
@@ -173,7 +176,20 @@ impl Earn {
     }
 
     async fn submit_with(&self, score: u8, h: Hedge, r: &Reserves) -> Result<Done> {
-        let d = self.s.submit_report(self.report(self.vault.id(), score, h, r)).await?;
+        self.submit_report(score, self.report(self.vault.id(), score, h, r)).await
+    }
+
+    /// A report with extra top-level fields (the hedge ratio, its reason, the margin ratio).
+    async fn submit_extra(&self, score: u8, h: Hedge, extra: Value) -> Result<Done> {
+        let mut report = self.report(self.vault.id(), score, h, &Reserves::default());
+        for (k, v) in extra.as_object().unwrap() {
+            report[k] = v.clone();
+        }
+        self.submit_report(score, report).await
+    }
+
+    async fn submit_report(&self, score: u8, report: Value) -> Result<Done> {
+        let d = self.s.submit_report(report).await?;
         let forwarded = events_from(&d, self.s.risk.id(), "vault_reported");
         assert_eq!(forwarded.len(), 1);
         assert_eq!(forwarded[0]["forwarded"], true);
@@ -1024,5 +1040,200 @@ async fn withdrawals_settle_in_queue_order_four_per_call() -> Result<()> {
     assert_eq!(signed(&state["settled_pnl_e6"]), settled as i128);
     assert_eq!(e.linear_of(vault).await?, linear);
     assert_eq!(e.usdc_of(vault).await?, 100 * USDC - settled);
+    Ok(())
+}
+
+/// Redeploys `contract` with `code` and runs `migrate` in the same batch, from the contract's own
+/// account, as a deployment would.
+async fn deploy_and_migrate(contract: &Contract, code: &[u8]) -> Result<ExecutionFinalResult> {
+    Ok(contract
+        .as_account()
+        .batch(contract.id())
+        .deploy(code)
+        .call(
+            near_workspaces::operations::Function::new("migrate")
+                .args_json(json!({}))
+                .gas(near_workspaces::types::Gas::from_tgas(100)),
+        )
+        .transact()
+        .await?)
+}
+
+/// The insurance fund: a tenth of the funding the hedge receives moves into it (outside the share
+/// price); when the hedge pays funding, the keeper pays some of it back to the depositors within
+/// the day's cap; and a report's funding-aware hedge ratio sizes the hedge.
+#[tokio::test]
+async fn insurance_fund_takes_funding_yield_and_pays_negative_funding() -> Result<()> {
+    let e = Earn::new().await?;
+    let vault = e.vault.id();
+    let alice = e.s.user("alice", 300).await?;
+    e.feed().await?;
+    e.submit(10, Hedge::flat()).await?;
+    let (_, _) = e.deposit_ok(&alice, 100 * NEAR).await?;
+    let staked = num(&e.state().await?["staked_linear"]);
+
+    let short = |funding: i128| Hedge { funding_e6: funding, ..Hedge::pnl(funding).short(90 * 100_000_000) };
+    e.submit(10, short(0)).await?;
+    let d = e.submit(10, short(100 * USDC as i128)).await?;
+    let inflow = event_from(&d, vault, "insurance_inflow");
+    assert_eq!((num(&inflow["usdc_e6"]), num(&inflow["linear"])), (10 * USDC, 0));
+    let fund = e.view("insurance", json!({})).await?;
+    assert_eq!(
+        (num(&fund["usdc_e6"]), num(&fund["value_usd_e6"]), fund["share_bps"].as_u64()),
+        (10 * USDC, 10 * USDC, Some(1_000))
+    );
+    // The share price excludes the fund: the depositors keep 90 of the 100 USD.
+    let state = e.state().await?;
+    assert_eq!(signed(&state["hedge"]["equity_e6"]), 90 * USDC as i128);
+    assert_eq!(num(&state["nav_e6"]), usd_e6(staked, PRICE_E8, Rounding::Down) + 90 * USDC);
+
+    // Funding turns: the hedge pays 150 USD by the next report.
+    e.submit(10, short(-50 * USDC as i128)).await?;
+    let state = e.state().await?;
+    let at = state["report_at"].as_u64().unwrap();
+    let args = |amount: u128| json!({ "kind": "negative_funding", "amount_usd_e6": amount.to_string(), "report_at": at });
+    assert!(err(try_call(&alice, vault, "insurance_pay", args(USDC), 0, 30).await?).contains("keeper only"));
+    let d = ok(try_call(&e.s.root, vault, "insurance_pay", args(2 * USDC), 0, 30).await?)?;
+    let paid = event_from(&d, vault, "insurance_paid");
+    assert_eq!((paid["kind"].as_str(), num(&paid["amount_usd_e6"])), (Some("negative_funding"), 2 * USDC));
+    assert_eq!(num(&e.view("insurance", json!({})).await?["usdc_e6"]), 8 * USDC);
+    // Back to the depositors: equity is −50 − 8 instead of −50 − 10.
+    assert_eq!(signed(&e.state().await?["hedge"]["equity_e6"]), -58 * USDC as i128);
+    // A quarter of the 10 USD fund per day: 0.5 USD more is the most today.
+    assert!(
+        err(try_call(&e.s.root, vault, "insurance_pay", args(USDC), 0, 30).await?).contains("per-day cap")
+    );
+    let history = e.view("insurance_history", json!({ "from": 0, "limit": 10 })).await?;
+    let kinds: Vec<&str> = history.as_array().unwrap().iter().map(|h| h["event"].as_str().unwrap()).collect();
+    assert_eq!(kinds, vec!["insurance_paid", "insurance_inflow"]);
+
+    // A funding-aware ratio of 80% sizes the hedge.
+    let why = "7-day funding is -12.0% a year: shorts pay, hedge leans to 80% (min 70%)";
+    let big = Hedge { value_e6: 100_000 * USDC, margin_e6: 100_000 * USDC, ..Hedge::flat() };
+    e.submit_extra(
+        10,
+        big,
+        json!({ "hedge_ratio_bps": 8_000, "hedge_ratio_reason": why, "margin_ratio": 900 }),
+    )
+    .await?;
+    let hedge = e.view("hedge_status", json!({})).await?;
+    assert_eq!(
+        (hedge["hedge_ratio_bps"].as_u64(), hedge["hedge_ratio_reason"].as_str()),
+        (Some(8_000), Some(why))
+    );
+    assert_eq!(hedge["margin_ratio_bps"].as_u64(), Some(900));
+    let latest = view::<Value>(&e.s.worker, e.s.risk.id(), "latest_vault_report", json!({})).await?;
+    assert_eq!(latest["report"]["hedge_ratio_bps"], 8_000);
+    let d = ok(e.rebalance().await?)?;
+    let order = event_from(&d, vault, "hedge_order");
+    let staked = num(&e.state().await?["staked_linear"]);
+    assert_eq!(num(&order["target_e8"]), staked * 8_000 / 10_000 / YOCTO_PER_E8);
+    Ok(())
+}
+
+/// The vault and the risk board deployed on testnet, holding state, take this code and migrate:
+/// balances, shares, the queue, the report histories, the run ids and the enclave key stay; the
+/// insurance fund, the hedge ratio and certificate anchors start working.
+#[tokio::test]
+async fn the_deployed_vault_and_risk_board_migrate_with_their_state() -> Result<()> {
+    let s = Stack::with_risk_code(&fixture("risk-v1")).await?;
+    let e = Earn::with_codes(s, &fixture("vault-v1")).await?;
+    let (s, vault) = (&e.s, e.vault.id());
+    let alice = s.user("alice", 300).await?;
+    let bob = s.user("bob", 300).await?;
+    for who in [&alice, &bob] {
+        register(who, e.linear.id(), who.id()).await?;
+    }
+    e.feed().await?;
+    e.submit(10, Hedge::flat()).await?;
+    let (_, a) = e.deposit_ok(&alice, 100 * NEAR).await?;
+    e.deposit_ok(&bob, 50 * NEAR).await?;
+    e.submit(10, Hedge::pnl(15 * USDC as i128)).await?;
+    s.submit_report(json!({ "kind": "sealing_key", "public_key": "5e".repeat(32) })).await?;
+    call(&alice, vault, "request_withdraw", json!({ "shares": (a / 2).to_string() }), 1, 50).await?;
+    let requested = now_secs();
+
+    let state = e.state().await?;
+    let queue = e.view("queue", json!({})).await?;
+    let board = |m: &'static str| view::<Value>(&s.worker, s.risk.id(), m, json!({}));
+    let (run_ids, stats, sealing, enclave, latest) = (
+        board("last_run_ids").await?,
+        board("stats").await?,
+        board("sealing_key").await?,
+        board("get_enclave").await?,
+        board("latest_vault_report").await?,
+    );
+    assert!(err(try_call(
+        s.risk.as_account(),
+        s.risk.id(),
+        "certificate",
+        json!({ "hash": "ab".repeat(32) }),
+        0,
+        30
+    )
+    .await?)
+    .contains("MethodNotFound"));
+
+    // The deploy batches: the code, then `migrate`, from each contract's own account.
+    let r = deploy_and_migrate(&s.risk, &wasm("parry_risk")).await?;
+    assert!(r.is_success(), "{:?}", r.failures());
+    let r = deploy_and_migrate(&e.vault, &wasm("parry_vault")).await?;
+    assert!(r.is_success(), "{:?}", r.failures());
+
+    let after = e.state().await?;
+    for k in [
+        "total_shares",
+        "staked_linear",
+        "nav_e6",
+        "queued_shares",
+        "settled_pnl_e6",
+        "buffer_usdc",
+        "linear_rate_e24",
+    ] {
+        assert_eq!(after[k], state[k], "{k}");
+    }
+    assert_eq!(after["queue_length"], state["queue_length"]);
+    assert_eq!(e.view("queue", json!({})).await?, queue);
+    assert_eq!(e.shares_of(alice.id()).await?, a - a / 2);
+    let fund = e.view("insurance", json!({})).await?;
+    assert_eq!((num(&fund["linear"]), num(&fund["usdc_e6"])), (0, 0));
+    assert_eq!(e.view("config", json!({})).await?["hedge_ratio_min_bps"], 7_000);
+
+    let mut want_ids = run_ids.clone();
+    want_ids["certificate"] = json!(0);
+    assert_eq!(board("last_run_ids").await?, want_ids);
+    let mut want_stats = stats.clone();
+    want_stats["certificates"] = json!(0);
+    assert_eq!(board("stats").await?, want_stats);
+    assert_eq!(board("sealing_key").await?, sealing);
+    assert_eq!(board("get_enclave").await?, enclave);
+    assert_eq!(board("latest_vault_report").await?, latest, "the stored report reads the same");
+
+    // Migrating twice is refused.
+    let again = deploy_and_migrate(&e.vault, &wasm("parry_vault")).await?;
+    assert!(err(again).contains("already migrated"));
+
+    // Both keep working: a report with the new fields reaches the vault, the queue pays, and the
+    // board anchors certificates.
+    wait_past(requested);
+    e.feed().await?;
+    let d = e
+        .submit_extra(
+            10,
+            Hedge::pnl(15 * USDC as i128),
+            json!({ "hedge_ratio_bps": 8_500, "hedge_ratio_reason": "full funding", "margin_ratio": 100 }),
+        )
+        .await?;
+    assert_eq!(event_from(&d, vault, "hedge_ratio_set")["hedge_ratio_bps"], 8_500);
+    let d = e.process().await?;
+    assert_eq!(events_from(&d, vault, "withdrawal_processed").len(), 1);
+    let d = s
+        .submit_report(json!({ "kind": "certificate", "hash": "ce".repeat(32), "reader": "lender.testnet", "expires_at": now_secs() + 3_600 }))
+        .await?;
+    assert_eq!(event_from(&d, s.risk.id(), "certificate_anchored")["reader"], "lender.testnet");
+    let cert =
+        view::<Value>(&s.worker, s.risk.id(), "certificate", json!({ "hash": "ce".repeat(32) })).await?;
+    assert_eq!(cert["reader"], "lender.testnet");
+    e.deposit_ok(&bob, 10 * NEAR).await?;
     Ok(())
 }

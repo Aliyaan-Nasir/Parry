@@ -7,17 +7,42 @@ use base64::Engine;
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+/// A view at the final block.
 pub fn view<T: DeserializeOwned>(
     io: &dyn Io,
     account: &str,
     method: &str,
     args: &Value,
 ) -> Result<T> {
-    let body = json!({
-        "jsonrpc": "2.0", "id": "parry", "method": "query",
-        "params": { "request_type": "call_function", "finality": "final", "account_id": account,
-                    "method_name": method, "args_base64": STANDARD.encode(args.to_string()) },
-    });
+    view_in(io, None, account, method, args)
+}
+
+/// A view at the block with hash `block_hash`, so several reads describe one moment.
+pub fn view_at<T: DeserializeOwned>(
+    io: &dyn Io,
+    block_hash: &str,
+    account: &str,
+    method: &str,
+    args: &Value,
+) -> Result<T> {
+    view_in(io, Some(block_hash), account, method, args)
+}
+
+/// A view at `block` (a block hash), or at the final block when None.
+pub fn view_in<T: DeserializeOwned>(
+    io: &dyn Io,
+    block: Option<&str>,
+    account: &str,
+    method: &str,
+    args: &Value,
+) -> Result<T> {
+    let mut params = json!({ "request_type": "call_function", "account_id": account,
+                             "method_name": method, "args_base64": STANDARD.encode(args.to_string()) });
+    match block {
+        Some(hash) => params["block_id"] = json!(hash),
+        None => params["finality"] = json!("final"),
+    }
+    let body = json!({ "jsonrpc": "2.0", "id": "parry", "method": "query", "params": params });
     let raw = io.post(
         config::RPC,
         &[("content-type", "application/json")],
@@ -35,10 +60,37 @@ pub fn view<T: DeserializeOwned>(
     serde_json::from_slice(&bytes).map_err(|e| format!("rpc {account}.{method} json: {e}"))
 }
 
+/// The current final block: (height, hash).
+pub fn final_block(io: &dyn Io) -> Result<(u64, String)> {
+    let body = json!({ "jsonrpc": "2.0", "id": "parry", "method": "block", "params": { "finality": "final" } });
+    let raw = io.post(
+        config::RPC,
+        &[("content-type", "application/json")],
+        body.to_string().as_bytes(),
+    )?;
+    let v: Value = serde_json::from_slice(&raw).map_err(|e| format!("rpc block: {e}"))?;
+    let header = &v["result"]["header"];
+    match (header["height"].as_u64(), header["hash"].as_str()) {
+        (Some(height), Some(hash)) => Ok((height, hash.to_string())),
+        _ => Err("rpc block: no final block header".into()),
+    }
+}
+
 /// A Pyth price as a float, None when missing or older than `max_age` seconds.
 pub fn oracle_price(io: &dyn Io, price_id: &str, max_age: u64) -> Result<Option<f64>> {
-    let p: Option<Value> = view(
+    oracle_price_in(io, None, price_id, max_age)
+}
+
+/// `oracle_price` at `block` (a block hash), or at the final block when None.
+pub fn oracle_price_in(
+    io: &dyn Io,
+    block: Option<&str>,
+    price_id: &str,
+    max_age: u64,
+) -> Result<Option<f64>> {
+    let p: Option<Value> = view_in(
         io,
+        block,
         config::ORACLE,
         "get_price_no_older_than",
         &json!({ "price_id": price_id, "age": max_age }),
@@ -59,8 +111,14 @@ pub struct Lending {
 }
 
 pub fn lending(io: &dyn Io, account: &str) -> Result<Option<Lending>> {
-    let v: Option<Value> = view(
+    lending_in(io, None, account)
+}
+
+/// `lending` at `block` (a block hash), or at the final block when None.
+pub fn lending_in(io: &dyn Io, block: Option<&str>, account: &str) -> Result<Option<Lending>> {
+    let v: Option<Value> = view_in(
         io,
+        block,
         config::LENDING,
         "get_account",
         &json!({ "account_id": account }),
@@ -76,8 +134,9 @@ pub fn lending(io: &dyn Io, account: &str) -> Result<Option<Lending>> {
         })
     };
     let ratio = |token: &str| -> Result<f64> {
-        let a: Value = view(
+        let a: Value = view_in(
             io,
+            block,
             config::LENDING,
             "get_asset",
             &json!({ "token_id": token }),
@@ -106,6 +165,11 @@ pub fn ft_balance(io: &dyn Io, token: &str, account: &str) -> Result<u128> {
 /// The account's mandate view (`mandate()` on the protected account), or None.
 pub fn mandate(io: &dyn Io, account: &str) -> Result<Option<Value>> {
     view(io, account, "mandate", &json!({}))
+}
+
+/// `mandate` at `block` (a block hash).
+pub fn mandate_in(io: &dyn Io, block: Option<&str>, account: &str) -> Result<Option<Value>> {
+    view_in(io, block, account, "mandate", &json!({}))
 }
 
 /// (owner nonce, guardian nonce).

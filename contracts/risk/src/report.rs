@@ -26,6 +26,9 @@ pub const MAX_PLAN_CHARS: usize = 600;
 pub const MAX_LABEL_LEN: usize = 128;
 pub const MAX_SCORE: u8 = 100;
 pub const MAX_BPS: u32 = 10_000;
+pub const MAX_REASON_CHARS: usize = 280;
+/// Longest a health certificate may stay valid (30 days).
+pub const MAX_CERTIFICATE_TTL_SECS: u64 = 30 * 86_400;
 
 /// The digest the enclave signs for `report_json`.
 pub fn report_digest(report_json: &str) -> [u8; 32] {
@@ -92,9 +95,10 @@ pub enum Report {
     VaultReport(VaultReport),
     Decision(Decision),
     SealingKey(SealingKeyReport),
+    Certificate(CertificateReport),
 }
 
-/// The four report kinds; each has its own strictly increasing run id.
+/// The report kinds; each has its own strictly increasing run id.
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -103,6 +107,7 @@ pub enum Kind {
     VaultReport,
     Decision,
     SealingKey,
+    Certificate,
 }
 
 impl fmt::Display for Kind {
@@ -112,6 +117,7 @@ impl fmt::Display for Kind {
             Kind::VaultReport => "vault_report",
             Kind::Decision => "decision",
             Kind::SealingKey => "sealing_key",
+            Kind::Certificate => "certificate",
         })
     }
 }
@@ -124,6 +130,7 @@ impl Report {
             Report::VaultReport(r) => (Kind::VaultReport, r.run_id, r.at),
             Report::Decision(r) => (Kind::Decision, r.run_id, r.at),
             Report::SealingKey(r) => (Kind::SealingKey, r.run_id, r.at),
+            Report::Certificate(r) => (Kind::Certificate, r.run_id, r.at),
         }
     }
 
@@ -134,6 +141,7 @@ impl Report {
             Report::VaultReport(r) => r.validate(),
             Report::Decision(r) => r.validate(),
             Report::SealingKey(_) => {}
+            Report::Certificate(r) => r.validate(),
         }
     }
 }
@@ -226,11 +234,60 @@ pub struct VaultReport {
     pub components: Components,
     pub hedge: Hedge,
     pub reserves: Reserves,
+    /// The hedge ratio the enclave asks the vault to size with (funding-aware), in bps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hedge_ratio_bps: Option<u32>,
+    /// Why that ratio, in plain words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hedge_ratio_reason: Option<String>,
+    /// The hedge account's maintenance margin over its value, in bps (10000 is liquidation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margin_ratio: Option<u32>,
 }
 
 impl VaultReport {
     fn validate(&self) {
         assert_score("score", self.score);
+        if let Some(ratio) = self.hedge_ratio_bps {
+            require!(ratio <= MAX_BPS, "hedge_ratio_bps must be at most 10000");
+        }
+        if let Some(reason) = &self.hedge_ratio_reason {
+            require!(
+                reason.chars().count() <= MAX_REASON_CHARS,
+                format!("hedge_ratio_reason must be at most {MAX_REASON_CHARS} characters")
+            );
+        }
+    }
+}
+
+/// A vault report as stored before it carried the hedge ratio and margin ratio. Ring slots
+/// written then still hold this layout; `StoredVaultReport` reads both.
+#[near(serializers = [borsh])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VaultReportV1 {
+    pub run_id: u64,
+    pub at: u64,
+    pub vault: AccountId,
+    pub score: u8,
+    pub components: Components,
+    pub hedge: Hedge,
+    pub reserves: Reserves,
+}
+
+impl From<VaultReportV1> for VaultReport {
+    fn from(r: VaultReportV1) -> Self {
+        VaultReport {
+            run_id: r.run_id,
+            at: r.at,
+            vault: r.vault,
+            score: r.score,
+            components: r.components,
+            hedge: r.hedge,
+            reserves: r.reserves,
+            hedge_ratio_bps: None,
+            hedge_ratio_reason: None,
+            margin_ratio: None,
+        }
     }
 }
 
@@ -332,6 +389,33 @@ pub struct Review {
     pub verdict: Verdict,
     pub signing_address: String,
     pub reasoning_hash: Hex32,
+}
+
+// ----- certificate ------------------------------------------------------------------------------
+
+/// The anchor of a health certificate the enclave signed: its hash, who it is for and when it
+/// expires. The certificate itself (and its amounts-free statement) stays off chain.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CertificateReport {
+    pub run_id: u64,
+    pub at: u64,
+    /// SHA-256 of the exact certificate JSON.
+    pub hash: Hex32,
+    pub reader: String,
+    pub expires_at: u64,
+}
+
+impl CertificateReport {
+    fn validate(&self) {
+        assert_label("reader", &self.reader, MAX_LABEL_LEN);
+        require!(self.expires_at > self.at, "a certificate must expire after it was issued");
+        require!(
+            self.expires_at <= self.at.saturating_add(MAX_CERTIFICATE_TTL_SECS),
+            "a certificate is valid for at most 30 days"
+        );
+    }
 }
 
 // ----- sealing_key ------------------------------------------------------------------------------

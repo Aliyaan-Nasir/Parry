@@ -18,7 +18,10 @@
 //!   approve or repay the guard's pool for the person's own address.
 //! - **Deleverage.** Withdraw collateral, swap it, repay, check health: a promise chain in
 //!   `guardian.rs` where every failed step restores the position.
+//! - **Exits.** `close_rhea` sells collateral on the exchange to repay all debt and takes the rest
+//!   back; `unwind` revokes the guardian and sends everything to the owner (`close.rs`).
 
+pub mod close;
 mod guardian;
 pub mod passkey;
 #[cfg(test)]
@@ -68,7 +71,7 @@ pub enum OwnerAction {
     PauseGuardian {
         until: u64,
     },
-    /// Forgets a deleverage that is stuck after the owner has settled it by hand.
+    /// Forgets a deleverage or a close that is stuck after the owner has settled it by hand.
     ClearPending,
     /// Supplies `amount` of `token` to lending as collateral.
     Supply {
@@ -120,6 +123,21 @@ pub enum OwnerAction {
     /// Moves the account to another published global code hash.
     Upgrade {
         code_hash: Base58CryptoHash,
+    },
+    /// Closes the whole lending position through the exchange pool `pool_id`: sells just enough
+    /// collateral (priced by the oracle, plus `slippage_bps`) to repay all debt, then withdraws the
+    /// rest. A position whose health cannot let that much collateral out closes over several
+    /// calls (`close_progress`). Must be the only action.
+    CloseRhea {
+        slippage_bps: u16,
+        pool_id: u64,
+    },
+    /// Revokes the mandate, withdraws every lending position, and sends each listed token's
+    /// balance and the NEAR above the storage reserve to `to` (the NEAR-account owner when
+    /// omitted; required for a passkey owner). Must be the only action.
+    Unwind {
+        tokens: Vec<AccountId>,
+        to: Option<AccountId>,
     },
 }
 
@@ -349,9 +367,16 @@ impl Account {
     fn run_owner(&mut self, nonce: u64, actions: Vec<OwnerAction>) -> Option<Promise> {
         require!(!actions.is_empty(), "no actions");
         let n = actions.len() as u32;
-        let single =
-            actions.iter().any(|a| matches!(a, OwnerAction::MpcSign { .. } | OwnerAction::HlOrder { .. }));
-        require!(!single || n == 1, "a signing action must be the only action");
+        let single = actions.iter().any(|a| {
+            matches!(
+                a,
+                OwnerAction::MpcSign { .. }
+                    | OwnerAction::HlOrder { .. }
+                    | OwnerAction::CloseRhea { .. }
+                    | OwnerAction::Unwind { .. }
+            )
+        });
+        require!(!single || n == 1, "a signing, close or unwind action must be the only action");
         Event::OwnerExecuted { nonce, actions: n }.emit();
         let mut last: Option<Promise> = None;
         for a in actions {
@@ -411,6 +436,7 @@ impl Account {
                 let mut rt = load_runtime();
                 rt.pending = None;
                 save_runtime(&rt);
+                close::clear_closing();
                 None
             }
             OwnerAction::Supply { token, amount } => {
@@ -482,6 +508,8 @@ impl Account {
                 Event::Upgraded { code_hash: &code_hash }.emit();
                 Some(Promise::new(env::current_account_id()).use_global_contract(code_hash))
             }
+            OwnerAction::CloseRhea { slippage_bps, pool_id } => Some(self.start_close(slippage_bps, pool_id)),
+            OwnerAction::Unwind { tokens, to } => Some(self.start_unwind(tokens, to)),
         }
     }
 

@@ -286,7 +286,10 @@ fn run_ids_are_tracked_per_kind() {
     submit(&mut c, &vault_report(1, T0, VAULT));
     submit(&mut c, &decision(1, 1, "alice.testnet"));
     submit(&mut c, &sealing(3));
-    assert_eq!(c.last_run_ids(), LastRunIds { risk_update: 9, vault_report: 1, decision: 1, sealing_key: 3 });
+    assert_eq!(
+        c.last_run_ids(),
+        LastRunIds { risk_update: 9, vault_report: 1, decision: 1, sealing_key: 3, certificate: 0 }
+    );
 }
 
 #[test]
@@ -410,7 +413,10 @@ fn risk_update_stores_positions_and_marks() {
     assert_eq!(c.mark_of("NEAR".into()), Some(mark.clone()));
     assert_eq!(c.marks(), vec![mark]);
     assert_eq!(c.mark_of("BTC".into()), None);
-    assert_eq!(c.stats(), Stats { risk_updates: 1, vault_reports: 0, decisions: 0, accounts_tracked: 2 });
+    assert_eq!(
+        c.stats(),
+        Stats { risk_updates: 1, vault_reports: 0, decisions: 0, accounts_tracked: 2, certificates: 0 }
+    );
 }
 
 #[test]
@@ -830,4 +836,312 @@ fn audit_tracked_accounts_are_bounded() {
     assert!(c.risks_of(account("acc99.testnet")).is_empty());
     assert_eq!(c.risks_of(account("acc100.testnet")).len(), 1);
     assert_eq!(c.risks_of(account(&format!("acc{}.testnet", total - 1))).len(), 1);
+}
+
+// ----- certificate -------------------------------------------------------------------------------
+
+fn certificate(run_id: u64, hash: u64, expires_at: u64) -> Value {
+    json!({
+        "kind": "certificate", "run_id": run_id, "at": T0, "hash": id_hex(hash),
+        "reader": "lender.testnet", "expires_at": expires_at,
+    })
+}
+
+#[test]
+fn certificate_anchor_is_stored_with_its_event() {
+    let mut c = deploy();
+    assert_eq!(c.certificate(hex32(&id_hex(0xce))), None);
+    submit(&mut c, &certificate(1, 0xce, T0 + 3_600));
+    assert_eq!(
+        last_event(),
+        json!({
+            "standard": "parry-risk",
+            "version": "1.0.0",
+            "event": "certificate_anchored",
+            "data": { "hash": id_hex(0xce), "reader": "lender.testnet", "expires_at": T0 + 3_600 },
+        })
+    );
+    assert_eq!(
+        c.certificate(hex32(&id_hex(0xce))),
+        Some(CertificateRecord {
+            hash: hex32(&id_hex(0xce)),
+            reader: "lender.testnet".into(),
+            expires_at: T0 + 3_600,
+            at: T0,
+            key_index: 0,
+        })
+    );
+    let view = serde_json::to_value(c.certificate(hex32(&id_hex(0xce)))).unwrap();
+    assert_eq!(view["hash"], id_hex(0xce));
+    assert_eq!(c.last_run_ids().certificate, 1);
+    assert_eq!(c.stats().certificates, 1);
+    // The other kinds keep their own run ids.
+    submit(&mut c, &risk_update(1, T0));
+    assert_eq!(c.last_run_ids().risk_update, 1);
+}
+
+#[test]
+#[should_panic(expected = "is already anchored")]
+fn certificate_anchored_twice_is_refused() {
+    let mut c = deploy();
+    submit(&mut c, &certificate(1, 0xce, T0 + 3_600));
+    submit(&mut c, &certificate(2, 0xce, T0 + 3_600));
+}
+
+#[test]
+#[should_panic(expected = "run_id 1 is not greater than the last accepted certificate run_id 1")]
+fn certificate_run_id_must_increase() {
+    let mut c = deploy();
+    submit(&mut c, &certificate(1, 0xc1, T0 + 3_600));
+    submit(&mut c, &certificate(1, 0xc2, T0 + 3_600));
+}
+
+#[test]
+#[should_panic(expected = "must expire after it was issued")]
+fn certificate_expiring_at_issue_is_refused() {
+    let mut c = deploy();
+    submit(&mut c, &certificate(1, 0xce, T0));
+}
+
+#[test]
+#[should_panic(expected = "valid for at most 30 days")]
+fn certificate_longer_than_30_days_is_refused() {
+    let mut c = deploy();
+    submit(&mut c, &certificate(1, 0xce, T0 + 30 * 86_400 + 1));
+}
+
+#[test]
+#[should_panic(expected = "reader must be 1 to 128 bytes")]
+fn certificate_without_reader_is_refused() {
+    let mut c = deploy();
+    let mut r = certificate(1, 0xce, T0 + 60);
+    r["reader"] = json!("");
+    submit(&mut c, &r);
+}
+
+#[test]
+#[should_panic(expected = "unknown field")]
+fn certificate_with_amounts_is_refused() {
+    let mut c = deploy();
+    let mut r = certificate(1, 0xce, T0 + 60);
+    r["health"] = json!(1.7);
+    submit(&mut c, &r);
+}
+
+#[test]
+fn certificate_anchors_keep_the_newest_and_free_the_rest() {
+    let mut c = deploy();
+    let n = CERTIFICATE_HISTORY + 2;
+    // Ten anchors per context: each writes two storage slots.
+    for i in 1..=n {
+        if i % 10 == 1 {
+            ctx("relayer.testnet", T0, 0);
+        }
+        let text = certificate(i, i, T0 + 60).to_string();
+        let signature = enclave().sign(&text);
+        c.submit(text, signature);
+    }
+    assert_eq!(c.stats().certificates, n);
+    assert!(c.certificate(hex32(&id_hex(1))).is_none(), "the oldest anchor was evicted");
+    assert!(c.certificate(hex32(&id_hex(2))).is_none());
+    assert!(c.certificate(hex32(&id_hex(3))).is_some());
+    assert!(c.certificate(hex32(&id_hex(n))).is_some());
+    // Dropping the board would write all ten thousand cached slots in one mocked call, past its
+    // gas limit; the assertions above are what this test checks.
+    std::mem::forget(c);
+}
+
+// ----- vault report extensions -------------------------------------------------------------------
+
+#[test]
+fn vault_report_carries_the_hedge_ratio_and_margin_ratio() {
+    let mut c = deploy();
+    let mut r = vault_report(1, T0, VAULT);
+    r["hedge_ratio_bps"] = json!(8_200);
+    r["hedge_ratio_reason"] =
+        json!("7-day funding is -8.0% a year: shorts pay, hedge leans to 82% (min 70%)");
+    r["margin_ratio"] = json!(1_250);
+    ctx("relayer.testnet", T0, 0);
+    let text = r.to_string();
+    c.submit(text.clone(), enclave().sign(&text));
+    // The vault receives the exact signed text, new fields included.
+    assert_eq!(function_calls()[0].2, json!({ "report_json": text }));
+    let latest = c.latest_vault_report().unwrap().report;
+    assert_eq!(latest.hedge_ratio_bps, Some(8_200));
+    assert_eq!(latest.margin_ratio, Some(1_250));
+    let mut stored = serde_json::to_value(&latest).unwrap();
+    stored["kind"] = json!("vault_report");
+    assert_eq!(stored, r);
+}
+
+#[test]
+#[should_panic(expected = "hedge_ratio_reason must be at most 280 characters")]
+fn long_hedge_ratio_reason_is_refused() {
+    let mut c = deploy();
+    let mut r = vault_report(1, T0, VAULT);
+    r["hedge_ratio_reason"] = json!("x".repeat(281));
+    submit(&mut c, &r);
+}
+
+#[test]
+#[should_panic(expected = "hedge_ratio_bps must be at most 10000")]
+fn hedge_ratio_above_one_is_refused() {
+    let mut c = deploy();
+    let mut r = vault_report(1, T0, VAULT);
+    r["hedge_ratio_bps"] = json!(10_001);
+    submit(&mut c, &r);
+}
+
+/// A vault report in the stored layout that has no hedge ratio fields.
+fn v1_record(run_id: u64) -> Record<VaultReportV1> {
+    let r: VaultReport = serde_json::from_value({
+        let mut v = vault_report(run_id, T0, VAULT);
+        v.as_object_mut().unwrap().remove("kind");
+        v
+    })
+    .unwrap();
+    Record {
+        report: VaultReportV1 {
+            run_id: r.run_id,
+            at: r.at,
+            vault: r.vault,
+            score: r.score,
+            components: r.components,
+            hedge: r.hedge,
+            reserves: r.reserves,
+        },
+        key_index: 0,
+    }
+}
+
+#[test]
+fn stored_vault_reports_read_both_layouts() {
+    let v1 = near_sdk::borsh::to_vec(&v1_record(7)).unwrap();
+    let read: StoredVaultReport = near_sdk::borsh::from_slice(&v1).unwrap();
+    assert_eq!(read.0.report.run_id, 7);
+    assert_eq!(read.0.report.hedge_ratio_bps, None);
+    let mut v2 = read.clone();
+    v2.0.report.hedge_ratio_bps = Some(9_000);
+    v2.0.report.hedge_ratio_reason = Some("full hedge".into());
+    v2.0.key_index = 3;
+    let bytes = near_sdk::borsh::to_vec(&v2).unwrap();
+    assert_eq!(near_sdk::borsh::from_slice::<StoredVaultReport>(&bytes).unwrap(), v2);
+    // The shorter layout is never read as the longer one, and the reverse.
+    assert!(near_sdk::borsh::from_slice::<Record<VaultReport>>(&v1).is_err());
+    assert!(near_sdk::borsh::from_slice::<Record<VaultReportV1>>(&bytes).is_err());
+}
+
+// ----- migration ---------------------------------------------------------------------------------
+
+/// Writes the board's state as the deployed code laid it out: one enclave key, run ids for
+/// every kind, a vault report in the shorter slot layout and a decision.
+fn deployed_state() {
+    ctx("owner.testnet", T0, 0);
+    near_sdk::env::storage_remove(LAYOUT_KEY);
+    let mut keys = Vector::new(StorageKey::EnclaveKeys);
+    keys.push(EnclaveKey {
+        index: 0,
+        public_key: String::from(&Enclave::new(1).public_key()),
+        wasm_sha256: hex32(WASM),
+        since: T0 - 100,
+        note: "initial key".into(),
+    });
+    keys.flush();
+    let mut reports: Ring<StoredVaultReport> = Ring::new(StorageKey::VaultReports, VAULT_HISTORY);
+    reports.push(StoredVaultReport(Record { report: v1_record(4).report.into(), key_index: 0 }));
+    reports.flush();
+    // Rewrite the slot in the shorter layout the deployed code wrote.
+    let mut slot = near_sdk::borsh::to_vec(&StorageKey::VaultReports).unwrap();
+    slot.extend_from_slice(&0u64.to_le_bytes());
+    assert!(near_sdk::env::storage_read(&slot).is_some(), "the ring slot key");
+    near_sdk::env::storage_write(&slot, &near_sdk::borsh::to_vec(&v1_record(4)).unwrap());
+    let old = ContractV1 {
+        owner_id: account("owner.testnet"),
+        vault: Some(account(VAULT)),
+        enclave_pk: Enclave::new(1).0.verifying_key().to_bytes(),
+        enclave_keys: keys,
+        last_run_ids: LastRunIdsV1 { risk_update: 11, vault_report: 4, decision: 2, sealing_key: 1 },
+        stats: StatsV1 { risk_updates: 11, vault_reports: 4, decisions: 2, accounts_tracked: 3 },
+        positions: LookupMap::new(StorageKey::Positions),
+        tracked: Ring::new(StorageKey::TrackedAccounts, MAX_ACCOUNTS),
+        marks: IterableMap::new(StorageKey::Marks),
+        vault_reports: reports,
+        decisions: LookupMap::new(StorageKey::Decisions),
+        decision_ids: Ring::new(StorageKey::DecisionIds, DECISION_HISTORY),
+        decisions_by_account: LookupMap::new(StorageKey::DecisionsByAccount),
+        sealing_key: Some(SealingKey { public_key: hex32(&id_hex(0x5ea1)), run_id: 1, at: T0, key_index: 0 }),
+    };
+    near_sdk::env::state_write(&old);
+}
+
+#[test]
+fn migrate_keeps_the_deployed_state_and_adds_certificates() {
+    deployed_state();
+    ctx("owner.testnet", T0, 0);
+    let mut c = Contract::migrate();
+    assert_eq!(
+        c.last_run_ids(),
+        LastRunIds { risk_update: 11, vault_report: 4, decision: 2, sealing_key: 1, certificate: 0 }
+    );
+    assert_eq!(
+        c.stats(),
+        Stats { risk_updates: 11, vault_reports: 4, decisions: 2, accounts_tracked: 3, certificates: 0 }
+    );
+    assert_eq!(c.get_enclave().note, "initial key");
+    assert_eq!(c.sealing_key().unwrap().run_id, 1);
+    let old = c.latest_vault_report().unwrap();
+    assert_eq!((old.report.run_id, old.report.hedge_ratio_bps), (4, None));
+    // The stored view of a report in the shorter layout has no new fields.
+    assert!(serde_json::to_value(&old.report).unwrap().get("hedge_ratio_bps").is_none());
+
+    // Every kind keeps working, the certificate kind starts its own sequence.
+    submit(&mut c, &risk_update(12, T0));
+    let mut r = vault_report(5, T0, VAULT);
+    r["hedge_ratio_bps"] = json!(9_000);
+    submit(&mut c, &r);
+    submit(&mut c, &certificate(1, 0xce, T0 + 600));
+    let reports = c.vault_reports(None, None);
+    assert_eq!(
+        reports.iter().map(|r| (r.report.run_id, r.report.hedge_ratio_bps)).collect::<Vec<_>>(),
+        vec![(5, Some(9_000)), (4, None)]
+    );
+    assert!(c.certificate(hex32(&id_hex(0xce))).is_some());
+    ctx("owner.testnet", T0 + 10, 1);
+    c.set_enclave(Enclave::new(2).public_key(), hex32(WASM2), "rotated".into());
+    assert_eq!(c.enclave_history(None, None).len(), 2);
+}
+
+#[test]
+fn migrate_can_run_from_the_board_account_in_the_deploy_batch() {
+    deployed_state();
+    ctx("risk.parry.testnet", T0, 0);
+    let c = Contract::migrate();
+    assert_eq!(c.config().owner_id, account("owner.testnet"));
+}
+
+#[test]
+#[should_panic(expected = "owner only")]
+fn migrate_is_owner_only() {
+    deployed_state();
+    ctx("mallory.testnet", T0, 0);
+    Contract::migrate();
+}
+
+#[test]
+#[should_panic(expected = "the state is already migrated")]
+fn migrate_runs_once() {
+    deployed_state();
+    ctx("owner.testnet", T0, 0);
+    let c = Contract::migrate();
+    near_sdk::env::state_write(&c);
+    Contract::migrate();
+}
+
+#[test]
+#[should_panic(expected = "the state is already migrated")]
+fn a_fresh_board_needs_no_migration() {
+    let c = deploy();
+    near_sdk::env::state_write(&c);
+    ctx("owner.testnet", T0, 0);
+    Contract::migrate();
 }

@@ -85,6 +85,10 @@ impl AccountLines {
     pub fn borrowed_of(&self, token: &AccountId) -> u128 {
         self.borrowed.iter().filter(|l| &l.token_id == token).map(|l| l.balance.0).sum()
     }
+
+    pub fn supplied_of(&self, token: &AccountId) -> u128 {
+        self.supplied.iter().filter(|l| &l.token_id == token).map(|l| l.balance.0).sum()
+    }
 }
 
 /// What the health computation needs to know about one asset.

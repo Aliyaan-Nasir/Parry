@@ -8,7 +8,8 @@
 //!
 //! Modes: `keys` (the signing and sealing keys), `risk_update` (signed scores and marks for the
 //! risk board), `guardian` (reviewed, signed rescue envelopes), `vault_report` (the vault's
-//! hedge, risk score and proof of reserves).
+//! hedge, hedge ratio, risk score and proof of reserves), `certificate` (a signed statement that
+//! an account's health is at least a threshold, with nothing else about the position).
 
 pub mod ai;
 pub mod chain;

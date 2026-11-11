@@ -200,6 +200,11 @@ pub fn ed25519_key(k: &SigningKey) -> String {
 
 impl Stack {
     pub async fn new() -> Result<Self> {
+        Self::with_risk_code(&wasm("parry_risk")).await
+    }
+
+    /// The stack with the risk board running `risk_code` (the deployed build, for a migration).
+    pub async fn with_risk_code(risk_code: &[u8]) -> Result<Self> {
         let worker = near_workspaces::sandbox().await?;
         let root = worker.root_account()?;
 
@@ -236,7 +241,7 @@ impl Stack {
         let signer = deploy(&root, "signer", &wasm("parry_test_mock_signer"), 10).await?;
 
         let enclave = SigningKey::from_bytes(&[42u8; 32]);
-        let risk = deploy(&root, "risk", &wasm("parry_risk"), 20).await?;
+        let risk = deploy(&root, "risk", risk_code, 20).await?;
         ok(risk
             .call("new")
             .args_json(json!({ "owner_id": root.id(), "enclave_key": ed25519_key(&enclave), "wasm_sha256": "ab".repeat(32), "vault": null }))

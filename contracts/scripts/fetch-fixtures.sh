@@ -7,6 +7,8 @@
 #   wrap      wrap.testnet                         wNEAR
 #   dex       ref-finance-101.testnet              Rhea (Ref v2) exchange
 #   linear    linear-protocol.testnet              LiNEAR liquid staking
+#   vault-v1  vault.parry.testnet                  Parry's vault as deployed, for the migration test
+#   risk-v1   risk.parry.testnet                   Parry's risk board as deployed, for the migration test
 #
 # Output: contracts/target/fixtures/<name>.wasm. Re-running skips files whose hash already matches.
 set -euo pipefail
@@ -19,6 +21,8 @@ fixtures=(
   "wrap https://test.rpc.fastnear.com wrap.testnet DsbyUrKaSJAT91Pewfi71QExPLBooDp1z4sL9GUDhNHa"
   "dex https://test.rpc.fastnear.com ref-finance-101.testnet AEAm8sQ5KYZRgnpq2CN2NhX6d8QV76iRtiDpy5Ai6zDX"
   "linear https://test.rpc.fastnear.com linear-protocol.testnet 8Bby4ofnYGtudd3PinKZ1KyvmUKJVyxmfC99ZccRDVDv"
+  "vault-v1 https://test.rpc.fastnear.com vault.parry.testnet 9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz"
+  "risk-v1 https://test.rpc.fastnear.com risk.parry.testnet EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg"
 )
 
 b58_sha256() { # file -> base58(sha256(file))

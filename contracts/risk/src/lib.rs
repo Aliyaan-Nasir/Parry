@@ -3,7 +3,7 @@
 //! The on-chain record of what Parry's enclave sees and decides. The enclave (a program in a
 //! TEE whose ed25519 key never leaves it) signs each report; anyone may relay it with `submit`,
 //! and the board accepts it only if the signature verifies against the current enclave key, its
-//! run id is new for its kind, and its observation time is recent. Four kinds exist:
+//! run id is new for its kind, and its observation time is recent. Five kinds exist:
 //!
 //! - `risk_update`: the latest risk of every monitored position, and the marks behind it.
 //! - `vault_report`: the vault's risk score, hedge and proof-of-reserves summary. A report for
@@ -11,6 +11,8 @@
 //!   contract, so the enclave signature is the vault's only source of risk input.
 //! - `decision`: a guardian decision with the hashes of its action envelope and model review.
 //! - `sealing_key`: the enclave's X25519 key that sealed mandates are encrypted to.
+//! - `certificate`: the anchor of a health certificate (its hash, reader and expiry), so anyone
+//!   handed the certificate can check on chain that the enclave issued it.
 //!
 //! Every history is bounded and evicts its oldest entries (storage included), so the board's
 //! storage cost has a ceiling: that includes the accounts with stored positions, of which the
@@ -40,6 +42,8 @@ pub const MAX_REPORT_FUTURE_SECS: u64 = 60;
 pub const MAX_REPORT_BYTES: usize = 64 * 1024;
 pub const VAULT_HISTORY: u64 = 300;
 pub const DECISION_HISTORY: u64 = 500;
+/// Certificate anchors kept; a new one beyond this evicts the oldest.
+pub const CERTIFICATE_HISTORY: u64 = 10_000;
 pub const DECISIONS_PER_ACCOUNT: usize = 50;
 /// Positions kept per account; a new one beyond this evicts the least recently updated.
 pub const POSITIONS_PER_ACCOUNT: usize = 16;
@@ -65,7 +69,13 @@ enum StorageKey {
     DecisionIds,
     DecisionsByAccount,
     TrackedAccounts,
+    Certificates,
+    CertificateIds,
 }
+
+/// Raw storage key holding the state layout version, written by `migrate`.
+const LAYOUT_KEY: &[u8] = b"layout";
+const LAYOUT_VERSION: u8 = 2;
 
 /// What the vault exposes to the board.
 #[ext_contract(ext_vault)]
@@ -141,6 +151,7 @@ pub struct LastRunIds {
     pub vault_report: u64,
     pub decision: u64,
     pub sealing_key: u64,
+    pub certificate: u64,
 }
 
 impl LastRunIds {
@@ -150,6 +161,7 @@ impl LastRunIds {
             Kind::VaultReport => self.vault_report,
             Kind::Decision => self.decision,
             Kind::SealingKey => self.sealing_key,
+            Kind::Certificate => self.certificate,
         }
     }
 
@@ -159,6 +171,7 @@ impl LastRunIds {
             Kind::VaultReport => &mut self.vault_report,
             Kind::Decision => &mut self.decision,
             Kind::SealingKey => &mut self.sealing_key,
+            Kind::Certificate => &mut self.certificate,
         };
         *slot = run_id;
     }
@@ -173,6 +186,44 @@ pub struct Stats {
     pub decisions: u64,
     /// Accounts with at least one stored position risk.
     pub accounts_tracked: u64,
+    pub certificates: u64,
+}
+
+/// A health certificate's anchor, as `certificate(hash)` returns it.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CertificateRecord {
+    pub hash: Hex32,
+    pub reader: String,
+    pub expires_at: u64,
+    /// When the enclave issued it (the report's `at`).
+    pub at: u64,
+    /// The enclave key that signed the anchor.
+    pub key_index: u32,
+}
+
+/// A stored vault report: slots written before the report carried the hedge ratio hold the
+/// shorter layout, and both read as `Record<VaultReport>`. The two layouts never parse as each
+/// other: the longer one needs at least three more bytes than the shorter one holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredVaultReport(pub Record<VaultReport>);
+
+impl near_sdk::borsh::BorshSerialize for StoredVaultReport {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        near_sdk::borsh::BorshSerialize::serialize(&self.0, writer)
+    }
+}
+
+impl near_sdk::borsh::BorshDeserialize for StoredVaultReport {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+        if let Ok(r) = near_sdk::borsh::from_slice::<Record<VaultReport>>(&bytes) {
+            return Ok(Self(r));
+        }
+        let r: Record<VaultReportV1> = near_sdk::borsh::from_slice(&bytes)?;
+        Ok(Self(Record { report: r.report.into(), key_index: r.key_index }))
+    }
 }
 
 #[near(serializers = [json])]
@@ -196,6 +247,8 @@ pub enum Event {
     SealingKeyPublished { run_id: u64, public_key: Hex32 },
     #[event_version("1.0.0")]
     EnclaveChanged { index: u32, public_key: String, wasm_sha256: Hex32 },
+    #[event_version("1.0.0")]
+    CertificateAnchored { hash: Hex32, reader: String, expires_at: u64 },
 }
 
 #[near(contract_state)]
@@ -214,11 +267,50 @@ pub struct Contract {
     /// evicted once `MAX_ACCOUNTS` hold positions.
     tracked: Ring<AccountId>,
     marks: IterableMap<String, Mark>,
-    vault_reports: Ring<Record<VaultReport>>,
+    vault_reports: Ring<StoredVaultReport>,
     decisions: LookupMap<Hex32, Record<Decision>>,
     /// Ids of the decisions kept, in arrival order; evicting one removes its record.
     decision_ids: Ring<Hex32>,
     /// Per account, the ids of its newest decisions, oldest first.
+    decisions_by_account: LookupMap<AccountId, Vec<Hex32>>,
+    sealing_key: Option<SealingKey>,
+    certificates: LookupMap<Hex32, CertificateRecord>,
+    /// Hashes of the certificate anchors kept, in arrival order; evicting one removes its record.
+    certificate_ids: Ring<Hex32>,
+}
+
+/// The run ids as the board stored them before the certificate kind.
+#[near(serializers = [borsh])]
+struct LastRunIdsV1 {
+    risk_update: u64,
+    vault_report: u64,
+    decision: u64,
+    sealing_key: u64,
+}
+
+#[near(serializers = [borsh])]
+struct StatsV1 {
+    risk_updates: u64,
+    vault_reports: u64,
+    decisions: u64,
+    accounts_tracked: u64,
+}
+
+/// The state layout deployed before certificate anchors, which `migrate` reads.
+#[near(serializers = [borsh])]
+struct ContractV1 {
+    owner_id: AccountId,
+    vault: Option<AccountId>,
+    enclave_pk: [u8; 32],
+    enclave_keys: Vector<EnclaveKey>,
+    last_run_ids: LastRunIdsV1,
+    stats: StatsV1,
+    positions: LookupMap<AccountId, Vec<PositionRecord>>,
+    tracked: Ring<AccountId>,
+    marks: IterableMap<String, Mark>,
+    vault_reports: Ring<StoredVaultReport>,
+    decisions: LookupMap<Hex32, Record<Decision>>,
+    decision_ids: Ring<Hex32>,
     decisions_by_account: LookupMap<AccountId, Vec<Hex32>>,
     sealing_key: Option<SealingKey>,
 }
@@ -260,9 +352,55 @@ impl Contract {
             decision_ids: Ring::new(StorageKey::DecisionIds, DECISION_HISTORY),
             decisions_by_account: LookupMap::new(StorageKey::DecisionsByAccount),
             sealing_key: None,
+            certificates: LookupMap::new(StorageKey::Certificates),
+            certificate_ids: Ring::new(StorageKey::CertificateIds, CERTIFICATE_HISTORY),
         };
         this.install_enclave(enclave_key, wasm_sha256, "initial key".to_string());
+        env::storage_write(LAYOUT_KEY, &[LAYOUT_VERSION]);
         this
+    }
+
+    /// Moves the deployed state to this layout: the run id and count of certificate anchors
+    /// start at 0, and stored vault reports keep their layout (`StoredVaultReport` reads both).
+    /// Called by the owner, or by the board's own account in the batch that deploys the code.
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        require!(env::storage_read(LAYOUT_KEY).is_none(), "the state is already migrated");
+        let old: ContractV1 =
+            env::state_read().unwrap_or_else(|| env::panic_str("no deployed state to migrate"));
+        let caller = env::predecessor_account_id();
+        require!(caller == old.owner_id || caller == env::current_account_id(), "owner only");
+        env::storage_write(LAYOUT_KEY, &[LAYOUT_VERSION]);
+        Self {
+            owner_id: old.owner_id,
+            vault: old.vault,
+            enclave_pk: old.enclave_pk,
+            enclave_keys: old.enclave_keys,
+            last_run_ids: LastRunIds {
+                risk_update: old.last_run_ids.risk_update,
+                vault_report: old.last_run_ids.vault_report,
+                decision: old.last_run_ids.decision,
+                sealing_key: old.last_run_ids.sealing_key,
+                certificate: 0,
+            },
+            stats: Stats {
+                risk_updates: old.stats.risk_updates,
+                vault_reports: old.stats.vault_reports,
+                decisions: old.stats.decisions,
+                accounts_tracked: old.stats.accounts_tracked,
+                certificates: 0,
+            },
+            positions: old.positions,
+            tracked: old.tracked,
+            marks: old.marks,
+            vault_reports: old.vault_reports,
+            decisions: old.decisions,
+            decision_ids: old.decision_ids,
+            decisions_by_account: old.decisions_by_account,
+            sealing_key: old.sealing_key,
+            certificates: LookupMap::new(StorageKey::Certificates),
+            certificate_ids: Ring::new(StorageKey::CertificateIds, CERTIFICATE_HISTORY),
+        }
     }
 
     /// Accepts a report signed by the enclave. Anyone may relay: the guards are the ed25519
@@ -316,6 +454,7 @@ impl Contract {
                 self.sealing_key =
                     Some(SealingKey { public_key: r.public_key, run_id: r.run_id, at: r.at, key_index });
             }
+            Report::Certificate(r) => self.apply_certificate(r, key_index),
         }
     }
 
@@ -372,13 +511,18 @@ impl Contract {
     }
 
     pub fn latest_vault_report(&self) -> Option<Record<VaultReport>> {
-        self.vault_reports.newest().cloned()
+        self.vault_reports.newest().map(|r| r.0.clone())
     }
 
     /// Vault reports, newest first.
     pub fn vault_reports(&self, from_index: Option<u32>, limit: Option<u32>) -> Vec<Record<VaultReport>> {
         let (from, limit) = page(from_index, limit);
-        self.vault_reports.newest_first(from, limit).cloned().collect()
+        self.vault_reports.newest_first(from, limit).map(|r| r.0.clone()).collect()
+    }
+
+    /// The anchor of the health certificate whose JSON hashes to `hash`, or null.
+    pub fn certificate(&self, hash: Hex32) -> Option<CertificateRecord> {
+        self.certificates.get(&hash).cloned()
     }
 
     pub fn decision(&self, id: Hex32) -> Option<Record<Decision>> {
@@ -530,7 +674,30 @@ impl Contract {
                 .on_vault_report(report_json)
                 .detach();
         }
-        self.vault_reports.push(Record { report: r, key_index });
+        self.vault_reports.push(StoredVaultReport(Record { report: r, key_index }));
+    }
+
+    fn apply_certificate(&mut self, r: CertificateReport, key_index: u32) {
+        require!(
+            !self.certificates.contains_key(&r.hash),
+            format!("certificate {} is already anchored", r.hash)
+        );
+        Event::CertificateAnchored { hash: r.hash, reader: r.reader.clone(), expires_at: r.expires_at }
+            .emit();
+        self.stats.certificates += 1;
+        self.certificates.insert(
+            r.hash,
+            CertificateRecord {
+                hash: r.hash,
+                reader: r.reader,
+                expires_at: r.expires_at,
+                at: r.at,
+                key_index,
+            },
+        );
+        if let Some(evicted) = self.certificate_ids.push(r.hash) {
+            self.certificates.remove(&evicted);
+        }
     }
 
     fn apply_decision(&mut self, d: Decision, key_index: u32) {

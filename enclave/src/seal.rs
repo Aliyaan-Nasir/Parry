@@ -28,7 +28,21 @@ pub struct Policy {
     /// Act on an Aave position at or below this health.
     #[serde(default = "default_evm_trigger")]
     pub evm_trigger_health: f64,
+    /// The rescue steps in the owner's order of preference, an ordered subset of `STEPS`.
+    /// Empty means the strategy's own order. Left out of the JSON when empty, so a policy
+    /// sealed without it reads and writes the same bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<String>,
 }
+
+/// Every rescue step the guardian knows, in the default order.
+pub const STEPS: [&str; 5] = [
+    "repay",
+    "add_collateral",
+    "deleverage",
+    "hl_reduce",
+    "evm_repay",
+];
 
 fn default_hl_reduce() -> f64 {
     0.25
@@ -48,6 +62,36 @@ impl Default for Policy {
             strategy: "repay-first".into(),
             hl_reduce_fraction: default_hl_reduce(),
             evm_trigger_health: default_evm_trigger(),
+            steps: vec![],
+        }
+    }
+}
+
+impl Policy {
+    /// The steps the guardian tries, in order: the owner's `steps` (known names only, each
+    /// once), or the strategy's order when none is given.
+    pub fn step_order(&self) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = vec![];
+        for s in &self.steps {
+            if let Some(known) = STEPS.iter().find(|k| **k == s.as_str()) {
+                if !out.contains(known) {
+                    out.push(known);
+                }
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+        match self.strategy.as_str() {
+            "keep-exposure" => vec![
+                "add_collateral",
+                "repay",
+                "deleverage",
+                "hl_reduce",
+                "evm_repay",
+            ],
+            "deleverage-only" => vec!["deleverage", "hl_reduce", "evm_repay"],
+            _ => STEPS.to_vec(),
         }
     }
 }
@@ -108,4 +152,65 @@ pub fn seal(
         )
         .expect("encrypt");
     [eph_pk.as_slice(), &nonce, &ct].concat()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with(strategy: &str, steps: &[&str]) -> Policy {
+        Policy {
+            strategy: strategy.into(),
+            steps: steps.iter().map(|s| s.to_string()).collect(),
+            ..Policy::default()
+        }
+    }
+
+    #[test]
+    fn step_order_follows_the_owner_then_the_strategy() {
+        assert_eq!(with("repay-first", &[]).step_order(), STEPS.to_vec());
+        assert_eq!(
+            with("keep-exposure", &[]).step_order(),
+            vec![
+                "add_collateral",
+                "repay",
+                "deleverage",
+                "hl_reduce",
+                "evm_repay"
+            ]
+        );
+        assert_eq!(
+            with("deleverage-only", &[]).step_order(),
+            vec!["deleverage", "hl_reduce", "evm_repay"]
+        );
+        // The owner's order wins; unknown names and repeats are dropped.
+        assert_eq!(
+            with(
+                "repay-first",
+                &["hl_reduce", "withdraw", "repay", "hl_reduce"]
+            )
+            .step_order(),
+            vec!["hl_reduce", "repay"]
+        );
+        // Nothing known left: the strategy's order.
+        assert_eq!(
+            with("deleverage-only", &["transfer"]).step_order(),
+            vec!["deleverage", "hl_reduce", "evm_repay"]
+        );
+    }
+
+    #[test]
+    fn steps_are_optional_in_the_sealed_json() {
+        let p: Policy = serde_json::from_str(
+            r#"{"trigger_score":55,"trigger_health":1.15,"target_health":2.0,"strategy":"keep-exposure"}"#,
+        )
+        .unwrap();
+        assert!(p.steps.is_empty());
+        assert!(!serde_json::to_string(&p).unwrap().contains("steps"));
+        let q: Policy = serde_json::from_str(
+            r#"{"trigger_score":55,"trigger_health":1.15,"target_health":2.0,"strategy":"keep-exposure","steps":["deleverage","repay"]}"#,
+        )
+        .unwrap();
+        assert_eq!(q.step_order(), vec!["deleverage", "repay"]);
+    }
 }

@@ -483,3 +483,185 @@ async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()>
         .await?;
     Ok(())
 }
+
+/// Deepens the wNEAR/USDC pool to 10000 NEAR at $3.00, so a close's sale moves its price by
+/// about 0.3% rather than 3%.
+async fn deepen_pool(s: &Stack) -> Result<()> {
+    let root = &s.root;
+    call(root, s.wrap.id(), "near_deposit", json!({}), 9_000 * NEAR, 30).await?;
+    let d = s.dex.id();
+    for (token, amount) in [(s.wrap.id(), 9_000 * NEAR), (s.usdc.id(), 27_000 * USDC)] {
+        call(
+            root,
+            token,
+            "ft_transfer_call",
+            json!({ "receiver_id": d, "amount": amount.to_string(), "msg": "" }),
+            1,
+            100,
+        )
+        .await?;
+    }
+    call(
+        root,
+        d,
+        "add_liquidity",
+        json!({ "pool_id": s.pool_id, "amounts": [(9_000 * NEAR).to_string(), (27_000 * USDC).to_string()] }),
+        NEAR / 100,
+        100,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn ft_balance(s: &Stack, token: &AccountId, who: &AccountId) -> Result<u128> {
+    let b: String = view(&s.worker, token, "ft_balance_of", json!({ "account_id": who })).await?;
+    Ok(b.parse()?)
+}
+
+fn close(slippage_bps: u16, s: &Stack) -> Value {
+    json!([{ "close_rhea": { "slippage_bps": slippage_bps, "pool_id": s.pool_id } }])
+}
+
+#[tokio::test]
+async fn close_rhea_repays_all_debt_and_returns_the_collateral() -> Result<()> {
+    let s = Stack::new().await?;
+    deepen_pool(&s).await?;
+    let key = SigningKey::from_bytes(&[1u8; 32]);
+    let (owner, acct) = protected(&s, "alice", &key).await?;
+    let wnear_before = ft_balance(&s, s.wrap.id(), &acct).await?;
+    let usdc_before = ft_balance(&s, s.usdc.id(), &acct).await?;
+
+    // Health 1.425: the lending contract lets out only what keeps health at 1.02, so the first
+    // round repays part of the debt and reports its progress.
+    s.refresh().await?;
+    let r = s.owner(&owner, &acct, close(300, &s), 900).await?;
+    let progress = r.events("close_progress");
+    assert_eq!(progress.len(), 1, "logs: {:#?}", r.logs());
+    let (c1, b1) = s.position(&acct).await?;
+    assert!(c1 < 100 * NEAR && c1 > 60 * NEAR, "collateral after the first round {c1}");
+    assert!(b1 > 0 && b1 < 100 * USDC * INNER, "debt after the first round {b1}");
+    assert!(s.health_bps(&acct, 300_000_000).await? > 20_000, "the round left the position healthier");
+    assert!(view::<Value>(&s.worker, &acct, "closing", json!({})).await?.is_null());
+
+    // The second round buys the whole debt, repays it and takes the rest of the collateral back.
+    s.refresh().await?;
+    let r = s.owner(&owner, &acct, close(300, &s), 900).await?;
+    let closed = r.events("position_closed");
+    assert_eq!(closed.len(), 1, "logs: {:#?}", r.logs());
+    assert_eq!(s.position(&acct).await?, (0, 0), "no collateral and no debt left");
+    let returned: u128 = closed[0]["collateral_returned"].as_str().unwrap().parse()?;
+    let sold: u128 = closed[0]["collateral_sold"].as_str().unwrap().parse()?;
+    assert_eq!(returned + sold, c1);
+    assert_eq!(ft_balance(&s, s.wrap.id(), &acct).await?, wnear_before + returned);
+    // The swap's output beyond the repay stays in the account.
+    assert!(ft_balance(&s, s.usdc.id(), &acct).await? >= usdc_before);
+    assert!(view::<Value>(&s.worker, &acct, "closing", json!({})).await?.is_null());
+    Ok(())
+}
+
+#[tokio::test]
+async fn close_rhea_rolls_back_a_failing_swap() -> Result<()> {
+    let s = Stack::new().await?;
+    let key = SigningKey::from_bytes(&[1u8; 32]);
+    let (owner, acct) = protected(&s, "alice", &key).await?;
+    // Repay part of the debt by hand so one round can close it.
+    s.owner(
+        &owner,
+        &acct,
+        json!([{ "repay": { "token": s.usdc.id(), "amount": (60 * USDC).to_string() } }]),
+        100,
+    )
+    .await?;
+    let before = s.position(&acct).await?;
+
+    // A 0.01% bound the pool's fee alone breaks: the swap fails and the collateral goes back.
+    s.refresh().await?;
+    let r = s.owner(&owner, &acct, close(1, &s), 900).await?;
+    let rolled = r.events("close_rolled_back");
+    assert_eq!(rolled.len(), 1, "logs: {:#?}", r.logs());
+    assert_eq!(rolled[0]["stage"], "swap");
+    let after = s.position(&acct).await?;
+    assert_eq!(after.0, before.0, "the collateral is back");
+    assert!(after.1 >= before.1, "nothing was repaid");
+    assert!(view::<Value>(&s.worker, &acct, "closing", json!({})).await?.is_null());
+
+    // The guardian still works afterwards.
+    let relayer = s.user("relayer", 20).await?;
+    ok(s.guardian(
+        &relayer,
+        &key,
+        &acct,
+        1,
+        json!({ "repay": { "token": s.usdc.id(), "amount": "1" } }),
+        150,
+    )
+    .await?)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn unwind_sends_everything_home_and_reports_what_it_could_not() -> Result<()> {
+    let s = Stack::new().await?;
+    let key = SigningKey::from_bytes(&[1u8; 32]);
+    let owner = s.user("alice", 300).await?;
+    let acct = s.protected_account(&owner, NEAR / 2).await?;
+    owner.transfer_near(&acct, NearToken::from_near(50)).await?.into_result()?;
+    s.owner(&owner, &acct, json!([
+        { "call": { "receiver_id": s.wrap.id(), "method_name": "near_deposit", "args": "e30=", "deposit": (40 * NEAR).to_string(), "gas": "20000000000000" } },
+        { "supply": { "token": s.wrap.id(), "amount": (30 * NEAR).to_string() } },
+        { "set_mandate": { "mandate": mandate(&s, &key) } },
+    ]), 200).await?;
+    call(
+        &s.root,
+        s.usdc.id(),
+        "ft_transfer",
+        json!({ "receiver_id": acct, "amount": (60 * USDC).to_string() }),
+        1,
+        30,
+    )
+    .await?;
+    // The owner is registered with USDC, not with wNEAR: the wNEAR transfer will fail.
+    call(
+        &owner,
+        s.usdc.id(),
+        "storage_deposit",
+        json!({ "account_id": owner.id(), "registration_only": true }),
+        NEAR / 100,
+        30,
+    )
+    .await?;
+    let near_before = owner.view_account().await?.balance;
+
+    let r = s
+        .owner(
+            &owner,
+            &acct,
+            json!([{ "unwind": { "tokens": [s.usdc.id(), s.wrap.id()], "to": null } }]),
+            600,
+        )
+        .await?;
+    assert_eq!(r.events("mandate_revoked").len(), 1);
+    assert!(view::<Value>(&s.worker, &acct, "mandate", json!({})).await?.is_null());
+    // The lending collateral came back to the account.
+    assert_eq!(s.position(&acct).await?.0, 0);
+    let partial = r.events("unwind_partial");
+    assert_eq!(partial.len(), 1, "logs: {:#?}", r.logs());
+    assert_eq!(partial[0]["token"], s.wrap.id().as_str());
+    let unwound = r.events("unwound");
+    assert_eq!(unwound.len(), 1);
+    assert_eq!(unwound[0]["tokens"], json!([{ "token": s.usdc.id(), "amount": (60 * USDC).to_string() }]));
+    assert_eq!(ft_balance(&s, s.usdc.id(), owner.id()).await?, 60 * USDC);
+    // The wNEAR (10 in the wallet and 30 from lending) stays in the account.
+    assert_eq!(ft_balance(&s, s.wrap.id(), &acct).await?, 40 * NEAR);
+    // The NEAR above the storage reserve reached the owner.
+    let near: u128 = unwound[0]["near"].as_str().unwrap().parse()?;
+    assert!(near > 5 * NEAR, "{near}");
+    let near_after = owner.view_account().await?.balance;
+    assert!(
+        near_after.as_yoctonear() > near_before.as_yoctonear() + near - NEAR,
+        "the owner received the NEAR"
+    );
+    let left = s.worker.view_account(&acct).await?.balance.as_yoctonear();
+    assert!(left < NEAR / 10, "only the storage reserve stays: {left}");
+    Ok(())
+}

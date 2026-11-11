@@ -35,12 +35,12 @@ use crate::{
     ft_transfer_call, load_runtime, save_runtime, Account, AccountExt, Action, Event, Pending, Runtime,
 };
 
-const GAS_VIEW: Gas = Gas::from_tgas(10);
-const GAS_CALLBACK: Gas = Gas::from_tgas(30);
-const GAS_DEX: Gas = Gas::from_tgas(40);
-const GAS_WITHDRAW: Gas = Gas::from_tgas(130);
+pub(crate) const GAS_VIEW: Gas = Gas::from_tgas(10);
+pub(crate) const GAS_CALLBACK: Gas = Gas::from_tgas(30);
+pub(crate) const GAS_DEX: Gas = Gas::from_tgas(40);
+pub(crate) const GAS_WITHDRAW: Gas = Gas::from_tgas(130);
 /// What `guardian_execute` itself may burn: the signature check and the envelope parsing.
-const GAS_ENVELOPE: Gas = Gas::from_tgas(30);
+pub(crate) const GAS_ENVELOPE: Gas = Gas::from_tgas(30);
 
 /// Least prepaid gas for a deleverage. Each callback runs on the gas the previous step left, so
 /// with less a later callback could run out after the collateral left the lending contract and
@@ -81,7 +81,7 @@ pub const HL_GAS: Gas = Gas::from_tgas(
         + crate::GAS_AFTER_SIGN.as_tgas(),
 );
 
-fn require_gas(need: Gas) {
+pub(crate) fn require_gas(need: Gas) {
     if env::prepaid_gas() < need {
         env::panic_str(&format!("attach at least {} TGas for this action", need.as_tgas()));
     }
@@ -89,7 +89,7 @@ fn require_gas(need: Gas) {
 /// A mark older than this cannot price a guard.
 pub const MARK_MAX_AGE_SECS: u64 = 300;
 /// Oracle prices for the final health check.
-const PRICE_MAX_AGE_SECS: u64 = 180;
+pub(crate) const PRICE_MAX_AGE_SECS: u64 = 180;
 /// A deleverage that leaves health under the floor pauses the guardian this long.
 const UNSAFE_PAUSE_SECS: u64 = 86_400;
 
@@ -109,7 +109,7 @@ pub enum GuardEvent<'a> {
     GuardianRefused { nonce: u64, action: &'a str, reason: &'a str },
 }
 
-fn refuse(nonce: u64, action: &str, reason: &str) {
+pub(crate) fn refuse(nonce: u64, action: &str, reason: &str) {
     GuardEvent::GuardianRefused { nonce, action, reason }.emit();
 }
 
@@ -158,9 +158,9 @@ fn decode_ed25519(key: &str) -> [u8; 32] {
 
 /// A token's price as `read_prices` returns it: the oracle price, the lending contract's
 /// volatility ratio, and the rate (NEAR per token, 1e24) for a token priced through one.
-type Quote = (PythPrice, u32, Option<u128>);
+pub(crate) type Quote = (PythPrice, u32, Option<u128>);
 
-fn parse_result<T: serde::de::DeserializeOwned>(index: u64) -> Option<T> {
+pub(crate) fn parse_result<T: serde::de::DeserializeOwned>(index: u64) -> Option<T> {
     promise_bytes(index).and_then(|b| serde_json::from_slice(&b).ok())
 }
 
@@ -175,6 +175,7 @@ impl Account {
         require!(m.expires_at > now, "mandate expired");
         require!(rt.paused_until <= now, "guardian paused by the owner");
         require!(rt.pending.is_none(), "a deleverage is in flight");
+        require!(crate::close::load_closing().is_none(), "the owner is closing the position");
 
         let sig: [u8; 64] =
             signature.0.as_slice().try_into().unwrap_or_else(|_| env::panic_str("bad signature length"));
@@ -672,7 +673,7 @@ impl Account {
 }
 
 impl Account {
-    fn cb(&self) -> AccountExt {
+    pub(crate) fn cb(&self) -> AccountExt {
         Self::ext(env::current_account_id()).with_static_gas(GAS_CALLBACK).with_unused_gas_weight(1)
     }
 
@@ -690,7 +691,7 @@ impl Account {
         save_runtime(rt);
     }
 
-    fn dex_withdraw(&self, token: &AccountId, amount: u128) -> Promise {
+    pub(crate) fn dex_withdraw(&self, token: &AccountId, amount: u128) -> Promise {
         Promise::new(self.core.protocol.dex.clone()).function_call_weight(
             "withdraw",
             wire::dex_withdraw(token, amount),
@@ -727,7 +728,7 @@ impl Account {
 
     /// Views that price `tokens`, joined in order: per token the oracle price, the lending
     /// contract's asset config when `configs`, and the token's rate view when it has one.
-    fn price_views(&self, tokens: &[AccountId], configs: bool) -> Promise {
+    pub(crate) fn price_views(&self, tokens: &[AccountId], configs: bool) -> Promise {
         let p = &self.core.protocol;
         let zero = near_sdk::NearToken::from_yoctonear(0);
         let mut joint: Option<Promise> = None;
@@ -768,10 +769,20 @@ impl Account {
     /// Reads what `price_views` asked for the same `tokens`: per token a fresh positive oracle
     /// price, the volatility ratio (0 without `configs`) and the rate when the token has one, or
     /// None when any of them is missing.
-    fn read_prices(&self, tokens: &[AccountId], configs: bool) -> Vec<Option<Quote>> {
+    pub(crate) fn read_prices(&self, tokens: &[AccountId], configs: bool) -> Vec<Option<Quote>> {
+        self.read_prices_from(tokens, configs, 0)
+    }
+
+    /// `read_prices` for views joined after `start` other results.
+    pub(crate) fn read_prices_from(
+        &self,
+        tokens: &[AccountId],
+        configs: bool,
+        start: u64,
+    ) -> Vec<Option<Quote>> {
         let p = &self.core.protocol;
         let now = now_secs();
-        let mut i = 0u64;
+        let mut i = start;
         let mut next = || {
             i += 1;
             i - 1

@@ -42,10 +42,16 @@
 //!   until a report observed after the request (the keeper unwinds their hedge first), then pay
 //!   LiNEAR plus the hedge PnL share. Failed transfers become claims (`claim`).
 //! - **Reports** (`on_vault_report`, risk board only): the hedge, the reserves and the risk score,
-//!   which pauses deposits, lowers leverage and flags margin in code.
+//!   which pauses deposits, lowers leverage and flags margin in code. A report may carry a
+//!   funding-aware hedge ratio, which the vault sizes with inside `[hedge_ratio_min_bps,
+//!   hedge_ratio_bps]`.
+//! - **Insurance fund** (`insurance.rs`): a share of positive yield, outside the share price, that
+//!   the keeper can pay out for negative funding, hedge slippage or hedge margin, within caps.
 
 mod deposit;
 mod hedge;
+pub mod insurance;
+mod migrate;
 pub mod nav;
 pub mod order;
 mod report;
@@ -55,6 +61,7 @@ mod wire;
 mod withdraw;
 
 pub use hedge::HedgeSignature;
+pub use insurance::{InsuranceEvent, InsuranceView, SignedOrder};
 pub use report::{HedgeReport, ReservesReport, StoredReport};
 pub use withdraw::{Claim, Withdrawal};
 
@@ -82,6 +89,9 @@ pub const ORACLE_MAX_DEVIATION_BPS: u128 = 200;
 /// Chain Signatures derivation path of the vault's Hyperliquid address.
 pub const HEDGE_PATH: &str = "parry-vault-hedge";
 pub const MIN_HEDGE_RATIO_BPS: u32 = 5_000;
+/// The lowest hedge ratio a report may ask for, unless the owner sets another.
+pub const DEFAULT_HEDGE_RATIO_MIN_BPS: u32 = 7_000;
+pub const MAX_REASON_CHARS: usize = 280;
 pub const MAX_HEDGE_RATIO_BPS: u32 = 10_000;
 pub const MAX_BAND_BPS: u32 = 300;
 /// 1x to 10x: above that a short on a volatile asset sits too close to liquidation.
@@ -93,10 +103,11 @@ const GAS_VIEW: Gas = Gas::from_tgas(10);
 
 #[derive(BorshStorageKey)]
 #[near]
-enum StorageKey {
+pub(crate) enum StorageKey {
     Shares,
     Withdrawals,
     Claims,
+    InsuranceHistory,
 }
 
 /// The hedge's market and sizing rules.
@@ -200,6 +211,14 @@ pub enum Event<'a> {
     ConfigUpdated { key: &'a str },
     #[event_version("1.0.0")]
     LossBackingReleased { amount: U128 },
+    #[event_version("1.0.0")]
+    InsuranceInflow { linear: U128, usdc_e6: U128, report_at: u64 },
+    #[event_version("1.0.0")]
+    InsurancePaid { kind: &'a str, amount_usd_e6: U128, reason: &'a str },
+    #[event_version("1.0.0")]
+    MarginReserveReleased { amount: U128 },
+    #[event_version("1.0.0")]
+    HedgeRatioSet { hedge_ratio_bps: u32, reason: &'a str },
 }
 
 #[near(contract_state)]
@@ -265,6 +284,18 @@ pub struct Vault {
     next_withdrawal_id: u64,
     queued_shares: u128,
     claims: LookupMap<AccountId, Claim>,
+
+    insurance: insurance::Insurance,
+    /// The lowest hedge ratio a report may set; `hedge.hedge_ratio_bps` is the highest.
+    hedge_ratio_min_bps: u32,
+    /// The ratio the latest report asked for (clamped into the bounds), and why.
+    report_hedge_ratio_bps: Option<u32>,
+    hedge_ratio_reason: String,
+    /// The hedge account's maintenance margin over its value, bps, from the latest report.
+    margin_ratio_bps: Option<u32>,
+    /// Totals of what `claims` holds: LiNEAR, and USDC (failed transfers plus owed PnL).
+    claims_linear: u128,
+    claims_usdc_e6: u128,
 }
 
 /// Every setting, as `config()` returns it.
@@ -284,6 +315,10 @@ pub struct Config {
     pub deposit_cap: U128,
     pub min_deposit: U128,
     pub hedge_path: String,
+    pub hedge_ratio_min_bps: u32,
+    pub insurance_share_bps: u32,
+    pub insurance_cap_per_day_bps: u32,
+    pub insurance_max_payout_e6: U128,
 }
 
 #[near(serializers = [json])]
@@ -304,7 +339,13 @@ pub struct HedgeView {
     pub equity_e6: I128,
     pub leverage_x100: u32,
     pub effective_max_leverage_x100: u32,
+    /// The ratio the hedge is sized with: the latest report's, or the configured one.
     pub hedge_ratio_bps: u32,
+    pub hedge_ratio_min_bps: u32,
+    pub hedge_ratio_max_bps: u32,
+    pub hedge_ratio_reason: String,
+    /// Maintenance margin over account value, bps, from the latest report.
+    pub margin_ratio_bps: Option<u32>,
     pub needs_margin: bool,
 }
 
@@ -348,6 +389,11 @@ pub struct VaultState {
     pub deposit_cap: U128,
     pub min_deposit: U128,
     pub queue_length: u64,
+    /// The insurance fund's value (outside NAV) at the last known rate and price.
+    pub insurance_value_usd_e6: U128,
+    /// What pending claims hold: LiNEAR, and USDC (failed transfers plus owed PnL).
+    pub claims_linear: U128,
+    pub claims_usdc_e6: U128,
 }
 
 #[near(serializers = [json])]
@@ -385,6 +431,7 @@ impl Vault {
     ) -> Self {
         require!(network == "testnet" || network == "mainnet", "network must be testnet or mainnet");
         hedge.assert_valid();
+        let hedge_ratio_min_bps = DEFAULT_HEDGE_RATIO_MIN_BPS.min(hedge.hedge_ratio_bps);
         let mut this = Self {
             owner_id,
             network,
@@ -420,7 +467,15 @@ impl Vault {
             next_withdrawal_id: 0,
             queued_shares: 0,
             claims: LookupMap::new(StorageKey::Claims),
+            insurance: insurance::Insurance::new(),
+            hedge_ratio_min_bps,
+            report_hedge_ratio_bps: None,
+            hedge_ratio_reason: String::new(),
+            margin_ratio_bps: None,
+            claims_linear: 0,
+            claims_usdc_e6: 0,
         };
+        migrate::mark_current();
         this.assert_caps();
         // The vault's own account holds escrowed shares.
         this.token.internal_register_account(&env::current_account_id());
@@ -435,8 +490,25 @@ impl Vault {
     pub fn set_hedge_ratio(&mut self, hedge_ratio_bps: u32) {
         self.assert_owner();
         assert_hedge_ratio(hedge_ratio_bps);
+        require!(
+            hedge_ratio_bps >= self.hedge_ratio_min_bps,
+            "hedge ratio must be at least hedge_ratio_min_bps"
+        );
         self.hedge.hedge_ratio_bps = hedge_ratio_bps;
         Event::ConfigUpdated { key: "hedge_ratio_bps" }.emit();
+    }
+
+    /// The lowest hedge ratio a report may ask for (5000 up to `hedge_ratio_bps`).
+    #[payable]
+    pub fn set_hedge_ratio_min(&mut self, hedge_ratio_min_bps: u32) {
+        self.assert_owner();
+        assert_hedge_ratio(hedge_ratio_min_bps);
+        require!(
+            hedge_ratio_min_bps <= self.hedge.hedge_ratio_bps,
+            "hedge_ratio_min_bps must be at most hedge_ratio_bps"
+        );
+        self.hedge_ratio_min_bps = hedge_ratio_min_bps;
+        Event::ConfigUpdated { key: "hedge_ratio_min_bps" }.emit();
     }
 
     #[payable]
@@ -513,6 +585,9 @@ impl Vault {
             deposit_cap: U128(self.deposit_cap),
             min_deposit: U128(self.min_deposit),
             queue_length: self.next_withdrawal_id - self.withdrawal_head,
+            insurance_value_usd_e6: U128(self.insurance_value_e6()),
+            claims_linear: U128(self.claims_linear),
+            claims_usdc_e6: U128(self.claims_usdc_e6),
         }
     }
 
@@ -537,7 +612,11 @@ impl Vault {
                 equity_e6: I128(self.hedge_equity_e6()),
                 leverage_x100: 0,
                 effective_max_leverage_x100: max_leverage,
-                hedge_ratio_bps: self.hedge.hedge_ratio_bps,
+                hedge_ratio_bps: self.effective_hedge_ratio_bps(),
+                hedge_ratio_min_bps: self.hedge_ratio_min_bps,
+                hedge_ratio_max_bps: self.hedge.hedge_ratio_bps,
+                hedge_ratio_reason: self.hedge_ratio_reason(),
+                margin_ratio_bps: self.margin_ratio_bps,
                 needs_margin: self.needs_margin,
             };
         };
@@ -560,7 +639,11 @@ impl Vault {
                 h.account_value_e6.0,
             ),
             effective_max_leverage_x100: max_leverage,
-            hedge_ratio_bps: self.hedge.hedge_ratio_bps,
+            hedge_ratio_bps: self.effective_hedge_ratio_bps(),
+            hedge_ratio_min_bps: self.hedge_ratio_min_bps,
+            hedge_ratio_max_bps: self.hedge.hedge_ratio_bps,
+            hedge_ratio_reason: self.hedge_ratio_reason(),
+            margin_ratio_bps: self.margin_ratio_bps,
             needs_margin: self.needs_margin,
         }
     }
@@ -624,6 +707,10 @@ impl Vault {
             deposit_cap: U128(self.deposit_cap),
             min_deposit: U128(self.min_deposit),
             hedge_path: HEDGE_PATH.to_string(),
+            hedge_ratio_min_bps: self.hedge_ratio_min_bps,
+            insurance_share_bps: self.insurance.share_bps,
+            insurance_cap_per_day_bps: self.insurance.cap_per_day_bps,
+            insurance_max_payout_e6: U128(self.insurance.max_payout_e6),
         }
     }
 }
@@ -665,11 +752,29 @@ impl Vault {
         self.token.total_supply.saturating_sub(self.queued_shares)
     }
 
-    /// Records a LiNEAR rate read from the LiNEAR contract.
+    /// Records a LiNEAR rate read from the LiNEAR contract, and skims the insurance fund's share
+    /// of the staking yield above the highest rate seen.
     pub(crate) fn observe_rate(&mut self, rate_e24: u128) {
         self.linear_rate_e24 = rate_e24;
         if self.first_linear_rate_e24 == 0 {
             self.first_linear_rate_e24 = rate_e24;
+        }
+        self.skim_staking(rate_e24);
+    }
+
+    /// The ratio the hedge is sized with: the latest report's (already inside the bounds), or the
+    /// configured one.
+    pub(crate) fn effective_hedge_ratio_bps(&self) -> u32 {
+        self.report_hedge_ratio_bps
+            .unwrap_or(self.hedge.hedge_ratio_bps)
+            .clamp(self.hedge_ratio_min_bps, self.hedge.hedge_ratio_bps)
+    }
+
+    fn hedge_ratio_reason(&self) -> String {
+        if self.report_hedge_ratio_bps.is_some() {
+            self.hedge_ratio_reason.clone()
+        } else {
+            "the configured hedge ratio".to_string()
         }
     }
 

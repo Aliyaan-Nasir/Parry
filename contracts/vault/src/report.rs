@@ -76,6 +76,14 @@ struct ReportIn {
     score: u8,
     hedge: HedgeReport,
     reserves: ReservesReport,
+    /// The funding-aware hedge ratio the enclave asks for, and why.
+    #[serde(default)]
+    hedge_ratio_bps: Option<u32>,
+    #[serde(default)]
+    hedge_ratio_reason: Option<String>,
+    /// Maintenance margin over account value, bps.
+    #[serde(default)]
+    margin_ratio: Option<u32>,
 }
 
 /// The latest accepted report.
@@ -114,12 +122,27 @@ impl Vault {
         if let Some(prev) = &self.report {
             require!(r.at >= prev.at, "report observed before the last one");
         }
+        let reason = r.hedge_ratio_reason.unwrap_or_default();
+        require!(
+            reason.chars().count() <= crate::MAX_REASON_CHARS,
+            "hedge_ratio_reason must be at most 280 characters"
+        );
 
         self.last_run_id = r.run_id;
         self.near_price_e8 = r.hedge.mark_e8.0;
         self.hedge_order_signed = false;
         Event::ReportApplied { run_id: r.run_id, at: r.at, score: r.score }.emit();
         self.apply_score(r.score);
+        self.insurance_on_report(r.hedge.size_e8.0, r.hedge.funding_e6.0, r.at);
+        self.margin_ratio_bps = r.margin_ratio;
+        // A ratio outside the owner's bounds is brought inside them rather than refused: a refused
+        // report would leave the vault without a fresh one, which stops deposits and withdrawals.
+        self.report_hedge_ratio_bps =
+            r.hedge_ratio_bps.map(|x| x.clamp(self.hedge_ratio_min_bps, self.hedge.hedge_ratio_bps));
+        self.hedge_ratio_reason = reason;
+        if let Some(ratio) = self.report_hedge_ratio_bps {
+            Event::HedgeRatioSet { hedge_ratio_bps: ratio, reason: &self.hedge_ratio_reason }.emit();
+        }
         self.report = Some(StoredReport {
             run_id: r.run_id,
             at: r.at,
@@ -178,15 +201,16 @@ impl Vault {
     }
 
     /// The depositors' hedge equity, USD e6: account value − operator margin − PnL already
-    /// settled with leavers. Negative when the hedge has lost more than it has earned.
+    /// settled with leavers − the insurance fund's USDC and what it earmarked for margin, which
+    /// sit in the same hedge account. Negative when the hedge has lost more than it has earned.
     pub(crate) fn hedge_equity_e6(&self) -> i128 {
         match &self.report {
             None => 0,
-            Some(r) => {
-                crate::nav::to_i128(r.hedge.account_value_e6.0)
-                    - crate::nav::to_i128(r.hedge.margin_baseline_e6.0)
-                    - self.settled_pnl_e6
-            }
+            Some(r) => crate::nav::to_i128(r.hedge.account_value_e6.0)
+                .saturating_sub(crate::nav::to_i128(r.hedge.margin_baseline_e6.0))
+                .saturating_sub(self.settled_pnl_e6)
+                .saturating_sub(crate::nav::to_i128(self.insurance.usdc_e6))
+                .saturating_sub(crate::nav::to_i128(self.insurance.margin_reserved_usdc_e6)),
         }
     }
 }
