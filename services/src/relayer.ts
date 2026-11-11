@@ -40,29 +40,86 @@ export async function createAccount(sql: Sql, body: { passkey?: string; nearAcco
   return { accountId, txHash: txHash(o) };
 }
 
+/** Protocol tokens assumed for an unwind's gas (testnet lists two; the account's `protocol()` has the count). */
+const PROTOCOL_TOKENS = 3;
+
+/**
+ * The gas a relayed owner request needs. The account refuses a close or an unwind sent with less
+ * than its whole promise chain needs: `close_rhea` 750 + 30 per protocol token Tgas (sent 900), an
+ * unwind 160 + 130 per protocol token + 25 per listed token (sent with 60 more, at least 600);
+ * everything else fits in 300. One call may carry up to 1 PGas.
+ */
+export function ownerRequestTgas(request: string): number {
+  let actions: unknown;
+  try {
+    actions = (JSON.parse(request) as { actions?: unknown }).actions;
+  } catch {
+    return 300;
+  }
+  let tgas = 300;
+  for (const a of Array.isArray(actions) ? actions : []) {
+    if (!a || typeof a !== "object") continue;
+    if ("close_rhea" in a) tgas = Math.max(tgas, 900);
+    if ("unwind" in a) {
+      const tokens = (a as { unwind?: { tokens?: unknown } }).unwind?.tokens;
+      const n = Array.isArray(tokens) ? tokens.length : 0;
+      tgas = Math.max(tgas, Math.min(1000, Math.max(600, 160 + 130 * PROTOCOL_TOKENS + 25 * n + 60)));
+    }
+  }
+  return tgas;
+}
+
+/**
+ * NEAR the gas key must hold before it prepays `tgas`: prepaid gas is checked against the
+ * pessimistic gas price, about 0.00117 NEAR per Tgas on testnet (0.35 NEAR for 300 Tgas).
+ */
+export const prepaidNear = (tgas: number): number => tgas * 0.0012 + 0.1;
+
+/** Tops the gas key up before a call above 300 Tgas, so a close or unwind is not refused for its prepaid gas. */
+async function ensureGasKeyFor(tgas: number): Promise<void> {
+  if (!relayer || tgas <= 300) return;
+  const need = prepaidNear(tgas);
+  const detail = await relayer.refillGasKey(need, need + 0.5);
+  if (detail.includes("too low")) log.warn("the relayer's gas key may not cover a large call", { tgas, detail });
+}
+
 async function owner(sql: Sql, body: { account: string; request: string; assertion: unknown }) {
   if (!relayer) throw new Error("the relayer wallet is not configured");
   if (!(await isParryAccount(sql, body.account))) throw new Error("not a Parry protected account");
+  if (typeof body.request !== "string") throw new Error("send the owner request as its exact text");
   if (!(await useQuota(sql, "owner", body.account, intEnv("RELAYER_OWNER_PER_DAY", 60)))) throw limited("this account's daily relay budget is spent");
-  const o = await relayer.call({ receiverId: body.account, methodName: "owner_execute", args: { request: body.request, assertion: body.assertion }, tgas: 300 });
+  const tgas = ownerRequestTgas(body.request);
+  await ensureGasKeyFor(tgas);
+  const o = await relayer.call({ receiverId: body.account, methodName: "owner_execute", args: { request: body.request, assertion: body.assertion }, tgas });
   return { txHash: txHash(o) };
 }
 
 /** What a NEAR-wallet owner may have relayed: calls on their Parry account, the vault, or a test USDC transfer. */
-export async function checkDelegate(sql: Sql, payload: string): Promise<{ sender: string; receiver: string }> {
+export async function checkDelegate(sql: Sql, payload: string): Promise<{ sender: string; receiver: string; tgas: number }> {
   const d = decodeSignedDelegateAction(payload).signedDelegate.delegateAction;
   const receiver = d.receiverId;
   const allowed = (await isParryAccount(sql, receiver)) || receiver === contract("vault") || receiver === contract("usdc") || receiver === contract("factory");
   if (!allowed) throw new Error("the relayer pays only for Parry accounts and contracts");
-  return { sender: d.senderId, receiver };
+  return { sender: d.senderId, receiver, tgas: delegateTgas(d.actions) };
+}
+
+/** The gas the delegate's function calls prepay, in Tgas (the relayer's transaction prepays it). */
+export function delegateTgas(actions: readonly unknown[]): number {
+  let gas = 0n;
+  for (const a of actions) {
+    const fc = (a as { functionCall?: { gas?: bigint | number | string } }).functionCall;
+    if (fc?.gas !== undefined) gas += BigInt(fc.gas);
+  }
+  return Number(gas / 1_000_000_000_000n);
 }
 
 async function delegate(sql: Sql, body: { payload?: string; signedDelegateAction?: string }) {
   if (!relayer) throw new Error("the relayer wallet is not configured");
   const payload = body.payload ?? body.signedDelegateAction;
   if (!payload) throw new Error("send the signed delegate action as base64 borsh");
-  const { sender } = await checkDelegate(sql, payload);
+  const { sender, tgas } = await checkDelegate(sql, payload);
   if (!(await useQuota(sql, "delegate", sender, intEnv("RELAYER_DELEGATE_PER_DAY", 60)))) throw limited("this account's daily relay budget is spent");
+  await ensureGasKeyFor(tgas);
   const o = await relayer.relayDelegate(payload);
   return { txHash: txHash(o) };
 }

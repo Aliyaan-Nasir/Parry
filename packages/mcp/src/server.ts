@@ -8,6 +8,9 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   verifyCertificate,
   buildMandate,
+  closeRheaRounds,
+  closeStatus,
+  ownerActionsTgas,
   nearToYocto,
   ownerActions,
   ownerCallAction,
@@ -384,6 +387,30 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
   );
 
   server.registerTool(
+    "get_closing",
+    {
+      title: "Where a position close stands",
+      description:
+        "Reads a protected account's close of its Rhea position from the chain: the round in flight (closing(): its stage, what it sells and repays) or none, and the debt and collateral left. " +
+        "kind is closed (no debt left), open (send close_rhea again), in_flight (a round's callbacks are running) or stuck (a round stopped after its swap; anyone may send retry_close). Changes nothing.",
+      inputSchema: { account: accountArg },
+      annotations: read,
+    },
+    ({ account }) =>
+      guard(async () => {
+        const [closing, position] = await Promise.all([parry.closing(account), parry.rheaPosition(account)]);
+        const status = closeStatus(closing, position);
+        const said = {
+          closed: "No debt is left on Rhea.",
+          open: "Debt is left and no close is in flight.",
+          in_flight: `A close round is running (stage ${closing?.stage ?? ""}).`,
+          stuck: `A close round is stuck at ${closing?.stage ?? ""}: retry_close resumes it.`,
+        }[status.kind];
+        return ok(said, { account, status, closing, position });
+      }),
+  );
+
+  server.registerTool(
     "get_incidents",
     {
       title: "Alert incidents",
@@ -590,6 +617,83 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
           txHash: sent.txHash,
           withdrawalId: sent.value,
           remainingToday: remaining("vault_withdraw", caps.withdrawPerDay),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "close_position",
+    {
+      title: "Close the agent's Rhea position",
+      description:
+        `Closes the Rhea position of the agent's protected account (owner_call from ${agent.accountId}, 1 yoctoNEAR, 900 Tgas per round): each round sells collateral on the Rhea exchange pool the API names, repays the debt it buys and, once no debt is left, withdraws the rest of the collateral into the account. ` +
+        "A position below about 1.5 health closes over several rounds; a round stuck after its swap is resumed with retry_close; a failed swap restores the collateral. Nothing leaves the protected account. " +
+        `Changes: the position (collateral sold, debt repaid). Testnet only; slippage at most ${caps.closeMaxSlippageBps} bps; at most ${caps.closePerDay} call(s) per UTC day (each sends up to 4 rounds).`,
+      inputSchema: {
+        slippage_bps: z.number().int().min(1).max(1000).optional().describe("Most the swap may lose against the oracle price, in bps (default 100)."),
+      },
+      annotations: { ...write, destructiveHint: true },
+    },
+    ({ slippage_bps }) =>
+      guard(async () => {
+        const offNetwork = notTestnet("close_position");
+        if (offNetwork) return offNetwork;
+        const slippageBps = slippage_bps ?? 100;
+        if (slippageBps > caps.closeMaxSlippageBps) return refuse(`close_position refused: slippage is capped at ${caps.closeMaxSlippageBps} bps per round. Nothing was sent.`);
+        const account = await agentProtectedAccount();
+        const poolId = (await parry.config()).dexPool;
+        if (poolId === null || poolId === undefined) throw new Error("close_position refused: the API names no exchange pool (dexPool) for this network. Nothing was sent.");
+        const start = closeStatus(await parry.closing(account), await parry.rheaPosition(account));
+        if (start.kind === "closed") return ok(`No debt is left on ${account}: nothing to close.`, { account, status: start, rounds: [] });
+        const refused = admit("close_position", caps.closePerDay);
+        if (refused) return refused;
+        const r = await closeRheaRounds({
+          account,
+          slippageBps,
+          poolId,
+          read: parry,
+          sendOwnerActions: (actions) => parry.sendCall(ownerCallAction(account, actions), agent),
+          sendCall: (call) => parry.sendCall(call, agent),
+        });
+        const said = r.closed
+          ? `Closed the position on ${account} in ${r.rounds.length} round(s).`
+          : r.stopped === "rolled_back"
+            ? `The last round on ${account} was rolled back (read its close_rolled_back event); the position is unchanged by it.`
+            : `The position on ${account} is not closed yet (${r.stopped ?? r.status.kind}); call close_position again.`;
+        return ok(said, { account, poolId, slippageBps, ...r, remainingToday: remaining("close_position", caps.closePerDay) } as unknown as Record<string, unknown>);
+      }),
+  );
+
+  server.registerTool(
+    "unwind_account",
+    {
+      title: "Unwind the agent's protected account",
+      description:
+        `Unwinds the agent's protected account (owner_call from ${agent.accountId}, 1 yoctoNEAR): revokes the guardian's mandate, withdraws every lending supply into the account, then sends each listed token's whole balance and the NEAR above the storage reserve back to ${agent.accountId}. ` +
+        "Collateral that backs a loan stays (close the position first); a token that cannot be withdrawn or sent stays in the account and is reported. " +
+        `Changes: revokes the mandate and empties the account into the agent account. Testnet only; at most ${caps.unwindPerDay} call(s) per UTC day.`,
+      inputSchema: {
+        tokens: z.array(accountArg).max(16).optional().describe("Token contracts whose balances to send home (default the network's USDC and wNEAR)."),
+      },
+      annotations: { ...write, destructiveHint: true },
+    },
+    ({ tokens }) =>
+      guard(async () => {
+        const offNetwork = notTestnet("unwind_account");
+        if (offNetwork) return offNetwork;
+        const account = await agentProtectedAccount();
+        const list = tokens ?? [parry.contracts.usdc, parry.contracts.wnear];
+        const call = ownerCallAction(account, [ownerActions.unwind(list)]);
+        const refused = admit("unwind_account", caps.unwindPerDay);
+        if (refused) return refused;
+        const sent = await parry.sendCall(call, agent);
+        return ok(`Unwound ${account} into ${agent.accountId} (transaction ${sent.txHash}); read the unwound and unwind_partial events for what moved.`, {
+          account,
+          to: agent.accountId,
+          tokens: list,
+          tgas: ownerActionsTgas([ownerActions.unwind(list)]),
+          txHash: sent.txHash,
+          remainingToday: remaining("unwind_account", caps.unwindPerDay),
         });
       }),
   );

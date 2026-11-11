@@ -26,10 +26,23 @@ export type OwnerAction =
   | { mpc_sign: { path: string; payload: string; domain_id: number } }
   | { hl_order: { order: HlOrder; nonce: number } }
   | { upgrade: { code_hash: string } }
-  | { close_rhea: { slippage_bps: number } }
+  | { close_rhea: { slippage_bps: number; pool_id: number } }
   | { unwind: { tokens: string[]; to?: string } };
 
 type Amount = string | number | bigint;
+
+/** The most gas one function call may carry on NEAR (1 PGas). */
+export const MAX_CALL_TGAS = 1000;
+/** Gas for an ordinary owner call. */
+export const OWNER_CALL_TGAS = 300;
+/** `close_rhea`: the account needs 750 + 30 per protocol token Tgas (810 with two, 840 with three). */
+export const CLOSE_RHEA_TGAS = 900;
+/** `retry_close`: the account needs 360 Tgas. */
+export const RETRY_CLOSE_TGAS = 400;
+export const MAX_CLOSE_SLIPPAGE_BPS = 1000;
+export const MAX_UNWIND_TOKENS = 16;
+/** Protocol tokens assumed when the caller does not say (testnet lists two, wNEAR and USDC). */
+const DEFAULT_PROTOCOL_TOKENS = 3;
 
 function seconds(t: number | Date): number {
   const s = t instanceof Date ? Math.floor(t.getTime() / 1000) : t;
@@ -43,7 +56,7 @@ export const ownerActions = {
   revokeMandate: (): OwnerAction => "revoke_mandate",
   /** Stops guardian actions until `until` (unix seconds or a Date); 0 resumes. */
   pauseGuardian: (until: number | Date): OwnerAction => ({ pause_guardian: { until: seconds(until) } }),
-  /** Forgets a stuck deleverage after the owner settled it by hand. */
+  /** Forgets a stuck deleverage or close after the owner settled it by hand. */
   clearPending: (): OwnerAction => "clear_pending",
   supply: (token: string, amount: Amount): OwnerAction => ({ supply: { token, amount: u128(amount) } }),
   borrow: (token: string, amount: Amount): OwnerAction => ({ borrow: { token, amount: u128(amount) } }),
@@ -88,20 +101,26 @@ export const ownerActions = {
     return { hl_order: { order, nonce } };
   },
   /**
-   * Closes the whole Rhea position atomically: sells just enough collateral on the Rhea exchange to
-   * repay all debt, repays it, and withdraws the rest into the account; any failed step restores the
-   * position. Must be the only action.
+   * Closes the Rhea position through the exchange pool `poolId` (the API's `/v1/config` names it as
+   * `dexPool`): one round sells at most the collateral that keeps health at 1.02, repays the debt
+   * it buys, and when that is the whole debt withdraws the rest of the collateral into the account
+   * (`position_closed`); otherwise it emits `close_progress` and the next call continues. A failed
+   * step before the swap restores the round's collateral. Must be the only action; it needs
+   * `CLOSE_RHEA_TGAS`.
    */
-  closeRhea: (slippageBps: number): OwnerAction => {
-    if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 1000) throw new Error("slippageBps must be an integer from 0 to 1000");
-    return { close_rhea: { slippage_bps: slippageBps } };
+  closeRhea: (o: { slippageBps: number; poolId: number }): OwnerAction => {
+    if (!Number.isInteger(o.slippageBps) || o.slippageBps < 1 || o.slippageBps > MAX_CLOSE_SLIPPAGE_BPS) throw new Error(`slippageBps must be an integer from 1 to ${MAX_CLOSE_SLIPPAGE_BPS}`);
+    if (!Number.isSafeInteger(o.poolId) || o.poolId < 0) throw new Error("poolId must be the exchange pool's index (the API config's dexPool)");
+    return { close_rhea: { slippage_bps: o.slippageBps, pool_id: o.poolId } };
   },
   /**
-   * Revokes the mandate, withdraws every lending position into the account, then sends each listed
-   * token's balance and the NEAR above the storage reserve to the owner (`to` for a passkey owner).
+   * Revokes the mandate, withdraws every lending supply into the account, then sends each listed
+   * token's balance and the NEAR above the storage reserve to the owner (`to`, required for a
+   * passkey owner). At most 16 tokens, each once. Must be the only action; it needs `unwindTgas`.
    */
   unwind: (tokens: string[], to?: string): OwnerAction => {
     if (new Set(tokens).size !== tokens.length) throw new Error("unwind lists each token once");
+    if (tokens.length > MAX_UNWIND_TOKENS) throw new Error(`unwind takes at most ${MAX_UNWIND_TOKENS} tokens`);
     return { unwind: to === undefined ? { tokens } : { tokens, to } };
   },
   /** Moves the account to another published global code hash (base58). */
@@ -114,12 +133,53 @@ function assertActions(actions: OwnerAction[]): void {
   if (signing && actions.length !== 1) throw new Error("a signing action (mpc_sign, hl_order) must be the only action");
   const closing = actions.some((a) => typeof a === "object" && "close_rhea" in a);
   if (closing && actions.length !== 1) throw new Error("close_rhea must be the only action");
+  const unwinding = actions.some((a) => typeof a === "object" && "unwind" in a);
+  if (unwinding && actions.length !== 1) throw new Error("unwind must be the only action");
 }
 
-/** `owner_call(actions)` for a NEAR-account owner: 1 yoctoNEAR, 300 Tgas. */
-export function ownerCallAction(account: string, actions: OwnerAction[]): ContractCall {
+// ---------------------------------------------------------------------------------------------
+// Gas: the account refuses a close, retry or unwind sent with less than its whole chain needs
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Gas for `unwind`: the account needs 160 + 130 per protocol token (one lending withdrawal each)
+ * + 25 per listed token Tgas; this sends 60 Tgas more, at least 600 and at most 1 PGas.
+ */
+export function unwindTgas(tokens: number, protocolTokens = DEFAULT_PROTOCOL_TOKENS): number {
+  if (!Number.isInteger(tokens) || tokens < 0 || tokens > MAX_UNWIND_TOKENS) throw new Error(`unwind takes 0 to ${MAX_UNWIND_TOKENS} tokens`);
+  if (!Number.isInteger(protocolTokens) || protocolTokens < 0) throw new Error("protocolTokens must be a whole number");
+  const need = 160 + 130 * protocolTokens + 25 * tokens;
+  if (need > MAX_CALL_TGAS) throw new Error(`an unwind of ${tokens} tokens over ${protocolTokens} protocol tokens needs ${need} Tgas, more than one call may carry`);
+  return Math.min(MAX_CALL_TGAS, Math.max(600, need + 60));
+}
+
+/**
+ * The gas an owner call (or a relayed owner request) with these actions needs: `CLOSE_RHEA_TGAS`
+ * for a close, `unwindTgas` for an unwind, `OWNER_CALL_TGAS` otherwise. `protocolTokens` is the
+ * number of tokens in the account's `protocol()` (default 3, which covers testnet's two).
+ */
+export function ownerActionsTgas(actions: OwnerAction[], opts: { protocolTokens?: number } = {}): number {
+  let tgas = OWNER_CALL_TGAS;
+  for (const a of actions) {
+    if (typeof a !== "object") continue;
+    if ("close_rhea" in a) tgas = Math.max(tgas, CLOSE_RHEA_TGAS);
+    if ("unwind" in a) tgas = Math.max(tgas, unwindTgas(a.unwind.tokens.length, opts.protocolTokens));
+  }
+  return tgas;
+}
+
+/**
+ * `owner_call(actions)` for a NEAR-account owner: 1 yoctoNEAR, with the gas the actions need
+ * (`ownerActionsTgas`: 300 Tgas, 900 for a close, 600 or more for an unwind).
+ */
+export function ownerCallAction(account: string, actions: OwnerAction[], opts: { protocolTokens?: number } = {}): ContractCall {
   assertActions(actions);
-  return contractCall(account, "owner_call", { actions }, { tgas: 300, deposit: ONE_YOCTO });
+  return contractCall(account, "owner_call", { actions }, { tgas: ownerActionsTgas(actions, opts), deposit: ONE_YOCTO });
+}
+
+/** `retry_close()` on a protected account: resumes a close stuck after its swap. Anyone may send it; 400 Tgas, no deposit. */
+export function retryCloseAction(account: string): ContractCall {
+  return contractCall(account, "retry_close", {}, { tgas: RETRY_CLOSE_TGAS });
 }
 
 export const REQUEST_DOMAIN = "parry-account:v1:";

@@ -23,6 +23,12 @@ export interface McpCaps {
   certificatesPerDay: number;
   /** Longest certificate an agent may issue, in seconds. */
   certificateMaxTtlSecs: number;
+  /** `close_position` calls per UTC day (each may send several rounds). */
+  closePerDay: number;
+  /** Most slippage a `close_position` round may accept, in bps. */
+  closeMaxSlippageBps: number;
+  /** `unwind_account` calls per UTC day. */
+  unwindPerDay: number;
 }
 
 export const DEFAULT_CAPS: Readonly<McpCaps> = {
@@ -36,6 +42,9 @@ export const DEFAULT_CAPS: Readonly<McpCaps> = {
   watchPerDay: 20,
   certificatesPerDay: 5,
   certificateMaxTtlSecs: 7 * 86_400,
+  closePerDay: 3,
+  closeMaxSlippageBps: 300,
+  unwindPerDay: 2,
 };
 
 /** Counts write-tool calls per UTC day. Share one ledger across server instances (HTTP). */

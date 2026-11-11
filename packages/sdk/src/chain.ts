@@ -6,7 +6,7 @@ import { Near } from "near-kit";
 import { nearKitCallOptions, type ContractCall } from "./calls.js";
 import { fromBase64, fromUtf8 } from "./encoding.js";
 import type { ContractIds, Network } from "./networks.js";
-import type { CertificateAnchor, EnclaveInfo, EnclaveKey, MandateView, Nonces, SealingKey, VaultChainState } from "./types.js";
+import type { CertificateAnchor, Closing, EnclaveInfo, EnclaveKey, MandateView, Nonces, RheaLines, SealingKey, VaultChainState } from "./types.js";
 import { compressedPasskey } from "./webauthn.js";
 
 export interface ChainOptions {
@@ -42,6 +42,15 @@ export function chainReads(near: Near, contract: (name: keyof ContractIds) => st
       const n = await view<[number, number]>(accountId, "nonces");
       if (!Array.isArray(n)) throw new Error("nonces() returned no pair");
       return { owner: n[0], guardian: n[1] };
+    },
+    /** The close round in flight on a protected account (`closing()`), or null when none is. */
+    closing: async (accountId: string): Promise<Closing | null> => (await view<Closing | null>(accountId, "closing")) ?? null,
+    /** An account's Rhea lending position (`get_account` on the lending contract), or null when it has none. */
+    rheaPosition: async (accountId: string): Promise<RheaLines | null> => {
+      const v = await view<Partial<RheaLines> | null>(contract("lending"), "get_account", { account_id: accountId });
+      if (!v) return null;
+      const lines = (xs: { token_id: string; balance: string }[] | undefined) => (xs ?? []).map((x) => ({ token_id: x.token_id, balance: x.balance }));
+      return { collateral: lines(v.collateral), supplied: lines(v.supplied), borrowed: lines(v.borrowed) };
     },
     /** The vault contract's own state (`vault_state`). */
     vaultState: async (): Promise<VaultChainState> => {

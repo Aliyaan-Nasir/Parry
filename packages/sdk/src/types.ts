@@ -41,6 +41,8 @@ export interface Config {
     wnear: string;
     linear: string;
   };
+  /** The Rhea exchange pool rescues and closes swap on (`close_rhea`'s `pool_id`), or null when none is set. */
+  dexPool: number | null;
   enclave: { publicKey: string; sealingPublicKey: string | null; wasmSha256: string };
   reviewModel: string;
   explorers: { near: string; hyperliquid: string; intents: string; evm: string };
@@ -419,6 +421,37 @@ export interface Nonces {
   owner: number;
   /** Last guardian envelope nonce used. */
   guardian: number;
+}
+
+/**
+ * `closing()` on a protected account: the close round in flight. A stage starting with `stuck_`
+ * waits for `retry_close` (anyone may send it); the others are a round's callbacks still running.
+ */
+export interface Closing {
+  /** The block height the round started at. */
+  id: number;
+  collateral: string;
+  debt: string;
+  pool_id: number;
+  slippage_bps: number;
+  /** Collateral token units sold, the swap's minimum and output, and the most the round repays (debt token units). */
+  sell: string;
+  min_out: string;
+  out: string;
+  repay: string;
+  /** True when the round repays the whole debt. */
+  last: boolean;
+  stage: string;
+  /** The step whose failure is being rolled back. */
+  failed: string | null;
+  started_at: number;
+}
+
+/** An account's Rhea lending position, from `get_account` on the lending contract, in inner units (the token's decimals plus its extra decimals: 24 for wNEAR, 18 for USDC). */
+export interface RheaLines {
+  collateral: { token_id: string; balance: string }[];
+  supplied: { token_id: string; balance: string }[];
+  borrowed: { token_id: string; balance: string }[];
 }
 
 /** `get_enclave()` on the risk board. */

@@ -1,21 +1,130 @@
 /**
- * Builders for the owner's own closing actions: closing the Rhea position in one atomic step or
- * from the wallet, unwinding the whole account, closing the Hyperliquid perp (a reduce-only order
- * signed through Chain Signatures) and repaying the Aave loan on an EVM chain (approve and repay,
- * each an EIP-1559 transaction whose hash Chain Signatures signs). Wrap the actions with
- * `ownerCallAction` (a NEAR-account owner) or `ownerRequest` (a passkey owner).
+ * Builders for the owner's own closing actions: closing the Rhea position by selling collateral
+ * (in rounds, `closeRheaRounds` drives them) or from the wallet, unwinding the whole account,
+ * closing the Hyperliquid perp (a reduce-only order signed through Chain Signatures) and repaying
+ * the Aave loan on an EVM chain (approve and repay, each an EIP-1559 transaction whose hash Chain
+ * Signatures signs). Wrap the actions with `ownerCallAction` (a NEAR-account owner, which attaches
+ * the gas they need) or `ownerRequest` (a passkey owner; the relayer attaches it).
  */
 
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { formatPrice, formatSize } from "@parry/core";
 import { contractCall, ONE_YOCTO, type ContractCall } from "./calls.js";
 import { concatBytes, fromHex, toHex, u128 } from "./encoding.js";
-import { ownerActions, type OwnerAction } from "./owner.js";
+import { ownerActions, retryCloseAction, type OwnerAction } from "./owner.js";
+import type { Closing, RheaLines } from "./types.js";
 
 type Amount = string | number | bigint;
 
-/** `close_rhea { slippage_bps }`: the whole Rhea position, all or nothing. Must be the only action. */
-export const closeRheaAction = (slippageBps = 100): OwnerAction => ownerActions.closeRhea(slippageBps);
+/**
+ * `close_rhea { slippage_bps, pool_id }`: one close round through the exchange pool `poolId`
+ * (`dexPool` in the API's `/v1/config`). A position that cannot let all the collateral it must
+ * sell out at once (health under about 1.5) closes over several rounds: see `closeRheaRounds`.
+ * Must be the only action; `ownerCallAction` attaches the 900 Tgas it needs.
+ */
+export const closeRheaAction = (o: { slippageBps: number; poolId: number }): OwnerAction => ownerActions.closeRhea(o);
+
+/** Where a close stands, from `closing()` and the lending position. */
+export type CloseStatus =
+  /** No close in flight and no debt left (`collateral` is what is still supplied as collateral, inner units). */
+  | { kind: "closed"; collateral: string }
+  /** No close in flight and debt left: send `close_rhea` (again). */
+  | { kind: "open"; debt: string; collateral: string }
+  /** A round's callbacks are still running: read again in a few seconds. */
+  | { kind: "in_flight"; closing: Closing }
+  /** A round stopped after its swap at a `stuck_*` stage: send `retry_close` (anyone may). */
+  | { kind: "stuck"; closing: Closing };
+
+const sumLines = (xs: { balance: string }[] | undefined) => (xs ?? []).reduce((a, x) => a + BigInt(x.balance), 0n);
+
+export function closeStatus(closing: Closing | null, position: RheaLines | null): CloseStatus {
+  if (closing) return closing.stage.startsWith("stuck_") ? { kind: "stuck", closing } : { kind: "in_flight", closing };
+  const debt = sumLines(position?.borrowed);
+  const collateral = sumLines(position?.collateral).toString();
+  return debt > 0n ? { kind: "open", debt: debt.toString(), collateral } : { kind: "closed", collateral };
+}
+
+export interface CloseRound {
+  kind: "close" | "retry";
+  txHash: string;
+  /** Where the close stood after the round. */
+  after: CloseStatus;
+}
+
+export interface CloseRoundsOptions {
+  account: string;
+  slippageBps: number;
+  poolId: number;
+  /** Reads `closing()` and the lending position (a `Parry` client has both). */
+  read: { closing(accountId: string): Promise<Closing | null>; rheaPosition(accountId: string): Promise<RheaLines | null> };
+  /**
+   * Sends owner actions as the owner and resolves once they executed: `ownerCallAction` through a
+   * wallet, or a passkey-signed `ownerRequest` through the relayer.
+   */
+  sendOwnerActions(actions: OwnerAction[]): Promise<{ txHash: string }>;
+  /** Sends a plain contract call (for `retry_close`, which anyone may send). Without it a stuck close stops the loop. */
+  sendCall?(call: ContractCall): Promise<{ txHash: string }>;
+  /** Most transactions to send (default 4: a 1.425-health position closes in two). */
+  maxRounds?: number;
+  /** Called after each round. */
+  onRound?(round: CloseRound): void;
+  /** How long to wait for a round still in flight, and how often to read (defaults 90 s and 3 s). */
+  waitMs?: number;
+  pollMs?: number;
+}
+
+export interface CloseRoundsResult {
+  closed: boolean;
+  status: CloseStatus;
+  rounds: CloseRound[];
+  /**
+   * Why the loop stopped before the position closed: `rolled_back` (a round moved nothing: read the
+   * transaction's `close_rolled_back` event), `stuck` (no `sendCall` for `retry_close`) or `max_rounds`.
+   */
+  stopped: "rolled_back" | "stuck" | "max_rounds" | null;
+}
+
+/**
+ * Closes the Rhea position round by round: reads `closing()` and the position, sends `close_rhea`
+ * while debt is left, `retry_close` when a round is stuck after its swap, and waits while a round
+ * is in flight. Stops when the debt is gone, when a round repaid nothing (it was rolled back), or
+ * after `maxRounds` transactions.
+ */
+export async function closeRheaRounds(o: CloseRoundsOptions): Promise<CloseRoundsResult> {
+  const max = o.maxRounds ?? 4;
+  const rounds: CloseRound[] = [];
+  const read = async () => closeStatus(await o.read.closing(o.account), await o.read.rheaPosition(o.account));
+  const settle = async (): Promise<CloseStatus> => {
+    const end = Date.now() + (o.waitMs ?? 90_000);
+    for (;;) {
+      const s = await read();
+      if (s.kind !== "in_flight") return s;
+      if (Date.now() > end) throw new Error(`the close round ${s.closing.id} is still at stage ${s.closing.stage}: read closing() again later`);
+      await new Promise((r) => setTimeout(r, o.pollMs ?? 3_000));
+    }
+  };
+  let status = await settle();
+  while (status.kind !== "closed") {
+    if (rounds.length >= max) return { closed: false, status, rounds, stopped: "max_rounds" };
+    if (status.kind === "stuck") {
+      if (!o.sendCall) return { closed: false, status, rounds, stopped: "stuck" };
+      const { txHash } = await o.sendCall(retryCloseAction(o.account));
+      status = await settle();
+      const round: CloseRound = { kind: "retry", txHash, after: status };
+      rounds.push(round);
+      o.onRound?.(round);
+      continue;
+    }
+    const before = status.kind === "open" ? BigInt(status.debt) : 0n;
+    const { txHash } = await o.sendOwnerActions([closeRheaAction({ slippageBps: o.slippageBps, poolId: o.poolId })]);
+    status = await settle();
+    const round: CloseRound = { kind: "close", txHash, after: status };
+    rounds.push(round);
+    o.onRound?.(round);
+    if (status.kind === "open" && BigInt(status.debt) >= before) return { closed: false, status, rounds, stopped: "rolled_back" };
+  }
+  return { closed: true, status, rounds, stopped: null };
+}
 
 /**
  * Closing from the wallet: the owner sends the debt token to the protected account
@@ -34,7 +143,11 @@ export function closeFromWalletActions(o: { account: string; debtToken: string; 
   };
 }
 
-/** `unwind { tokens, to? }`: revoke the mandate, withdraw everything, send it to the owner (`to` is required for a passkey owner). */
+/**
+ * `unwind { tokens, to? }`: revoke the mandate, withdraw every lending supply, send each listed
+ * token and the spare NEAR to the owner (`to` is required for a passkey owner). Collateral that
+ * backs a loan stays: close the position first. `ownerCallAction` attaches `unwindTgas`.
+ */
 export const unwindAction = (tokens: string[], to?: string): OwnerAction => ownerActions.unwind(tokens, to);
 
 /**

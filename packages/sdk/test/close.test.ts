@@ -1,38 +1,88 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import {
   certificateDigest,
+  CLOSE_RHEA_TGAS,
   closeFromWalletActions,
   closePerpAction,
   closeRheaAction,
+  closeRheaRounds,
+  closeStatus,
   createParry,
   defaultSteps,
   encodeEip1559,
+  MAX_CALL_TGAS,
   nep413Payload,
   openPolicy,
+  OWNER_CALL_TGAS,
+  ownerActions,
+  ownerActionsTgas,
   ownerCallAction,
   ownerRequest,
   policyJson,
   repayAaveActions,
+  RETRY_CLOSE_TGAS,
+  retryCloseAction,
   sealPolicy,
   signNep413,
   subscribe,
+  TGAS,
   unwindAction,
+  unwindTgas,
   verifyCertificate,
+  type Closing,
+  type OwnerAction,
   type Policy,
+  type RheaLines,
 } from "../src/index.js";
 import { ParryApi } from "../src/api.js";
 import { fromHex, toBase58, toBase64, toHex, utf8 } from "../src/encoding.js";
-import { json, mockFetch } from "./helpers.js";
+import { installGlobalFetch, json, mockFetch, RPC_URL, rpcRoute } from "./helpers.js";
+
+let restore: (() => void) | null = null;
+afterEach(() => {
+  restore?.();
+  restore = null;
+});
 
 describe("closing actions", () => {
-  test("close_rhea is the only action of its call", () => {
-    expect(closeRheaAction(150)).toEqual({ close_rhea: { slippage_bps: 150 } });
-    expect(ownerCallAction("0ua.testnet", [closeRheaAction()]).args).toEqual({ actions: [{ close_rhea: { slippage_bps: 100 } }] });
-    expect(() => ownerCallAction("0ua.testnet", [closeRheaAction(), unwindAction(["usdc.parry.testnet"])])).toThrow("close_rhea must be the only action");
-    expect(() => closeRheaAction(5000)).toThrow();
+  test("close_rhea names its pool, is the only action of its call and carries 900 Tgas", () => {
+    expect(closeRheaAction({ slippageBps: 150, poolId: 2939 })).toEqual({ close_rhea: { slippage_bps: 150, pool_id: 2939 } });
+    const call = ownerCallAction("0ua.testnet", [closeRheaAction({ slippageBps: 100, poolId: 7 })]);
+    expect(call.args).toEqual({ actions: [{ close_rhea: { slippage_bps: 100, pool_id: 7 } }] });
+    expect(call.gas).toBe((900n * TGAS).toString());
+    expect(call.deposit).toBe("1");
+    expect(call.actions[0].params.gas).toBe(call.gas);
+    expect(() => ownerCallAction("0ua.testnet", [closeRheaAction({ slippageBps: 100, poolId: 7 }), unwindAction(["usdc.parry.testnet"])])).toThrow("close_rhea must be the only action");
+    expect(() => ownerCallAction("0ua.testnet", [unwindAction([]), "revoke_mandate"])).toThrow("unwind must be the only action");
+    // The contract takes 1 to 1000 bps and a pool index.
+    expect(() => closeRheaAction({ slippageBps: 5000, poolId: 7 })).toThrow("slippageBps");
+    expect(() => closeRheaAction({ slippageBps: 0, poolId: 7 })).toThrow("slippageBps");
+    expect(() => closeRheaAction({ slippageBps: 1.5, poolId: 7 })).toThrow("slippageBps");
+    expect(() => closeRheaAction({ slippageBps: 100, poolId: -1 })).toThrow("poolId");
+    expect(() => closeRheaAction({ slippageBps: 100, poolId: undefined as unknown as number })).toThrow("poolId");
+  });
+
+  test("owner calls carry the gas their actions need, up to 1 PGas", () => {
+    expect(ownerActionsTgas([ownerActions.repay("usdc.parry.testnet", "5")])).toBe(OWNER_CALL_TGAS);
+    expect(ownerActionsTgas([closeRheaAction({ slippageBps: 100, poolId: 1 })])).toBe(CLOSE_RHEA_TGAS);
+    // 160 + 130 per protocol token + 25 per listed token, plus 60, at least 600.
+    expect(unwindTgas(2, 2)).toBe(600);
+    expect(unwindTgas(2)).toBe(160 + 390 + 50 + 60);
+    expect(unwindTgas(16, 3)).toBe(MAX_CALL_TGAS);
+    expect(() => unwindTgas(16, 4)).toThrow("more than one call may carry");
+    expect(() => unwindTgas(17)).toThrow();
+    expect(ownerCallAction("0ua.testnet", [unwindAction(["a.testnet", "b.testnet"])], { protocolTokens: 2 }).gas).toBe((600n * TGAS).toString());
+    expect(ownerCallAction("0ua.testnet", [unwindAction(["a.testnet", "b.testnet"])]).gas).toBe((660n * TGAS).toString());
+    expect(() => unwindAction(Array.from({ length: 17 }, (_, i) => `t${i}.testnet`))).toThrow("at most 16");
+  });
+
+  test("retry_close is a plain call anyone may send, with 400 Tgas and no deposit", () => {
+    const call = retryCloseAction("0ua.testnet");
+    expect(call).toMatchObject({ receiverId: "0ua.testnet", methodName: "retry_close", args: {}, gas: (RETRY_CLOSE_TGAS * 1_000_000_000_000).toString(), deposit: "0" });
+    expect(RETRY_CLOSE_TGAS).toBeGreaterThanOrEqual(360);
   });
 
   test("closing from the wallet: transfer the debt token, then repay and withdraw", () => {
@@ -51,9 +101,9 @@ describe("closing actions", () => {
   });
 
   test("a perp close is a reduce-only IOC order on the other side, priced through the mark", () => {
-    const short = closePerpAction({ assetIndex: 54, size: -12.34, markPrice: 3.2, szDecimals: 1, slippageBps: 100, nonce: 1_800_000_000_000 }) as { hl_order: { order: Record<string, unknown> } };
+    const short = closePerpAction({ assetIndex: 54, size: -12.34, markPrice: 3.2, szDecimals: 1, slippageBps: 100, nonce: 1_800_000_000_000 }) as unknown as { hl_order: { order: Record<string, unknown> } };
     expect(short.hl_order.order).toEqual({ asset_index: 54, is_buy: true, price: "3.232", size: "12.3", reduce_only: true, tif: "Ioc" });
-    const long = closePerpAction({ assetIndex: 54, size: 5, markPrice: 3.2, szDecimals: 1, nonce: 1 }) as { hl_order: { order: Record<string, unknown> } };
+    const long = closePerpAction({ assetIndex: 54, size: 5, markPrice: 3.2, szDecimals: 1, nonce: 1 }) as unknown as { hl_order: { order: Record<string, unknown> } };
     expect(long.hl_order.order).toMatchObject({ is_buy: false, price: "3.168", size: "5" });
     expect(() => closePerpAction({ assetIndex: 54, size: 0, markPrice: 3, szDecimals: 1 })).toThrow();
   });
@@ -78,6 +128,140 @@ describe("closing actions", () => {
     expect(encodeEip1559({ chainId: 1, nonce: 0, maxPriorityFeePerGas: 0n, maxFeePerGas: 0n, gasLimit: 21_000n, to: `0x${"11".repeat(20)}`, value: 1n, data: new Uint8Array() })).toBe(
       `0x02df0180808082520894${"11".repeat(20)}0180c0`,
     );
+  });
+});
+
+describe("closing in rounds", () => {
+  const closingAt = (stage: string): Closing => ({
+    id: 100,
+    collateral: "wrap.testnet",
+    debt: "usdc.parry.testnet",
+    pool_id: 7,
+    slippage_bps: 100,
+    sell: "1",
+    min_out: "1",
+    out: "0",
+    repay: "1",
+    last: false,
+    stage,
+    failed: null,
+    started_at: 1,
+  });
+  const lines = (debt: bigint, collateral: bigint): RheaLines => ({
+    collateral: collateral > 0n ? [{ token_id: "wrap.testnet", balance: collateral.toString() }] : [],
+    supplied: [],
+    borrowed: debt > 0n ? [{ token_id: "usdc.parry.testnet", balance: debt.toString() }] : [],
+  });
+
+  test("closeStatus reads closing() and the position", () => {
+    expect(closeStatus(null, null)).toEqual({ kind: "closed", collateral: "0" });
+    expect(closeStatus(null, lines(0n, 5n))).toEqual({ kind: "closed", collateral: "5" });
+    expect(closeStatus(null, lines(3n, 9n))).toEqual({ kind: "open", debt: "3", collateral: "9" });
+    expect(closeStatus(closingAt("swap"), lines(3n, 9n)).kind).toBe("in_flight");
+    expect(closeStatus(closingAt("stuck_repay"), lines(3n, 9n)).kind).toBe("stuck");
+  });
+
+  /** A protected account whose rounds follow a script: each close or retry moves to the next state. */
+  function fakeChain(states: { closing: Closing | null; position: RheaLines | null }[]) {
+    let i = 0;
+    const sent: string[] = [];
+    return {
+      sent,
+      read: {
+        closing: async () => states[i]!.closing,
+        rheaPosition: async () => states[i]!.position,
+      },
+      sendOwnerActions: async (actions: OwnerAction[]) => {
+        sent.push(JSON.stringify(actions));
+        i = Math.min(i + 1, states.length - 1);
+        return { txHash: `close${sent.length}` };
+      },
+      sendCall: async (call: { methodName: string }) => {
+        sent.push(call.methodName);
+        i = Math.min(i + 1, states.length - 1);
+        return { txHash: `retry${sent.length}` };
+      },
+    };
+  }
+
+  test("a 1.425-health position closes in two rounds", async () => {
+    const chain = fakeChain([
+      { closing: null, position: lines(100n, 300n) },
+      { closing: null, position: lines(40n, 200n) },
+      { closing: null, position: lines(0n, 0n) },
+    ]);
+    const seen: string[] = [];
+    const r = await closeRheaRounds({ account: "0ua.testnet", slippageBps: 300, poolId: 2939, ...chain, onRound: (x) => seen.push(`${x.kind}:${x.after.kind}`) });
+    expect(r).toMatchObject({ closed: true, stopped: null, status: { kind: "closed" } });
+    expect(r.rounds.map((x) => x.txHash)).toEqual(["close1", "close2"]);
+    expect(seen).toEqual(["close:open", "close:closed"]);
+    expect(JSON.parse(chain.sent[0]!)).toEqual([{ close_rhea: { slippage_bps: 300, pool_id: 2939 } }]);
+  });
+
+  test("a stuck round is retried, and a round in flight is waited for", async () => {
+    const chain = fakeChain([
+      { closing: closingAt("stuck_repay"), position: lines(40n, 200n) },
+      { closing: null, position: lines(0n, 0n) },
+    ]);
+    const r = await closeRheaRounds({ account: "0ua.testnet", slippageBps: 100, poolId: 1, ...chain });
+    expect(r.closed).toBe(true);
+    expect(chain.sent).toEqual(["retry_close"]);
+    expect(r.rounds[0]).toMatchObject({ kind: "retry", txHash: "retry1" });
+
+    let reads = 0;
+    const waiting = await closeRheaRounds({
+      account: "0ua.testnet",
+      slippageBps: 100,
+      poolId: 1,
+      read: { closing: async () => (reads++ < 2 ? closingAt("repay") : null), rheaPosition: async () => lines(0n, 0n) },
+      sendOwnerActions: async () => {
+        throw new Error("nothing to send");
+      },
+      pollMs: 1,
+    });
+    expect(waiting).toMatchObject({ closed: true, rounds: [] });
+    expect(reads).toBe(3);
+    await expect(
+      closeRheaRounds({ account: "0ua.testnet", slippageBps: 100, poolId: 1, read: { closing: async () => closingAt("swap"), rheaPosition: async () => null }, sendOwnerActions: async () => ({ txHash: "x" }), pollMs: 1, waitMs: 5 }),
+    ).rejects.toThrow("still at stage swap");
+  });
+
+  test("stops on a rolled-back round, on a stuck close without a sender, and after maxRounds", async () => {
+    const rolled = fakeChain([
+      { closing: null, position: lines(100n, 300n) },
+      { closing: null, position: lines(100n, 300n) },
+    ]);
+    expect(await closeRheaRounds({ account: "0ua.testnet", slippageBps: 1, poolId: 1, ...rolled })).toMatchObject({ closed: false, stopped: "rolled_back", rounds: [{ kind: "close" }] });
+
+    const stuck = fakeChain([{ closing: closingAt("stuck_withdraw_out"), position: lines(40n, 200n) }]);
+    expect(await closeRheaRounds({ account: "0ua.testnet", slippageBps: 1, poolId: 1, read: stuck.read, sendOwnerActions: stuck.sendOwnerActions })).toMatchObject({ closed: false, stopped: "stuck", rounds: [] });
+
+    const slow = fakeChain([
+      { closing: null, position: lines(100n, 300n) },
+      { closing: null, position: lines(90n, 280n) },
+      { closing: null, position: lines(80n, 260n) },
+    ]);
+    expect(await closeRheaRounds({ account: "0ua.testnet", slippageBps: 100, poolId: 1, ...slow, maxRounds: 2 })).toMatchObject({ closed: false, stopped: "max_rounds", status: { kind: "open", debt: "80" } });
+  });
+
+  test("the client reads closing() and the lending position from the chain", async () => {
+    const rpc = mockFetch(
+      rpcRoute({
+        views: {
+          "0ua.testnet.closing": () => closingAt("stuck_verify"),
+          "0ub.testnet.closing": () => null,
+          "lending.parry.testnet.get_account": (args) => (args["account_id"] === "0ua.testnet" ? { account_id: "0ua.testnet", supplied: [], collateral: [{ token_id: "wrap.testnet", balance: "7", shares: "7", apr: "0" }], borrowed: [{ token_id: "usdc.parry.testnet", balance: "3", shares: "3", apr: "0" }], farms: [] } : null),
+        },
+      }),
+    );
+    restore = installGlobalFetch(rpc.fetch);
+    const parry = createParry({ network: "testnet", rpcUrl: RPC_URL });
+    expect((await parry.closing("0ua.testnet"))?.stage).toBe("stuck_verify");
+    expect(await parry.closing("0ub.testnet")).toBeNull();
+    expect(await parry.rheaPosition("0ua.testnet")).toEqual({ collateral: [{ token_id: "wrap.testnet", balance: "7" }], supplied: [], borrowed: [{ token_id: "usdc.parry.testnet", balance: "3" }] });
+    expect(await parry.rheaPosition("0ub.testnet")).toBeNull();
+    const r = await parry.closeRheaRounds({ account: "0ua.testnet", slippageBps: 100, poolId: 1, sendOwnerActions: async () => ({ txHash: "x" }) });
+    expect(r).toMatchObject({ closed: false, stopped: "stuck" });
   });
 });
 

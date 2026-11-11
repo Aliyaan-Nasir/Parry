@@ -6,7 +6,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { openPolicy, toBase58 } from "@parry/sdk";
 import { configFromEnv, createMcpHttpHandler, createParryMcpServer, createUsageLedger, DEFAULT_CAPS, type ParryMcpOptions } from "../src/index.js";
-import { enclaveKey, fakeParry, genuineDecision, sealingSecret } from "./fixtures.js";
+import { closingAt, enclaveKey, fakeParry, genuineDecision, sealingSecret } from "./fixtures.js";
 
 const agentSeed = sha256(utf8ToBytes("agent test key"));
 const AGENT = { accountId: "agent.parry.testnet", privateKey: `ed25519:${toBase58(new Uint8Array([...agentSeed, ...ed25519.getPublicKey(agentSeed)]))}` };
@@ -29,8 +29,9 @@ const READ_TOOLS = [
   "verify_certificate",
   "get_incidents",
   "get_route_savings",
+  "get_closing",
 ];
-const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw", "paid_risk_check", "watch_account", "unwatch_account", "issue_certificate"];
+const WRITE_TOOLS = ["create_protected_account", "set_mandate", "vault_deposit", "vault_withdraw", "close_position", "unwind_account", "paid_risk_check", "watch_account", "unwatch_account", "issue_certificate"];
 /** A read tool that needs the agent's sign-in, so it is listed only with an agent. */
 const AGENT_READ_TOOLS = ["list_watched"];
 
@@ -232,6 +233,46 @@ describe("write tools", () => {
     expect(DEFAULT_CAPS.setMandatePerDay).toBe(10);
   });
 
+  test("close_position closes the agent's position in rounds through the API's pool, retrying a stuck round", async () => {
+    const f = fakeParry("testnet", [
+      { closing: null, debt: 100n, collateral: 300n },
+      { closing: closingAt("stuck_repay"), debt: 60n, collateral: 200n },
+      { closing: null, debt: 0n, collateral: 0n },
+    ]);
+    const { call } = await connect({ parry: f.parry, agent: AGENT });
+    const r = await call("close_position", { slippage_bps: 200 });
+    expect(r.error).toBe(false);
+    expect(r.text).toContain("Closed the position on 0uagent.testnet in 2 round(s)");
+    expect(f.sent).toHaveLength(2);
+    expect(f.sent[0]).toMatchObject({ receiverId: "0uagent.testnet", methodName: "owner_call", deposit: "1", gas: "900000000000000", args: { actions: [{ close_rhea: { slippage_bps: 200, pool_id: 2939 } }] } });
+    expect(f.sent[1]).toMatchObject({ receiverId: "0uagent.testnet", methodName: "retry_close", deposit: "0", gas: "400000000000000" });
+    expect(r.data).toMatchObject({ closed: true, poolId: 2939, remainingToday: DEFAULT_CAPS.closePerDay - 1 });
+    // Nothing to close: nothing is counted or sent.
+    const again = await call("close_position", {});
+    expect(again.text).toContain("nothing to close");
+    expect(f.sent).toHaveLength(2);
+    // Slippage above the cap is refused before anything is sent.
+    expect((await call("close_position", { slippage_bps: 500 })).text).toContain("capped at 300 bps");
+  });
+
+  test("get_closing says where a close stands", async () => {
+    const f = fakeParry("testnet", [{ closing: closingAt("stuck_withdraw_out"), debt: 5n, collateral: 9n }]);
+    const { call } = await connect({ parry: f.parry });
+    const r = await call("get_closing", { account: "0uabc.testnet" });
+    expect(r.text).toContain("stuck at stuck_withdraw_out");
+    expect(r.data!["status"]).toMatchObject({ kind: "stuck" });
+  });
+
+  test("unwind_account sends everything home to the agent account with the gas the unwind needs", async () => {
+    const f = fakeParry();
+    const { call } = await connect({ parry: f.parry, agent: AGENT, caps: { unwindPerDay: 1 } });
+    const r = await call("unwind_account", {});
+    expect(r.error).toBe(false);
+    expect(f.sent[0]).toMatchObject({ receiverId: "0uagent.testnet", methodName: "owner_call", deposit: "1", gas: "660000000000000", args: { actions: [{ unwind: { tokens: ["usdc.parry.testnet", "wrap.testnet"] } }] } });
+    expect((await call("unwind_account", {})).text).toContain("cap is 1");
+    expect(f.sent).toHaveLength(1);
+  });
+
   test("invalid input is refused before anything is counted or sent", async () => {
     const f = fakeParry();
     const { call } = await connect({ parry: f.parry, agent: AGENT });
@@ -249,6 +290,8 @@ describe("write tools", () => {
       await call("set_mandate", { powers: ["repay"], limits: [] }),
       await call("vault_deposit", { amount_near: "0.1" }),
       await call("vault_withdraw", { shares: "10" }),
+      await call("close_position", {}),
+      await call("unwind_account", {}),
     ];
     for (const r of results) {
       expect(r.error).toBe(true);

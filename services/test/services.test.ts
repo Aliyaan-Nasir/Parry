@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { migrate, useQuota } from "../src/lib/db";
+import { delegateTgas, ownerRequestTgas, prepaidNear } from "../src/relayer";
 import { wallets } from "../src/topup";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -13,6 +14,27 @@ describe("top-up configuration", () => {
     ]);
     expect(() => wallets("keeper:keeper.parry.testnet")).toThrow();
     expect(wallets("")).toEqual([]);
+  });
+});
+
+describe("relayer gas", () => {
+  const request = (actions: unknown[]) => JSON.stringify({ account: "0ua.testnet", network: "testnet", nonce: 1, created_at: 1, actions });
+
+  test("an owner request carries what its chain needs: 300, 900 for a close, 600 or more for an unwind", () => {
+    expect(ownerRequestTgas(request([{ repay: { token: "usdc.parry.testnet", amount: "1" } }]))).toBe(300);
+    expect(ownerRequestTgas(request([{ close_rhea: { slippage_bps: 100, pool_id: 2939 } }]))).toBe(900);
+    expect(ownerRequestTgas(request([{ unwind: { tokens: ["usdc.parry.testnet", "wrap.testnet"], to: "me.testnet" } }]))).toBe(660);
+    expect(ownerRequestTgas(request([{ unwind: { tokens: Array.from({ length: 16 }, (_, i) => `t${i}.testnet`) } }]))).toBe(1000);
+    expect(ownerRequestTgas(request(["revoke_mandate"]))).toBe(300);
+    expect(ownerRequestTgas("not json")).toBe(300);
+  });
+
+  test("a delegate's prepaid gas is the sum of its function calls, and the gas key is sized for it", () => {
+    expect(delegateTgas([{ functionCall: { methodName: "owner_call", args: new Uint8Array(), gas: 900_000_000_000_000n, deposit: 1n } }, { transfer: { deposit: 1n } }])).toBe(900);
+    expect(delegateTgas([])).toBe(0);
+    // 300 Tgas needs about 0.35 NEAR up front at the pessimistic gas price.
+    expect(prepaidNear(300)).toBeGreaterThan(0.35);
+    expect(prepaidNear(900)).toBeLessThan(1.3);
   });
 });
 

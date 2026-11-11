@@ -13,6 +13,7 @@ import { chainReads, nearClient, sendCall, type ChainReads, type SentCall } from
 import { u128 } from "./encoding.js";
 import { NETWORKS, isNetwork, type ContractIds, type Network } from "./networks.js";
 import { ownerRequest, type OwnerRequest, type OwnerRequestInput } from "./owner.js";
+import { closeRheaRounds, type CloseRoundsOptions, type CloseRoundsResult } from "./close.js";
 import type { Certificate, Decision, RiskCheck } from "./types.js";
 import { verifyCertificate, type CertificateVerification } from "./certificate.js";
 import { signInNep413 } from "./auth.js";
@@ -93,6 +94,11 @@ export interface Parry extends ApiMethods, ChainReads {
   linearStorageAction(accountId: string): ContractCall;
   /** Signs a call with a full-access key and sends it, waiting for optimistic execution. */
   sendCall(call: ContractCall, signer: NearSigner): Promise<SentCall>;
+  /**
+   * Closes an account's Rhea position round by round with this client's chain reads (see
+   * `closeRheaRounds`): `close_rhea` while debt is left, `retry_close` when a round is stuck.
+   */
+  closeRheaRounds(opts: Omit<CloseRoundsOptions, "read">): Promise<CloseRoundsResult>;
   /**
    * Verifies a decision (or the decision with this id, read from the API) against the enclave
    * key read from the risk board, unless a key is given.
@@ -179,6 +185,7 @@ export function createParry(options: ParryOptions): Parry {
     claimAction: () => contractCall(contract("vault"), "claim", {}, { tgas: 150 }),
     linearStorageAction: (accountId) => contractCall(contracts.linear, "storage_deposit", { account_id: accountId, registration_only: true }, { tgas: 10, deposit: LINEAR_STORAGE }),
     sendCall: (call, signer) => sendCall(signerClient(signer), signer.accountId, call),
+    closeRheaRounds: (opts) => closeRheaRounds({ ...opts, read: chain }),
     verifyDecision: async (decision, opts = {}) => {
       const d = typeof decision === "string" ? await reads.decision(decision) : decision;
       // The key in force when the envelope was issued: a later enclave build has other keys.

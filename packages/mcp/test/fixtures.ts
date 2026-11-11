@@ -14,6 +14,7 @@ import {
   reviewHash,
   toBase58,
   toBase64,
+  type Closing,
   type ContractCall,
   type Decision,
   type Network,
@@ -213,7 +214,31 @@ export const routes: Record<string, unknown> = {
     routes: null,
   },
   "POST /v1/relay/create-account": { accountId: "0uagent.testnet", txHash: "tx-create" },
+  "GET /v1/config": { network: "testnet", contracts: {}, dexPool: 2939, enclave: { publicKey: "", sealingPublicKey: null, wasmSha256: "" }, reviewModel: "", explorers: {} },
 };
+
+/** The agent account's Rhea position, one entry per round: each close or retry moves to the next. */
+export interface CloseScriptState {
+  closing: Closing | null;
+  debt: bigint;
+  collateral: bigint;
+}
+
+export const closingAt = (stage: string): Closing => ({
+  id: 9,
+  collateral: "wrap.testnet",
+  debt: "usdc.parry.testnet",
+  pool_id: 2939,
+  slippage_bps: 100,
+  sell: "1",
+  min_out: "1",
+  out: "0",
+  repay: "1",
+  last: false,
+  stage,
+  failed: null,
+  started_at: 1,
+});
 
 export interface FakeParry {
   parry: Parry;
@@ -221,8 +246,10 @@ export interface FakeParry {
   apiCalls: string[];
 }
 
-export function fakeParry(network: Network = "testnet"): FakeParry {
+export function fakeParry(network: Network = "testnet", closeScript: CloseScriptState[] = [{ closing: null, debt: 0n, collateral: 0n }]): FakeParry {
   const sent: ContractCall[] = [];
+  let round = 0;
+  const state = () => closeScript[Math.min(round, closeScript.length - 1)]!;
   const apiCalls: string[] = [];
   const decision = genuineDecision();
   const fetch = async (input: string, init?: RequestInit): Promise<Response> => {
@@ -252,8 +279,19 @@ export function fakeParry(network: Network = "testnet"): FakeParry {
       } as unknown as Awaited<ReturnType<Parry["paidRiskCheck"]>>;
     },
     verifyCertificate: async (_c, opts = {}) => verifyCertificate(certificate, { enclavePublicKey: enclaveKey, ...opts }),
+    closing: async () => state().closing,
+    rheaPosition: async () => {
+      const x = state();
+      return {
+        collateral: x.collateral > 0n ? [{ token_id: "wrap.testnet", balance: x.collateral.toString() }] : [],
+        supplied: [],
+        borrowed: x.debt > 0n ? [{ token_id: "usdc.parry.testnet", balance: x.debt.toString() }] : [],
+      };
+    },
     sendCall: async (call) => {
       sent.push(call);
+      const actions = (call.args["actions"] ?? []) as Record<string, unknown>[];
+      if (call.methodName === "retry_close" || actions.some((a) => typeof a === "object" && "close_rhea" in a)) round++;
       return { txHash: `tx-${sent.length}`, value: call.methodName === "request_withdraw" ? sent.length : null };
     },
   };
