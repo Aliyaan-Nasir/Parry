@@ -113,14 +113,14 @@
   "updatedAt": "2026-11-11T00:31:58.888Z",
   "dexPool": 2939,
   "enclave": {
-    "wasmSha256": "ad39317acfb4f25a369bc8756b655e38a435021547192364d49501f2a6798022",
-    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/ad39317acfb4f25a369bc8756b655e38a435021547192364d49501f2a6798022.wasm",
+    "wasmSha256": "219aab9d9daf69d006cde9d4fd1ab4eafbd5cca76394256c71a33bf3cae398e0",
+    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/219aab9d9daf69d006cde9d4fd1ab4eafbd5cca76394256c71a33bf3cae398e0.wasm",
     "secretsProfile": "parry",
     "secretsOwner": "enclave.parry.testnet",
-    "publicKey": "ed25519:GEwNvi4w4pTEF3FMpbvpgiHLwmCJVMoN71WWnovYcZco",
-    "sealingPublicKey": "6265bd59a571c45d16939dd55ce108793b8b5712c8897f892ebe2b4e61ab4d2a",
-    "keysRun": "DtHD5hpJG6hw9FyRvUWypre9kxJmkscvzWJz84sN7Rrr",
-    "sealingReport": "{\"at\":1794367881,\"kind\":\"sealing_key\",\"public_key\":\"6265bd59a571c45d16939dd55ce108793b8b5712c8897f892ebe2b4e61ab4d2a\",\"run_id\":1794367881000}",
-    "sealingSignature": "AHT9TzE4t1hjHP5GBtvHxYu1FGF/palxOoYw/004w80dYaIEr5P/VdVXzeacSf/JdrpCoLjLZBWujY5hZxl9BQ=="
+    "publicKey": "ed25519:5GyfXaaiiryC3Bneh8Aw8dEibxUP4C8DLs22p2YecgCX",
+    "sealingPublicKey": "7e9a6d10f310ea09b83f60ac5f659300e00874ff594ef97fd5ba667328094f5b",
+    "keysRun": "9ww9V9DhgU43vN1Kjp9ckP1kHeX8nNDnWwBU3pwaSYYT",
+    "sealingReport": "{\"at\":1794369125,\"kind\":\"sealing_key\",\"public_key\":\"7e9a6d10f310ea09b83f60ac5f659300e00874ff594ef97fd5ba667328094f5b\",\"run_id\":1794369125000}",
+    "sealingSignature": "8Evi2wWNN3eB643ZQ/UoWULpv6j2c7GFOksnXjjFp4qRbTVwr44XR1IA/nQJGwA8IBkIXFFpDWWjFsR/LOuLCg=="
   }
 }

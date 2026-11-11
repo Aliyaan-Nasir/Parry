@@ -53,7 +53,15 @@ async function secret() {
   const hash = dep.enclave?.wasmSha256;
   if (!hash) throw new Error("publish the enclave first");
   const caller = process.env.ENCLAVE_ACCOUNT_ID ?? `enclave.${dep.root ?? "parry.testnet"}`;
-  sh(["outlayer", "secrets", "set", JSON.stringify({ NEARAI_API_KEY: key }), "--profile", "parry", "--wasm-hash", hash, "--access", `whitelist:${caller}`]);
+  const set = () => sh(["outlayer", "secrets", "set", JSON.stringify({ NEARAI_API_KEY: key }), "--profile", "parry", "--wasm-hash", hash, "--access", `whitelist:${caller}`]);
+  try {
+    set();
+  } catch (e) {
+    // Right after the upload the CLI can reuse the upload's access-key nonce: wait and send again.
+    if (!/InvalidNonce/.test((e as Error).message)) throw e;
+    await new Promise((r) => setTimeout(r, 5_000));
+    set();
+  }
   console.log(`NEAR AI key stored for build ${hash.slice(0, 16)}..., readable by ${caller} only`);
 }
 
