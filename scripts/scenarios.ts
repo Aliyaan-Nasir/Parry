@@ -39,6 +39,10 @@ const NEAR = 10n ** 24n;
 const near = (n: number) => (BigInt(Math.round(n * 1000)) * NEAR) / 1000n;
 const API = (process.env.PARRY_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const COLLATERAL = Number(process.env.SCENARIO_COLLATERAL_NEAR ?? 3);
+/** Which rescue people scenarios 2 to 6 set up (each needs its own NEAR): repay, add, delev. */
+const PEOPLE = new Set((process.env.SCENARIO_PEOPLE ?? "repay,add,delev").split(",").map((x) => x.trim()));
+/** What a person needs beyond their collateral: wrapping margin, storage and gas. */
+const OVERHEAD = 1.2;
 
 const env = (file: string): Record<string, string> =>
   existsSync(file)
@@ -234,19 +238,25 @@ const decisions: Record<string, Decision> = {};
 
 async function protect() {
   // 2, 3 and 4 for three people, one per rescue kind.
-  const repayer = (people.repay = await person("repay", COLLATERAL + 3));
+  if (PEOPLE.has("repay")) {
+  const repayer = (people.repay = await person("repay", COLLATERAL + OVERHEAD));
   await position(repayer);
   const faucet = await ownerCall(repayer, [{ call: { receiver_id: c("usdc"), method_name: "faucet", args: Buffer.from("{}").toString("base64"), deposit: "0", gas: "30000000000000" } }]);
   repayer.steps.push({ step: "the account takes test USDC from the faucet as its rescue reserve", tx: explorer(faucet.hash) });
   await mandate(repayer, ["repay"], [{ token: c("usdc"), reserve: "100000000", daily: "60000000" }], policy("repay-first"));
+  }
 
-  const adder = (people.add = await person("adder", COLLATERAL + 6));
-  await position(adder, 3);
-  await mandate(adder, ["add_collateral"], [{ token: c("wnear"), reserve: near(3).toString(), daily: near(3).toString() }], policy("keep-exposure"));
+  if (PEOPLE.has("add")) {
+    const adder = (people.add = await person("adder", COLLATERAL + 1 + OVERHEAD));
+    await position(adder, 1);
+    await mandate(adder, ["add_collateral"], [{ token: c("wnear"), reserve: near(1).toString(), daily: near(1).toString() }], policy("keep-exposure"));
+  }
 
-  const delev = (people.delev = await person("delev", COLLATERAL + 3));
-  await position(delev);
-  await mandate(delev, ["deleverage"], [{ token: c("wnear"), reserve: near(COLLATERAL).toString(), daily: near(COLLATERAL / 2).toString() }], policy("deleverage-only"));
+  if (PEOPLE.has("delev")) {
+    const delev = (people.delev = await person("delev", COLLATERAL + OVERHEAD));
+    await position(delev);
+    await mandate(delev, ["deleverage"], [{ token: c("wnear"), reserve: near(COLLATERAL).toString(), daily: near(COLLATERAL / 2).toString() }], policy("deleverage-only"));
+  }
 
   save(2, "A protected account without gas", true, Object.values(people).map((p) => p.steps[0]));
   save(3, "A leveraged Rhea position", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /supply|borrow|funds/.test(JSON.stringify(s)))));
@@ -259,6 +269,7 @@ async function protect() {
   save(5, "The market shock moves the price", true, [{ step: "NEAR -20% on the testnet oracle for 30 minutes", tx: explorer(shock.txHash), healthBefore: before }]);
 
   // 6: alerts, AI review, rescue, recovery.
+  if (!runs(6)) return;
   const steps6: unknown[] = [];
   let ok6 = true;
   for (const [kind, p] of Object.entries(people)) {
@@ -301,7 +312,7 @@ async function limits() {
     ok &&= good;
     steps.push({ step: label, refused: !!o.failure, reason: o.failure?.slice(0, 160), tx: explorer(o.hash) });
   };
-  const p = people.repay ?? (await person("limits", 3));
+  const p = people.repay ?? (await person("limits", 1));
   const d = decisions.repay;
   if (d?.envelope && d.envelopeSignature) {
     await refused("replaying an executed envelope", send(root, rootId, p.account, "guardian_execute", { envelope: d.envelope, signature: d.envelopeSignature }, 0n, 300), /nonce|replay|stale|expired/i);
@@ -314,7 +325,7 @@ async function limits() {
   const withdrawEnvelope = forged.replace(/"action":.*}$/, `"action":{"withdraw":{"token":"${c("wnear")}","amount":"1"}}}`);
   await refused("a guardian envelope asking to withdraw", send(root, rootId, p.account, "guardian_execute", { envelope: withdrawEnvelope, signature: Buffer.alloc(64, 7).toString("base64") }, 0n, 300), /withdraw|unknown variant|parse|signature/i);
   // An expired mandate: the guardian stops acting for it.
-  const e = await person("expiry", 3);
+  const e = await person("expiry", 1);
   await mandate(e, ["repay"], [{ token: c("usdc"), reserve: "1000000", daily: "1000000" }], policy("repay-first"), 75);
   await sleep(90_000);
   const m = await view<{ expired: boolean } | null>(e.account, "mandate");
@@ -326,10 +337,11 @@ async function limits() {
 async function vault() {
   if (!c("vault")) return save(10, "Vault", false, [{ step: "no vault in this deployment" }]);
   const steps: unknown[] = [];
-  const p = await person("vault", 6);
+  const p = await person("vault", Number(process.env.SCENARIO_VAULT_NEAR ?? 1) + 1);
   const before = await view<{ total_shares: string }>(c("vault"), "vault_state").catch(() => null);
-  const dep1 = await call(p.n, p.owner, c("vault"), "deposit", {}, near(3), 150);
-  steps.push({ step: "deposit 3 NEAR into the vault (staked into LiNEAR, EARN minted at NAV)", tx: explorer(dep1.hash) });
+  const amount = Number(process.env.SCENARIO_VAULT_NEAR ?? 1);
+  const dep1 = await call(p.n, p.owner, c("vault"), "deposit", {}, near(amount), 150);
+  steps.push({ step: `deposit ${amount} NEAR into the vault (staked into LiNEAR, EARN minted at NAV)`, tx: explorer(dep1.hash) });
   const shares = await view<string>(c("vault"), "ft_balance_of", { account_id: p.owner });
   steps.push({ step: `EARN balance ${Number(BigInt(shares) / 10n ** 18n) / 1e6}`, totalSharesBefore: before?.total_shares });
   const hedge = await until("a hedge report after the deposit", 10 * 60_000, async () => {
@@ -359,7 +371,7 @@ async function vault() {
 }
 
 async function paid() {
-  const p = people.repay ?? (await person("payer", 3));
+  const p = people.repay ?? (await person("payer", 1));
   const fau = await call(p.n, p.owner, c("usdc"), "faucet", {}, 0n, 30);
   const r = await parry.paidRiskCheck(p.account, { payer: { accountId: p.owner, privateKey: p.key }, maxAmount: "100000" });
   save(12, "A paid risk check over x402 on NEAR", !!r.result && !!r.payment, [

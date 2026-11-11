@@ -13,9 +13,19 @@ import { derivedAddress, PATH_EVM, PATH_HYPERLIQUID } from "./lib/positions";
 
 const STANDARDS = new Set(["parry-account", "parry-accounts", "parry-vault", "parry-risk", "parry-oracle", "nep141"]);
 
+/** FastNEAR's free API rate-limits; after a 429 the indexer pauses, doubling the pause each time. */
+let pausedUntil = 0;
+let backoffMs = 30_000;
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${FASTNEAR_TX_URL}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+  if (res.status === 429) {
+    pausedUntil = Date.now() + backoffMs;
+    backoffMs = Math.min(backoffMs * 2, 300_000);
+    throw new Error(`fastnear ${path} 429: pausing ${Math.round((pausedUntil - Date.now()) / 1000)} s`);
+  }
   if (!res.ok) throw new Error(`fastnear ${path} ${res.status}`);
+  backoffMs = 30_000;
   return (await res.json()) as T;
 }
 
@@ -88,8 +98,9 @@ async function onAccountCreated(sql: Sql, data: unknown, tx: string) {
 export const indexable = () => !RPC_URLS.some((u) => /127\.0\.0\.1|localhost/.test(u));
 
 export async function indexAll(sql: Sql): Promise<number> {
-  if (!indexable()) return 0;
-  const fixed = ["factory", "risk", "vault", "oracle"].map(contract).filter(Boolean);
+  if (!indexable() || Date.now() < pausedUntil) return 0;
+  // The oracle is left out: its feed writes every few seconds and the app reads its views.
+  const fixed = ["factory", "risk", "vault"].map(contract).filter(Boolean);
   const accounts = (await sql<{ account: string }[]>`SELECT account FROM accounts`).map((r) => r.account);
   let n = 0;
   for (const a of [...fixed, ...accounts]) {
@@ -97,6 +108,7 @@ export async function indexAll(sql: Sql): Promise<number> {
       n += await indexAccount(sql, a);
     } catch (e) {
       log.warn("index failed", { account: a, error: errorText(e) });
+      if (Date.now() < pausedUntil) break;
     }
   }
   return n;
@@ -106,7 +118,7 @@ export async function main() {
   const sql = db();
   await migrate(sql);
   let last = 0;
-  every(intEnv("INDEXER_MS", 10_000), "index", async () => {
+  every(intEnv("INDEXER_MS", 20_000), "index", async () => {
     const n = await indexAll(sql);
     last = Date.now();
     await setStatus(sql, "indexer", true, indexable() ? `${n} new events` : "not available on a local node (FastNEAR indexes testnet and mainnet)");

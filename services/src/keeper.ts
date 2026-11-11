@@ -103,7 +103,14 @@ async function marginRoute(sql: Sql): Promise<string> {
 async function rebalance(sql: Sql): Promise<string> {
   if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
-  const o = await keeper.call({ receiverId: contract("vault"), methodName: "rebalance", args: {}, tgas: 150 });
+  let o;
+  try {
+    o = await keeper.call({ receiverId: contract("vault"), methodName: "rebalance", args: {}, tgas: 150 });
+  } catch (e) {
+    // The vault refuses until the enclave's next report lands: that is waiting, not failing.
+    if (/waits for a fresh report|no vault report/i.test(errorText(e))) return "waiting for a fresh vault report";
+    throw e;
+  }
   const sig = returnValue<{ r: string; s: string; v: number } | null>(o);
   const ev = eventsOf(o).find((e) => e.event === "hedge_order");
   if (!sig || !ev) return "in band";
