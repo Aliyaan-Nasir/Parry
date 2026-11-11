@@ -27,7 +27,7 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 | 6 | Alert, AI review, rescue and recovery | passes | [tx 1](https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A) |
 | 7 | Limits: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/9CzERLrWh1v8in6vZy2uvfQJLfQeZDuUEU7TPtVDeica), [tx 2](https://testnet.nearblocks.io/txns/JAMYHxcEzNyyxDHMZgLvBeXZwwz5EKg8QRqoMqBLTYeL), [tx 3](https://testnet.nearblocks.io/txns/J9ZahDCsajk7gyspFx34dbfmF9ZMwyEJbzfET3oARADT) |
 | 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/HGRN5UQNq3UTTH6dUNvVQASK5adm7cRK6yJnkpZW34p2), [tx 2](https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL) |
-| 9 | An Aave loan on Base Sepolia rescued through Chain Signatures and verified by the MPC network | waits for Base Sepolia ETH at the account's derived address |  |
+| 9 | An Aave position on Base Sepolia rescued through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/ARQorS56hvsJnGhQ9WMjHeT2Qr2SmawnXHAAWWyUy3Ah), [tx 2](https://testnet.nearblocks.io/txns/7PB7R7H991Y1YMohZauyhdiPWcmoRhpcp7LdjLeZssbT), [tx 3](https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a) |
 | 10 | Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin) | passes | [tx 1](https://testnet.nearblocks.io/txns/EoJq4eTPyPKvnJQuHg19dzzzfVwzam6ZrUWMUtwmUktf), [tx 2](https://testnet.nearblocks.io/txns/FBabiQkufqw8jnLQB7fYqTQt3wpLWxDR4KERtC67NbvE) |
 | 11 | The vault pauses deposits from its risk score | passes |  |
 | 12 | A paid risk check over x402 on NEAR | passes | [tx 1](https://testnet.nearblocks.io/txns/7HiVRqxDKGfywuh2maTLjFHteRMU3euseNiF5L9mbofR), [tx 2](https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf) |
@@ -57,10 +57,10 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
   The sandbox suite runs it against Rhea lending's exact mainnet wasm, the Rhea exchange, wNEAR and LiNEAR: [`contracts/tests/tests/protect.rs`](contracts/tests/tests/protect.rs).
 - **Chain Signatures for two other chains.**
   Hyperliquid orders: the account builds the EIP-712 agent digest on chain ([`agent_digest`](contracts/common/src/hyperliquid.rs#L139)) and checks the order against a price band before signing ([`on_hl_mark`](contracts/account/src/guardian.rs#L368)).
-  Aave on Base Sepolia: the account builds the EIP-1559 transaction with capped fees ([`assert_guardian_fees`](contracts/common/src/evm.rs#L80), [`evm_sign`](contracts/account/src/guardian.rs#L408)); the relay checks the MPC signature recovers to the person's own address, broadcasts it, and has the MPC network verify the result on NEAR ([`verifyEvm`](services/src/guardian.ts#L151), [`verifyOnNear`](services/src/lib/evm.ts#L191)).
+  Aave on Base Sepolia: the account builds the EIP-1559 transaction with capped fees ([`assert_guardian_fees`](contracts/common/src/evm.rs#L80), [`evm_sign`](contracts/account/src/guardian.rs#L408)); the relay checks the MPC signature recovers to the person's own address, broadcasts it, and has the MPC network verify the result on NEAR ([`verifyEvm`](services/src/guardian.ts#L158), [`verifyOnNear`](services/src/lib/evm.ts#L191)).
 - **Verifiable AI in a TEE.**
-  The enclave asks a NEAR AI Cloud verifiable model to review every plan and checks the model's TEE signature over the exact request and response bytes before it signs anything: [`review`](enclave/src/ai.rs#L78).
-  The review's hash goes on chain with the action, and anyone can re-check a decision: [`verifyDecisionRecord`](apps/api/src/verify.ts#L92), `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server.
+  The enclave asks a NEAR AI Cloud verifiable model to review every plan and checks the model's TEE signature over the exact request and response bytes before it signs anything: [`review`](enclave/src/ai.rs#L80).
+  The review's hash goes on chain with the action, and anyone can re-check a decision: [`verifyDecisionRecord`](apps/api/src/verify.ts#L93), `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server.
 - **Keys bound to the build.**
   OutLayer derives the enclave's signing and sealing keys from the wasm: [`enclave/manifest.json`](enclave/manifest.json); the risk board accepts reports only from that key: [`submit`](contracts/risk/src/lib.rs#L273).
 - **Tests.**
@@ -84,7 +84,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 - The AI review is not advice next to an action: it is a condition of the action, bound to the exact bytes by the model's TEE signature and recorded on chain with it.
 - Policies are sealed to the enclave ([`seal::open`](enclave/src/seal.rs#L67)), so nobody watching the chain learns when a position will be defended.
 - A protected account is a NEP-655 universal account derived from one published global code hash, created gaslessly by the relayer ([`create_account`](contracts/accounts/src/lib.rs#L123), [`state_init_of`](contracts/accounts/src/lib.rs#L105)), and owned by a passkey verified on chain ([`passkey::verify`](contracts/account/src/passkey.rs#L34)).
-- The Tremor index, cascade pressure and first-passage probability turn volatility and crowding into a time to liquidation, not just a health number: [`tremor`](packages/core/src/risk.ts#L115), [`assess`](packages/core/src/risk.ts#L297).
+- The Tremor index, cascade pressure and first-passage probability turn volatility and crowding into a time to liquidation, not just a health number: [`tremor`](packages/core/src/risk.ts#L115), [`assess`](packages/core/src/risk.ts#L304).
 
 ## Sustainability
 

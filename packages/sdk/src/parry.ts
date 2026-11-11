@@ -14,7 +14,7 @@ import { u128 } from "./encoding.js";
 import { NETWORKS, isNetwork, type ContractIds, type Network } from "./networks.js";
 import { ownerRequest, type OwnerRequest, type OwnerRequestInput } from "./owner.js";
 import type { Decision, RiskCheck } from "./types.js";
-import { verifyDecision, type DecisionVerification } from "./verify.js";
+import { enclaveKeyAt, envelopeIssuedAt, verifyDecision, type DecisionVerification } from "./verify.js";
 import {
   decodePaymentResponse,
   encodePaymentHeader,
@@ -168,7 +168,9 @@ export function createParry(options: ParryOptions): Parry {
     sendCall: (call, signer) => sendCall(signerClient(signer), signer.accountId, call),
     verifyDecision: async (decision, opts = {}) => {
       const d = typeof decision === "string" ? await reads.decision(decision) : decision;
-      const key = opts.enclavePublicKey ?? (await chain.enclave()).key.public_key;
+      // The key in force when the envelope was issued: a later enclave build has other keys.
+      const issued = envelopeIssuedAt(d.envelope);
+      const key = opts.enclavePublicKey ?? (issued !== null ? enclaveKeyAt(await chain.enclaveHistory(), issued) : null) ?? (await chain.enclave()).key.public_key;
       return verifyDecision(d, { enclavePublicKey: key });
     },
   };

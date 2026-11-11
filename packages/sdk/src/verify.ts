@@ -102,6 +102,26 @@ export interface DecisionVerification {
  * 5. the envelope's `review_hash` equals the review hash;
  * 6. the decision id is the SHA-256 of the envelope.
  */
+/**
+ * The enclave key that was in force when an envelope was issued: the newest key in the board's
+ * history (any order) trusted at or before `issuedAt` (unix seconds), else the oldest.
+ */
+export function enclaveKeyAt(history: readonly { public_key: string; since: number }[], issuedAt: number): string | null {
+  const sorted = [...history].sort((a, b) => a.since - b.since);
+  const inForce = sorted.filter((k) => k.since <= issuedAt).pop();
+  return (inForce ?? sorted[0])?.public_key ?? null;
+}
+
+/** An envelope's `issued_at` (unix seconds), or null when it does not parse. */
+export function envelopeIssuedAt(envelope: string | null | undefined): number | null {
+  try {
+    const t = (JSON.parse(envelope ?? "") as { issued_at?: unknown }).issued_at;
+    return typeof t === "number" ? t : null;
+  } catch {
+    return null;
+  }
+}
+
 export function verifyDecision(decision: Decision, opts: { enclavePublicKey?: string | null }): DecisionVerification {
   const checks: DecisionCheck[] = [];
   const add = (name: DecisionCheck["name"], status: CheckStatus, detail: string) => checks.push({ name, status, detail });

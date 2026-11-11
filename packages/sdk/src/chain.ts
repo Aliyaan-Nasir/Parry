@@ -58,6 +58,8 @@ export function chainReads(near: Near, contract: (name: keyof ContractIds) => st
       if (!key) throw new Error("get_enclave() returned nothing");
       return { key, sealingKey: sealingKey ?? null };
     },
+    /** Every enclave key the risk board has trusted, newest first (a new enclave build rotates it). */
+    enclaveHistory: async (): Promise<EnclaveKey[]> => (await view<EnclaveKey[]>(contract("risk"), "enclave_history", { limit: 100 })) ?? [],
   };
 }
 

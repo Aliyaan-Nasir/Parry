@@ -23,6 +23,8 @@ export {
   reviewHash,
   reviewJson,
   signedTextHashes,
+  enclaveKeyAt,
+  envelopeIssuedAt,
   verifyDecision,
   verifyReserves,
   type CheckStatus,

@@ -146,6 +146,51 @@
         }
       ]
     },
+    "9": {
+      "title": "An Aave position on Base Sepolia rescued through Chain Signatures",
+      "ok": true,
+      "at": "2026-11-11T04:20:26.664Z",
+      "steps": [
+        {
+          "step": "protected account",
+          "tx": "https://testnet.nearblocks.io/txns/ARQorS56hvsJnGhQ9WMjHeT2Qr2SmawnXHAAWWyUy3Ah"
+        },
+        {
+          "step": "wrap ETH: https://sepolia.basescan.org/tx/0xcbcba623ab2e2dd3b71e27be99a5af3b6f9407fc970be68018087fae763c8493 (signed in NEAR 6gMdJUoFggManNwFi41fthB4By3ZgjxMk2CqfLan2fpv)"
+        },
+        {
+          "step": "approve the pool: https://sepolia.basescan.org/tx/0x7a1bf83ba0449a9d816a1e4aa63dac06ee24036fede9b90f1e2ef28ec1af72da (signed in NEAR 26Rh5ZYDPM7Vybv25ZmvhVXfyF3vqEYrUfeJvvVP1Ci7)"
+        },
+        {
+          "step": "supply WETH: https://sepolia.basescan.org/tx/0x1f956a691d37ab45edd2304e5320d210b5350e4712b5d5a2fbe0f9292221c4b2 (signed in NEAR ANwPjs9dzRysXzQk86poFMJBv97V3dscXKd7SHive61Q)"
+        },
+        {
+          "step": "borrow USDC: https://sepolia.basescan.org/tx/0x4c4f9305246c97bb16ecb8f3f338f6f2d9ffce31a6abdcde9ce2e415207a6626 (signed in NEAR 9NqRMNt1g731o6kk3ArTRskw469CY4oKLsdqd6KafUCY)"
+        },
+        {
+          "step": "Aave: 6.18 USD collateral, 4.57 USD debt, health 1.150"
+        },
+        {
+          "step": "mandate: evm_repay on the Aave pool for the account's own address",
+          "tx": "https://testnet.nearblocks.io/txns/7PB7R7H991Y1YMohZauyhdiPWcmoRhpcp7LdjLeZssbT"
+        },
+        {
+          "step": "evm_approve: Approve the Aave pool to take up to 0.82 of the debt asset ($0.82) from the person's own address (the repay plus 1% for interest), so the next run can repay 0.81 ($0.81): health 1.151, target 1.40.",
+          "near": "https://testnet.nearblocks.io/txns/b86v2pieo7pxYLjcBsytoW4H2i8wLQzks2A9msgajPa",
+          "base": "https://sepolia.basescan.org/tx/0xa41afa51d0b83f3b1e6fdc97c74eb5e73fdd04d17f35eaa13685773f89d1c753"
+        },
+        {
+          "step": "evm_repay: Repay 0.81 of the Aave debt asset ($0.81) from the person's own address: health 1.151 to 1.400 (target 1.40).",
+          "near": "https://testnet.nearblocks.io/txns/76HZsxGy3bW2ZS8eEbmYkT8R85hg6pvsgvkGby7eF3kw",
+          "base": "https://sepolia.basescan.org/tx/0xfb64cc4ef51659176e741a1d88ff7cd1d2fcd5617f046138b218c77e446409d9"
+        },
+        {
+          "step": "verify_foreign_transaction on the MPC signer",
+          "tx": "https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a",
+          "result": "verified"
+        }
+      ]
+    },
     "10": {
       "title": "Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin)",
       "ok": true,
@@ -248,5 +293,8 @@
   },
   "rescue": {
     "decision": "a950259353731a7812386ada39e2074528d63193e8e54d48ea82f51564a92690"
+  },
+  "evm": {
+    "decision": "a973d08fbcf8e606e3527623a7385417e5e9d8e57d1839059968bc6919acc484"
   }
 }

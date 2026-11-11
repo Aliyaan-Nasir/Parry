@@ -13,6 +13,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { findModelAttestationsForSignature, InferenceClient } from "@nearai/inference-sdk";
+import { enclaveKeyAt, envelopeIssuedAt } from "@parry/sdk";
 import { contract } from "@parry/services/lib/config";
 import { eventsOf, rpc, view } from "@parry/services/lib/near";
 import type { FinalExecutionOutcome } from "near-kit";
@@ -105,7 +106,11 @@ export async function verifyDecisionRecord(d: DecisionRow) {
   const attestation = r.model && r.signing_address ? await modelAttestation(r.model, r.signing_address) : null;
   if (attestation) checks.push(attestation);
 
-  const enclave = await view<{ public_key: string; wasm_sha256: string }>(contract("risk"), "get_enclave").catch(() => null);
+  // The key the board trusted when the envelope was issued: a later enclave build has other keys.
+  const history = await view<{ public_key: string; wasm_sha256: string; since: number }[]>(contract("risk"), "enclave_history", { limit: 100 }).catch(() => []);
+  const issued = envelopeIssuedAt(d.envelope);
+  const inForce = issued !== null ? enclaveKeyAt(history, issued) : null;
+  const enclave = history.find((k) => k.public_key === inForce) ?? (await view<{ public_key: string; wasm_sha256: string }>(contract("risk"), "get_enclave").catch(() => null));
   if (d.envelope && d.envelope_signature && enclave) {
     const digest = sha256(utf8ToBytes(`parry-guardian:v1:${d.envelope}`));
     const ok = ed25519.verify(Buffer.from(d.envelope_signature, "base64"), digest, bs58(enclave.public_key.replace(/^ed25519:/, "")));

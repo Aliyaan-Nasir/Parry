@@ -5,7 +5,9 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { reserveProof, reserveRoot, type ReserveLeaf } from "@parry/core";
 import {
+  enclaveKeyAt,
   envelopeDigest,
+  envelopeIssuedAt,
   recoverEip191Address,
   reviewHash,
   signedTextHashes,
@@ -199,5 +201,28 @@ describe("verifyReserves", () => {
     expect(v.rootMatches).toBe(false);
     expect(verifyReserves(reserves, { onChainRoot: "00".repeat(32) }).ok).toBe(false);
     expect(verifyReserves(reserves).onChainMatches).toBeNull();
+  });
+});
+
+describe("enclaveKeyAt", () => {
+  // Newest first, as the risk board's enclave_history returns them.
+  const history = [
+    { public_key: "ed25519:third", since: 3_000 },
+    { public_key: "ed25519:second", since: 2_000 },
+    { public_key: "ed25519:first", since: 1_000 },
+  ];
+
+  test("is the key the board trusted when the envelope was issued", () => {
+    expect(enclaveKeyAt(history, 2_500)).toBe("ed25519:second");
+    expect(enclaveKeyAt(history, 3_000)).toBe("ed25519:third");
+    expect(enclaveKeyAt(history, 999_999)).toBe("ed25519:third");
+    expect(enclaveKeyAt(history, 10)).toBe("ed25519:first");
+    expect(enclaveKeyAt([], 10)).toBeNull();
+  });
+
+  test("reads an envelope's issue time", () => {
+    expect(envelopeIssuedAt('{"issued_at":1794367000}')).toBe(1794367000);
+    expect(envelopeIssuedAt("not json")).toBeNull();
+    expect(envelopeIssuedAt(null)).toBeNull();
   });
 });

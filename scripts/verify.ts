@@ -239,8 +239,12 @@ async function main() {
       const pub = secp256k1.Signature.fromBytes(sig.subarray(0, 64), "compact").addRecoveryBit(sig[64]! - 27).recoverPublicKey(keccak_256(msg)).toBytes(false);
       const addr = `0x${bytesToHex(keccak_256(pub.subarray(1)).slice(12))}`;
       if (addr.toLowerCase() !== r.signingAddress!.toLowerCase()) throw new Error(`recovers to ${addr}, not ${r.signingAddress}`);
-      const ok = ed25519.verify(Buffer.from(d.envelopeSignature, "base64"), sha256(utf8ToBytes(`parry-guardian:v1:${d.envelope}`)), unb58(dep.enclave!.publicKey!.replace(/^ed25519:/, "")));
-      if (!ok) throw new Error("the envelope is not signed by the enclave key");
+      // The key the board trusted when the envelope was issued: a later enclave build has other keys.
+      const history = await view<{ public_key: string; since: number }[]>(dep.contracts.risk!.account, "enclave_history", { limit: 100 });
+      const issued = (JSON.parse(d.envelope) as { issued_at: number }).issued_at;
+      const inForce = [...history].sort((a, b) => a.since - b.since).filter((k) => k.since <= issued).pop()?.public_key ?? dep.enclave!.publicKey!;
+      const ok = ed25519.verify(Buffer.from(d.envelopeSignature, "base64"), sha256(utf8ToBytes(`parry-guardian:v1:${d.envelope}`)), unb58(inForce.replace(/^ed25519:/, "")));
+      if (!ok) throw new Error(`the envelope is not signed by the enclave key in force when it was issued (${inForce})`);
       const o = await txOutcome(d.txs.action, dep.services!.guardian!);
       const acted = events(o).find((e) => e.event === "guardian_acted");
       if (acted?.data.review_hash !== hash) throw new Error(`on chain ${acted?.data.review_hash}, recomputed ${hash}`);
