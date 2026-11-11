@@ -20,6 +20,11 @@ const SERVICE_LABEL: Record<string, string> = {
   "indexer-lag": "Indexer lag",
   alerts: "Alerts",
   topup: "Top-up",
+  market: "Agent Market",
+  agent: "Agent",
+  api: "API",
+  enclave: "Enclave",
+  treasury: "Treasury",
 };
 
 function Up({ ok, yes = "Up", no = "Down" }: { ok: boolean; yes?: string; no?: string }) {

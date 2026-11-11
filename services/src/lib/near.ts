@@ -9,7 +9,7 @@ import { decodeSignedDelegateAction, Near, parseKey } from "near-kit";
 import type { FinalExecutionOutcome, PrivateKey, TransactionBuilder } from "near-kit";
 import { network, RPC_URLS } from "./config";
 
-type RpcError = { cause?: { name?: string; info?: unknown }; message?: string; data?: unknown };
+type RpcError = { cause?: { name?: string; info?: unknown }; code?: number; message?: string; data?: unknown };
 
 export class RpcCallError extends Error {
   constructor(message: string, override readonly cause?: unknown) {
@@ -34,6 +34,9 @@ export async function rpc<T>(method: string, params: unknown, urls: string[] = R
       if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { result?: T; error?: RpcError };
       if (body.error) {
+        // A provider that rate limits in the body, or lacks the method (some do not serve the
+        // EXPERIMENTAL ones), is a provider fault: try the next one.
+        if (body.error.code === -429 || (body.error.code === -32601 && body.error.cause?.name !== "METHOD_NOT_FOUND")) throw new Error(body.error.message ?? `rpc error ${body.error.code}`);
         // A contract or argument error is the answer, not a provider fault: do not retry it.
         throw new RpcCallError(body.error.cause?.name ?? body.error.message ?? "rpc error", body.error);
       }
