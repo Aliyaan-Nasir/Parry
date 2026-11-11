@@ -34,5 +34,12 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "postgres": "3.4.9"
+  },
+  "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-848j-6mx2-7j84"
+      ]
+    }
   }
 }

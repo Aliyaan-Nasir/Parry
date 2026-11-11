@@ -342,6 +342,7 @@ export function routeComparison(amountNear: number): RouteComparison {
     rhea: { outUsd: Math.round(value * 0.9961 * 1e6) / 1e6, priceImpact: 0.0039, poolId: 0 },
     intents: { outUsd: Math.round(value * 0.9978 * 1e6) / 1e6, confidential: false, dry: true },
     chosen: "rhea",
+    reason: "testnet: the account settles on the Rhea pool; the 1Click quote is shown for comparison",
   };
 }
 

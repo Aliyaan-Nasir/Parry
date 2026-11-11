@@ -245,7 +245,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       guard(async () => {
         const r = await parry.rescueQuote(amount_near);
         const intents = "outUsd" in r.intents ? `${r.intents.outUsd} USDC` : `unavailable (${r.intents.unavailable})`;
-        return ok(`Rhea pool ${r.rhea ? `${r.rhea.outUsd} USDC` : "unavailable"}, NEAR Intents ${intents}; chosen: ${r.chosen}.`, r as unknown as Record<string, unknown>);
+        return ok(`Rhea pool ${r.rhea ? `${r.rhea.outUsd} USDC` : "unavailable"}, NEAR Intents ${intents}; chosen: ${r.chosen}${r.reason ? ` (${r.reason})` : ""}.`, r as unknown as Record<string, unknown>);
       }),
   );
 

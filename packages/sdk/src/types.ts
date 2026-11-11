@@ -266,6 +266,8 @@ export interface RouteComparison {
   rhea: { outUsd: number; priceImpact: number; poolId: number } | null;
   intents: { outUsd: number; confidential: boolean; dry: true } | { unavailable: string };
   chosen: "rhea" | "intents";
+  /** Why that route: on testnet the account settles only on the Rhea pool, whatever the quotes say (absent on older records). */
+  reason?: string;
 }
 
 export interface Status {

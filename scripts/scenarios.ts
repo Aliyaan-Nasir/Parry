@@ -201,6 +201,8 @@ async function person(tag: string, fundNear: number): Promise<Person> {
   const k = generateKey();
   const owner = `${tag}${Date.now() % 1_000_000}.${rootId}`;
   await root.transaction(rootId).createAccount(owner).transfer(owner, `${near(fundNear)} yocto` as never).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
+  // The owner's key goes to the keychain, so what is left on the account can be recovered later.
+  if (!sandbox) writeFileSync(join(homedir(), ".near-credentials", "testnet", `${owner}.json`), JSON.stringify({ account_id: owner, public_key: k.publicKey.toString(), private_key: k.secretKey }), { mode: 0o600 });
   const steps: unknown[] = [];
   // Scenario 2: the relayer creates the protected account and pays for it.
   const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: owner } });
@@ -409,7 +411,8 @@ async function vault() {
   const onChain = await view<{ root: string } | null>(c("vault"), "reserves");
   const rv = verifyReserves(reserves, { onChainRoot: onChain?.root ?? null });
   steps.push({ step: "proof of reserves: every leaf's proof and the root on chain", ok: rv.ok, root: reserves.root });
-  save(10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", paid === true && rv.ok && !("error" in hedge), steps);
+  const title = "pending" in hedge ? "Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin)" : "Vault deposit, hedge, withdrawal through the queue, proof of reserves";
+  save(10, title, paid === true && rv.ok && !("error" in hedge), steps);
 }
 
 async function vaultPause() {
@@ -510,7 +513,8 @@ async function evmRescue() {
  */
 async function hlOrder() {
   const title = "A Hyperliquid order signed by the protected account through Chain Signatures";
-  const p = await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.3));
+  // A 300 Tgas call is checked against the pessimistic gas price, so the owner needs about 0.35 NEAR up front.
+  const p = await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.6));
   const { hyperliquidAddress } = await api<{ hyperliquidAddress: string }>(`/v1/accounts/${p.account}`);
   const mids = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) })).json()) as Record<string, string>;
   const mark = Number(mids.NEAR);
@@ -524,7 +528,7 @@ async function hlOrder() {
   const sig = value ? (JSON.parse(Buffer.from(value, "base64").toString()) as { r: string; s: string; v: number }) : null;
   p.steps.push({ step: `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`, tx: explorer(o.hash), digest });
   if (!sig || !digest) return save(8, title, false, [...p.steps, { step: "no signature came back", status: o.o?.status }]);
-  const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig)}`;
+  const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig).replace(/^0x/, "")}`;
   const ok = signer.toLowerCase() === hyperliquidAddress.toLowerCase();
   p.steps.push({ step: "the MPC signature recovers to the account's derived Hyperliquid address", signer, hyperliquidAddress, ok });
   const res = await submitOrder(order, nonce, sig).catch((e) => ({ status: "error", response: String(e) }));
@@ -570,7 +574,7 @@ async function agents() {
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
 if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
 if (runs(7)) await limits();
-if (runs(8) && !sandbox) await hlOrder().catch((e) => save(8, "A Hyperliquid order signed by the protected account through Chain Signatures", false, [{ error: String(e) }]));
+if (runs(8) && !sandbox) await hlOrder().catch((e) => save(8, "A Hyperliquid order signed by the protected account through Chain Signatures", false, [{ error: String(e), details: (e as { details?: unknown }).details }]));
 if (runs(9) && !sandbox) await evmRescue();
 if (runs(10)) await vault();
 if (runs(11)) await vaultPause();

@@ -89,6 +89,80 @@
         }
       ]
     },
+    "8": {
+      "title": "A Hyperliquid order signed by the protected account through Chain Signatures",
+      "ok": true,
+      "at": "2026-11-11T01:20:51.448Z",
+      "steps": [
+        {
+          "step": "relayer creates 0uv8xqzpp5fv962zjxd1p5qek4hxdhr0yq8td4ca98rtgqk2x305z0 for perp36736.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/HGRN5UQNq3UTTH6dUNvVQASK5adm7cRK6yJnkpZW34p2"
+        },
+        {
+          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.5204) through Chain Signatures",
+          "tx": "https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL",
+          "digest": "e680c47d767d741f81adc5d0730e24ed0067dd56d597c50965b61968fca36c61"
+        },
+        {
+          "step": "the MPC signature recovers to the account's derived Hyperliquid address",
+          "signer": "0xf317809b15c3789c7ed41eef154353d6f750adf8",
+          "hyperliquidAddress": "0xf317809b15c3789c7ed41eef154353d6f750adf8",
+          "ok": true
+        },
+        {
+          "step": "Hyperliquid's answer (the order fills once the address holds testnet USDC)",
+          "response": {
+            "status": "err",
+            "response": "User or API Wallet 0xf317809b15c3789c7ed41eef154353d6f750adf8 does not exist."
+          }
+        }
+      ]
+    },
+    "10": {
+      "title": "Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin)",
+      "ok": true,
+      "at": "2026-11-11T01:18:17.527Z",
+      "steps": [
+        {
+          "step": "deposit 0.6 NEAR into the vault (staked into LiNEAR, EARN minted at NAV)",
+          "tx": "https://testnet.nearblocks.io/txns/EoJq4eTPyPKvnJQuHg19dzzzfVwzam6ZrUWMUtwmUktf"
+        },
+        {
+          "step": "EARN balance 3.257734",
+          "totalSharesBefore": "1084403000000000000000000"
+        },
+        {
+          "step": "the keeper rebalances: a Chain Signatures order shorts NEAR on Hyperliquid",
+          "hedge": {
+            "pending": "the hedge account 0x33aacfd7ed3dd010f659455155e820bfcddf1af1 holds no Hyperliquid margin yet; the keeper signs the short once it does"
+          }
+        },
+        {
+          "step": "request a withdrawal of half the shares",
+          "tx": "https://testnet.nearblocks.io/txns/FBabiQkufqw8jnLQB7fYqTQt3wpLWxDR4KERtC67NbvE"
+        },
+        {
+          "step": "the keeper processes the queue and pays out in kind",
+          "paid": true
+        },
+        {
+          "step": "proof of reserves: every leaf's proof and the root on chain",
+          "ok": true,
+          "root": "963548cb8846baacc1eeea0d4c88692a8df7f3f4b3e7b4aee8237b2d5b3f0763"
+        }
+      ]
+    },
+    "11": {
+      "title": "The vault pauses deposits from its risk score",
+      "ok": true,
+      "at": "2026-11-11T01:18:17.658Z",
+      "steps": [
+        {
+          "step": "the enclave's latest score is 0; deposits are open (70 pauses, under 60 resumes)",
+          "ok": true
+        }
+      ]
+    },
     "12": {
       "title": "A paid risk check over x402 on NEAR",
       "ok": true,

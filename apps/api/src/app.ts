@@ -4,6 +4,7 @@ import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, type R
 import { contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parry/services/lib/config";
 import type { Sql } from "@parry/services/lib/db";
 import { errorText } from "@parry/services/lib/log";
+import { nearHistory } from "@parry/services/lib/history";
 import { balanceOf, gasKeyNonces, rpc, toNear, view } from "@parry/services/lib/near";
 import { oraclePrices, readRhea } from "@parry/services/lib/positions";
 import { quoteRescue } from "@parry/services/lib/routes";
@@ -123,10 +124,11 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const { near } = await oraclePrices();
     if (near === null) throw new Error("no fresh NEAR price");
     const r = await readRhea(id, near);
-    const history = await sql<{ t: Date; price: number }[]>`SELECT t, price FROM prices WHERE asset = 'NEAR' AND source = 'oracle' AND t > now() - interval '12 hours' ORDER BY t`;
+    // The same inputs the risk engine scores with: market volatility and the latest cascade pressure.
+    const { history } = await nearHistory(sql);
+    const [m] = await sql<{ payload: { cascade?: { pressure?: number } } }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
     const { assess } = await import("@parry/core");
-    const a = r ? assess(r.position, near, history.map((h) => ({ t: h.t.getTime() / 1000, price: h.price })), Date.now() / 1000) : null;
-    const [m] = await sql<{ payload: unknown }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
+    const a = r ? assess(r.position, near, history, Date.now() / 1000, m?.payload.cascade?.pressure ?? 0) : null;
     return {
       account: id,
       checkedAt: new Date().toISOString(),

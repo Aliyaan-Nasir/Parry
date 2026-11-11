@@ -15,6 +15,8 @@ export interface RouteComparison {
   rhea: { outUsd: number; priceImpact: number; poolId: number } | null;
   intents: { outUsd: number; confidential: boolean; dry: true } | { unavailable: string };
   chosen: "rhea" | "intents";
+  /** Why that route: on testnet the account settles only on the Rhea pool, whatever the quotes say. */
+  reason: string;
 }
 
 const ONECLICK = process.env.ONECLICK_URL ?? "https://1click.chaindefuser.com";
@@ -78,8 +80,10 @@ export async function rheaQuote(amountNear: number): Promise<RouteComparison["rh
 export async function quoteRescue(amountNear: number): Promise<RouteComparison> {
   const [rhea, intents] = await Promise.all([rheaQuote(amountNear), intentsQuote(amountNear)]);
   // On testnet the account can only settle on the Rhea pool; on mainnet the better quote wins.
-  const chosen = network === "testnet" || !("outUsd" in intents) || (rhea && rhea.outUsd >= intents.outUsd) ? "rhea" : "intents";
-  return { amountNear, rhea, intents, chosen };
+  if (network === "testnet") return { amountNear, rhea, intents, chosen: "rhea", reason: "testnet: the account settles on the Rhea pool; the 1Click quote is shown for comparison" };
+  if (!("outUsd" in intents)) return { amountNear, rhea, intents, chosen: "rhea", reason: `no 1Click quote (${intents.unavailable})` };
+  if (rhea && rhea.outUsd >= intents.outUsd) return { amountNear, rhea, intents, chosen: "rhea", reason: "Rhea returns at least as much" };
+  return { amountNear, rhea, intents, chosen: "intents", reason: "1Click returns more" };
 }
 
 export interface MarginRoute {

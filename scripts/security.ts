@@ -9,8 +9,9 @@
  *   pnpm security --verbose  also print each step's full output
  *
  * cargo-audit and cargo-deny are installed with `cargo install --locked` when missing. Accepted
- * advisories live in contracts/deny.toml and contracts/.cargo/audit.toml, each with its reason,
- * and are listed in SECURITY.md. Exits 1 when any step fails.
+ * advisories live in contracts/deny.toml, contracts/.cargo/audit.toml and the root package.json
+ * (pnpm.auditConfig), each with its reason, and are listed in SECURITY.md. Exits 1 when any step
+ * fails.
  */
 
 import { join } from "node:path";

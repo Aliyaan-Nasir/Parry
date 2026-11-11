@@ -137,7 +137,7 @@ export const routes: Record<string, unknown> = {
   },
   "GET /v1/risk/alice.testnet": { account: "alice.testnet", checkedAt: "2026-11-10T00:00:00Z", position, market, model: "docs/risk-model.md" },
   "GET /v1/market": market,
-  "GET /v1/quotes/rescue": { amountNear: 10, rhea: { outUsd: 24.6, priceImpact: 0.004, poolId: 3 }, intents: { outUsd: 24.7, confidential: false, dry: true }, chosen: "intents" },
+  "GET /v1/quotes/rescue": { amountNear: 10, rhea: { outUsd: 24.6, priceImpact: 0.004, poolId: 3 }, intents: { outUsd: 24.7, confidential: false, dry: true }, chosen: "intents", reason: "1Click returns more" },
   "GET /v1/status": {
     network: "testnet",
     services: [{ name: "monitor", ok: true, detail: "", checkedAt: "2026-11-10T00:00:00Z" }, { name: "keeper", ok: true, detail: "", checkedAt: "2026-11-10T00:00:00Z" }],

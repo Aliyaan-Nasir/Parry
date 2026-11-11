@@ -19,9 +19,9 @@ import {
   tremor,
   valueAtRisk99,
   type Assessment,
-  type Sample,
 } from "@parry/core";
 import { contract, intEnv } from "./lib/config";
+import { nearHistory } from "./lib/history";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
@@ -33,11 +33,6 @@ let lastOk = 0;
 let lastReport = "";
 
 type Row = { id: string; account: string; venue: string; label: string; raw: Record<string, unknown>; collateral_usd: number; debt_usd: number };
-
-async function history(sql: Sql, source: string): Promise<Sample[]> {
-  const rows = await sql<{ t: Date; price: number }[]>`SELECT t, price FROM prices WHERE asset = 'NEAR' AND source = ${source} AND t > now() - interval '12 hours' ORDER BY t`;
-  return rows.map((r) => ({ t: r.t.getTime() / 1000, price: r.price }));
-}
 
 /**
  * Aave reports its own health factor; with collateral moving as one asset, liquidation is a fall
@@ -66,15 +61,9 @@ export function assessAave(health: number, now: number): Assessment {
 
 export async function scoreAll(sql: Sql): Promise<number> {
   const now = Date.now() / 1000;
-  const oracleHistory = await history(sql, "oracle");
-  const hlHistory = await history(sql, "hyperliquid");
+  // The oracle sets the price positions are valued at; volatility comes from the market.
+  const { price, history: marketHistory, hyperliquid: hlHistory } = await nearHistory(sql);
   const rows = await sql<Row[]>`SELECT id, account, venue, label, raw, collateral_usd, debt_usd FROM positions`;
-  const price = oracleHistory[oracleHistory.length - 1]?.price ?? 0;
-  // Volatility comes from the market (Hyperliquid's prices, rescaled onto the oracle's level, as the
-  // enclave does); the oracle sets the price positions are valued at. A testnet market shock then
-  // moves health without passing for market volatility. Without market prices, the oracle's own.
-  const lastHl = hlHistory[hlHistory.length - 1]?.price;
-  const marketHistory = lastHl && price ? hlHistory.map((s) => ({ t: s.t, price: (s.price * price) / lastHl })) : oracleHistory;
   const tr = tremor(marketHistory, now);
 
   // Cascade pressure across every lending position on the same driver.

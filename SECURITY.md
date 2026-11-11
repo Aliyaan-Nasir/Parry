@@ -26,7 +26,7 @@ This is an internal review, not a third-party audit.
 The review covered reentrancy across asynchronous promises, unhandled promise results, callback authorization, unsafe math and rounding, access control, storage staking and griefing, front-running, upgrade and state-migration risks, gas exhaustion in callbacks, JSON and borsh parsing, and event correctness.
 Each fixed finding has a unit test named `audit_*` that fails without the fix and passes with it, and the sandbox suite (`contracts/tests`) runs the real lending and exchange code against the fixed contracts.
 `pnpm security` runs the automated checks: Clippy with warnings as errors on the contracts and the enclave, `cargo audit` and `cargo deny check` on the contracts, and `pnpm audit --prod` on the packages.
-Accepted advisories are listed in `contracts/deny.toml` and `contracts/.cargo/audit.toml`, each with its reason, and below.
+Accepted advisories are listed in `contracts/deny.toml`, `contracts/.cargo/audit.toml` and the root `package.json` (`pnpm.auditConfig`), each with its reason, and below.
 
 ## Findings
 
@@ -53,6 +53,7 @@ Severities: critical (funds can be taken by anyone), high (funds or protection c
 | P-17 | Low | `vault/src`: report freshness | Deposits, rebalances and withdrawals need a report at most 15 minutes old, so if the enclave stops reporting, withdrawals wait. | Accepted: a trust assumption on the operator, stated in the trust model. |
 | P-18 | Low | every contract wasm | `wee_alloc` (RUSTSEC-2022-0054) is unmaintained. | Accepted: it is near-sdk's allocator option, chosen for code size (the default allocator adds about 6.5 KB to the account code, which is published per byte); every NEAR function call runs in a fresh instance, so leaks and fragmentation cannot build up across calls. |
 | P-19 | Info | `account/src/guardian.rs` | A callback that panics (for example on absurd oracle data) leaves the deleverage pending and the guardian blocked until the owner clears it. | Accepted: the owner override (`clear_pending`) settles it. |
+| P-20 | Low | `apps/api`: `@nearai/inference-sdk` | Its Intel TDX quote verifier (`@phala/dcap-qvl`) depends on `elliptic`, which has a low-severity advisory (GHSA-848j-6mx2-7j84) and no patched release. | Accepted: the API only verifies attestation signatures with it and never signs, so no secret key passes through `elliptic`; ignored in `pnpm audit` by its advisory id until a fixed release lands. |
 | P-20 | Info | `account/src/passkey.rs` | Passkey assertions do not check the relying-party hash or the origin. | Accepted: authenticators scope each credential to its relying party, and the challenge binds the account, the network and the nonce. |
 | P-21 | Info | `common/src/mandate.rs` | The perp guard caps each order's size and the actions per day, not the total position or its leverage. | Accepted: the owner sets both caps; the contract cannot read the perp venue's account. |
 | P-22 | Info | `account/src/guardian.rs` | `guardian_acted` and the signing events are emitted before the outcome is known. | Accepted: indexers pair them with `guardian_settled` and `guardian_refused`. |
