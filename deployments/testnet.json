@@ -82,6 +82,31 @@
     "agent": "agent.parry.testnet",
     "enclave": "enclave.parry.testnet"
   },
+  "keys": {
+    "gasKeys": {
+      "keeper": {
+        "account": "keeper.parry.testnet",
+        "lanes": 8,
+        "tx": "ForLagMhcnjao6PzVgkRQQBaEpxo7iJ9bfcNXisUa3K1"
+      },
+      "monitor": {
+        "account": "monitor.parry.testnet",
+        "lanes": 4,
+        "tx": "C4GFLKTB9Tkd6gU6eWjD6z5EHVsnBe4DA1iMvn8mTSHC"
+      },
+      "relayer": {
+        "account": "relayer.parry.testnet",
+        "lanes": 8,
+        "tx": "7X4kzrKobrNoqZobrSG9JqDt2C4bNo1JvB16tZR3DtWp"
+      }
+    },
+    "postQuantum": {
+      "account": "treasury.parry.testnet",
+      "scheme": "ML-DSA-65",
+      "tx": "CK3M4AqawEHZg7WVBNEK75DNVCUhzSLpnE33ZQm3MtDs",
+      "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
+    }
+  },
   "updatedAt": "2026-11-11T00:31:58.888Z",
   "dexPool": 2939,
   "enclave": {

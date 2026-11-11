@@ -103,7 +103,11 @@ export function assembleSigned(unsignedHex: string, sig: { r: string; s: string;
 
 /** The address that signed a typed transaction (to check a signature before broadcasting it). */
 export function signerOf(unsignedHex: string, sig: { r: string; s: string; v: number }): string {
-  const digest = keccak_256(unhex(unsignedHex));
+  return recoverAddress(keccak_256(unhex(unsignedHex)), sig);
+}
+
+/** The address whose key signed a 32-byte digest (a transaction hash or a Hyperliquid agent digest). */
+export function recoverAddress(digest: Uint8Array, sig: { r: string; s: string; v: number }): string {
   const yParity = sig.v >= 27 ? sig.v - 27 : sig.v;
   const compact = Uint8Array.of(yParity, ...unhex(sig.r.padStart(64, "0")), ...unhex(sig.s.padStart(64, "0")));
   const pub = secp256k1.recoverPublicKey(compact, digest, { prehash: false, format: "recovered" } as never);

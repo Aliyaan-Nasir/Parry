@@ -7,7 +7,7 @@
 import { rpc } from "./near";
 
 export const PRICE_SOURCE = process.env.PRICE_SOURCE_ORACLE ?? "aggregate-oracle.near";
-export const PRICE_SOURCE_RPC = (process.env.PRICE_SOURCE_RPC ?? "https://free.rpc.fastnear.com,https://rpc.mainnet.near.org").split(",");
+export const PRICE_SOURCE_RPC = (process.env.PRICE_SOURCE_RPC ?? "https://free.rpc.fastnear.com,https://near.drpc.org").split(",");
 
 export interface SourcePrice {
   id: string;

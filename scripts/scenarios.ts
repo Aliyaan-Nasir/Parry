@@ -13,7 +13,8 @@
  * a non-owner withdrawal, an expired mandate), 10 and 11 the vault (deposit, hedge, withdrawal
  * through the queue, proof of reserves, pausing from risk), 9 an Aave loan on Base Sepolia rescued
  * through Chain Signatures and verified by the MPC network, 12 a paid risk check over x402, 13 the
- * SDK and the MCP server. Scenario 1 (sign-in) runs in a browser; 8 and the vault's hedge need
+ * SDK and the MCP server, 8 a Hyperliquid order the protected account signs through Chain
+ * Signatures. Scenario 1 (sign-in) runs in a browser; filling 8's order and the vault's hedge need
  * Hyperliquid testnet USDC at the derived addresses, and 9 needs Base Sepolia ETH.
  *
  * Proofs go to deployments/testnet-proofs.json (deployments/sandbox-proofs.json with --sandbox).
@@ -27,7 +28,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { generateKey, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
-import { buildMandate, createParry, verifyReserves, type Decision, type Policy, type Power } from "../packages/sdk/src/index";
+import { buildMandate, createParry, verifyReserves, type Decision, type HlOrder, type Policy, type Power } from "../packages/sdk/src/index";
+import { HYPERLIQUID_URL } from "../services/src/lib/config";
+import { recoverAddress } from "../services/src/lib/evm";
+import { submitOrder } from "../services/src/lib/hyperliquid";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 const sandbox = process.argv.includes("--sandbox");
@@ -345,7 +349,14 @@ async function limits() {
 async function vault() {
   if (!c("vault")) return save(10, "Vault", false, [{ step: "no vault in this deployment" }]);
   const steps: unknown[] = [];
-  const p = await person("vault", Number(process.env.SCENARIO_VAULT_NEAR ?? 1) + 1);
+  // SCENARIO_VAULT_ACCOUNT deposits from an existing account with a key in the keychain.
+  const existing = process.env.SCENARIO_VAULT_ACCOUNT;
+  const p: Person = existing
+    ? (() => {
+        const key = (JSON.parse(readFileSync(join(homedir(), ".near-credentials", "testnet", `${existing}.json`), "utf8")) as { private_key: string }).private_key;
+        return { owner: existing, key, n: client(existing, key), account: "", steps: [] };
+      })()
+    : await person("vault", Number(process.env.SCENARIO_VAULT_NEAR ?? 1) + 1);
   const before = await view<{ total_shares: string }>(c("vault"), "vault_state").catch(() => null);
   const amount = Number(process.env.SCENARIO_VAULT_NEAR ?? 1);
   const dep1 = await call(p.n, p.owner, c("vault"), "deposit", {}, near(amount), 150);
@@ -459,6 +470,35 @@ async function evmRescue() {
   save(9, title, verified?.txs.evmVerified === "verified", p.steps);
 }
 
+/**
+ * Scenario 8: the protected account signs a Hyperliquid order for its own derived address through
+ * Chain Signatures. The signature must recover to that address, as Hyperliquid recovers it; the
+ * order fills once the address holds Hyperliquid testnet USDC, and Hyperliquid's answer is kept.
+ */
+async function hlOrder() {
+  const title = "A Hyperliquid order signed by the protected account through Chain Signatures";
+  const p = await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.3));
+  const { hyperliquidAddress } = await api<{ hyperliquidAddress: string }>(`/v1/accounts/${p.account}`);
+  const mids = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) })).json()) as Record<string, string>;
+  const mark = Number(mids.NEAR);
+  // A short of 3 NEAR (over Hyperliquid's $10 minimum), immediate-or-cancel, 3 % under the mark.
+  const order: HlOrder = { asset_index: Number(process.env.HYPERLIQUID_NEAR_INDEX ?? 54), is_buy: false, price: String(Number((mark * 0.97).toPrecision(5))), size: "3", reduce_only: false, tif: "Ioc" };
+  const nonce = Date.now();
+  const o = await ownerCall(p, [{ hl_order: { order, nonce } }]);
+  const ev = o.o ? eventsOf(o.o).find((e) => e.event === "hyperliquid_signed") : undefined;
+  const digest = (ev?.data as { digest?: string } | undefined)?.digest;
+  const value = (o.o?.status as { SuccessValue?: string } | undefined)?.SuccessValue;
+  const sig = value ? (JSON.parse(Buffer.from(value, "base64").toString()) as { r: string; s: string; v: number }) : null;
+  p.steps.push({ step: `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`, tx: explorer(o.hash), digest });
+  if (!sig || !digest) return save(8, title, false, [...p.steps, { step: "no signature came back", status: o.o?.status }]);
+  const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig)}`;
+  const ok = signer.toLowerCase() === hyperliquidAddress.toLowerCase();
+  p.steps.push({ step: "the MPC signature recovers to the account's derived Hyperliquid address", signer, hyperliquidAddress, ok });
+  const res = await submitOrder(order, nonce, sig).catch((e) => ({ status: "error", response: String(e) }));
+  p.steps.push({ step: "Hyperliquid's answer (the order fills once the address holds testnet USDC)", response: res });
+  save(8, title, ok, p.steps);
+}
+
 async function agents() {
   const steps: unknown[] = [];
   const market = await parry.market();
@@ -497,6 +537,7 @@ async function agents() {
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
 if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
 if (runs(7)) await limits();
+if (runs(8) && !sandbox) await hlOrder().catch((e) => save(8, "A Hyperliquid order signed by the protected account through Chain Signatures", false, [{ error: String(e) }]));
 if (runs(9) && !sandbox) await evmRescue();
 if (runs(10) || runs(11)) await vault();
 if (runs(12)) await paid().catch((e) => save(12, "A paid risk check over x402 on NEAR", false, [{ error: String(e) }]));

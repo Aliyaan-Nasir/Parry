@@ -69,7 +69,7 @@ export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deploy
 
 export const enclaveInfo = () => deployment?.enclave ?? null;
 
-export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "testnet" ? "https://test.rpc.fastnear.com,https://testnet-rpc.intea.rs,https://rpc.testnet.near.org" : "https://free.rpc.fastnear.com,https://rpc.intea.rs,https://rpc.mainnet.near.org"))
+export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "testnet" ? "https://test.rpc.fastnear.com,https://testnet-rpc.intea.rs,https://near-testnet.drpc.org" : "https://free.rpc.fastnear.com,https://rpc.intea.rs,https://near.drpc.org"))
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

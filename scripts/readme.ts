@@ -27,6 +27,7 @@ const dep = JSON.parse(readFileSync(join(ROOT, "deployments", "testnet.json"), "
   site?: string;
   api?: string;
   services?: Record<string, string>;
+  keys?: { gasKeys?: Record<string, { account: string; lanes: number; tx?: string }>; postQuantum?: { account: string; scheme: string; tx?: string; signedTx?: string } };
 };
 const proofsFile = join(ROOT, "deployments", "testnet-proofs.json");
 const proofs = (existsSync(proofsFile) ? JSON.parse(readFileSync(proofsFile, "utf8")) : { scenarios: {} }) as {
@@ -52,29 +53,31 @@ function contracts(): string {
     .map(([k, what]) => {
       const c = dep.contracts[k]!;
       const where = c.account === "global" ? "global code" : acct(c.account);
-      const verified = c.verified ? `[matched](${c.verified.startsWith("http") ? c.verified : `${NEARBLOCKS}/txns/${c.verified}`})` : k === "lending" ? "mainnet's code hash" : "";
+      const verified = c.verified ? `matched by \`near contract verify\` (${c.verified})` : k === "lending" ? "mainnet's code hash" : "";
       return `| ${what} | ${where} | \`${c.codeHash ?? ""}\` | ${tx(c.tx)} | ${verified} |`;
     });
   return ["| Contract | Account | Code hash | Deployed in | Reproducible build |", "| --- | --- | --- | --- | --- |", ...rows].join("\n");
 }
 
 /** The first recorded transaction of a scenario whose step matches `pattern`. */
-function step(n: number, pattern: RegExp): string {
+function step(n: number, pattern: RegExp, label?: string): string {
   const s = proofs.scenarios[String(n)];
   const hit = s?.steps.find((x) => pattern.test(x.step ?? "") && (x.tx || x.action || x.near));
   const url = hit?.tx ?? hit?.action ?? hit?.near ?? null;
-  return url ? link(url) : "";
+  return url ? link(url, label) : "";
 }
 
 function proofsTable(): string {
   const rows: [string, string, string, string][] = [
     ["NEP-655 universal accounts and global contracts", "every protected account is derived from one published code hash and created by the relayer", "[`accounts/src/lib.rs`](contracts/accounts/src/lib.rs)", step(2, /relayer creates/)],
-    ["Chain Signatures", "the vault signs its Hyperliquid hedge, and an account signs its Aave repay, for their own derived addresses", "[`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs)", [step(10, /order's signing/), step(9, /evm_repay/)].filter(Boolean).join(", ")],
+    ["Chain Signatures", "the vault signs its Hyperliquid hedge, and an account signs its Aave repay, for their own derived addresses", "[`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs)", [step(8, /signs a Hyperliquid order/, "account's Hyperliquid order"), step(10, /order's signing/, "vault hedge"), step(9, /evm_repay/, "Aave repay")].filter(Boolean).join(", ")],
     ["MPC foreign-transaction verification", "the MPC network confirms the Aave repay landed on Base Sepolia", "[`services/src/lib/evm.ts`](services/src/lib/evm.ts)", step(9, /verify_foreign_transaction/)],
     ["OutLayer TEE", "the guardian runs with keys bound to its build", "[`enclave/`](enclave)", dep.enclave?.keysRun ? link(`${NEARBLOCKS}/txns/${dep.enclave.keysRun}`, "keys run") : ""],
     ["NEAR AI Cloud verifiable models", "every rescue is reviewed, and the review's TEE signature is checked before acting", "[`enclave/src/ai.rs`](enclave/src/ai.rs)", step(6, /repay:/)],
-    ["Rhea lending and exchange", "repays and the atomic deleverage, on lending's exact mainnet code", "[`guardian.rs`](contracts/account/src/guardian.rs)", step(6, /delev:/)],
+    ["Rhea lending and exchange", "positions, repays and the atomic deleverage, on lending's exact mainnet code", "[`guardian.rs`](contracts/account/src/guardian.rs)", [step(3, /supply/, "supply"), step(3, /borrow/, "borrow"), step(6, /delev:/, "deleverage")].filter(Boolean).join(", ")],
     ["x402 on NEAR", "paid risk checks settled with a signed delegate `ft_transfer`", "[`apps/api/src/x402.ts`](apps/api/src/x402.ts)", step(12, /pays per call/)],
+    ["Gas keys (NEP-611)", "each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself", "[`near.ts`](services/src/lib/near.ts)", Object.entries(dep.keys?.gasKeys ?? {}).map(([svc, k]) => (k.tx ? link(`${NEARBLOCKS}/txns/${k.tx}`, `${svc}, ${k.lanes} lanes`) : "")).filter(Boolean).join(", ")],
+    ["Post-quantum keys (ML-DSA-65)", "the treasury, which holds the most NEAR, signs with an ML-DSA-65 key", "[`deploy.ts`](scripts/deploy.ts), [`topup.ts`](services/src/topup.ts)", [dep.keys?.postQuantum?.tx ? link(`${NEARBLOCKS}/txns/${dep.keys.postQuantum.tx}`, "key added") : "", dep.keys?.postQuantum?.signedTx ? link(`${NEARBLOCKS}/txns/${dep.keys.postQuantum.signedTx}`, "a top-up it signed") : ""].filter(Boolean).join(", ")],
   ];
   return [
     "| Primitive | What Parry does with it | Code | On testnet |",

@@ -67,6 +67,8 @@ type Dep = {
   dexPool?: number;
   enclave?: Record<string, string>;
   services?: Record<string, string>;
+  /** The transactions that added the service gas keys and the treasury's post-quantum key. */
+  keys?: { gasKeys?: Record<string, { account: string; lanes: number; tx?: string }>; postQuantum?: { account: string; scheme: string; tx?: string; signedTx?: string } };
   external?: Record<string, string>;
   params?: unknown;
   updatedAt?: string;
@@ -307,9 +309,10 @@ async function main() {
       const k = generateKey();
       const o = (await client(id).transaction(id).addKey(k.publicKey.toString(), { type: "gasKeyFullAccess", numNonces: lanes }).transferToGasKey(k.publicKey.toString(), `${near(prepaid)} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
       if (failure(o)) throw new Error(`gas key for ${svc}: ${failure(o)}`);
-      writeFileSync(file, JSON.stringify({ account_id: id, public_key: k.publicKey.toString(), private_key: k.secretKey, lanes }), { mode: 0o600 });
+      writeFileSync(file, JSON.stringify({ account_id: id, public_key: k.publicKey.toString(), private_key: k.secretKey, lanes, tx: hashOf(o) }), { mode: 0o600 });
     }
-    const g = JSON.parse(readFileSync(file, "utf8")) as { public_key: string; private_key: string; lanes: number };
+    const g = JSON.parse(readFileSync(file, "utf8")) as { public_key: string; private_key: string; lanes: number; tx?: string };
+    dep.keys = { ...dep.keys, gasKeys: { ...dep.keys?.gasKeys, [svc]: { account: id, lanes: g.lanes, tx: g.tx } } };
     const P = svc.toUpperCase();
     env.push(`${P}_ACCOUNT_ID=${id}`, `${P}_PRIVATE_KEY=${g.private_key}`, `${P}_PUBLIC_KEY=${g.public_key}`, `${P}_LANES=${g.lanes}`);
   }
@@ -324,10 +327,11 @@ async function main() {
     const o = (await client(wallets.treasury!).transaction(wallets.treasury!).addKey(pq.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
     if (failure(o)) throw new Error(`treasury ML-DSA-65 key: ${failure(o)}`);
     writeFileSync(pqFile, JSON.stringify({ account_id: wallets.treasury, public_key: pq.publicKey.toString(), private_key: pq.secretKey, tx: hashOf(o) }), { mode: 0o600 });
-    dep.services = { ...dep.services, treasuryKeyTx: hashOf(o) };
-    save();
     console.log(`treasury signs with ML-DSA-65 (${hashOf(o)})`);
   }
+  const pqKey = JSON.parse(readFileSync(pqFile, "utf8")) as { tx?: string };
+  dep.keys = { ...dep.keys, postQuantum: { ...dep.keys?.postQuantum, account: wallets.treasury!, scheme: "ML-DSA-65", tx: pqKey.tx } };
+  save();
   env.push(`TREASURY_ACCOUNT_ID=${wallets.treasury}`, `TREASURY_PRIVATE_KEY=${(JSON.parse(readFileSync(pqFile, "utf8")) as { private_key: string }).private_key}`);
   // The top-up service refills each wallet from the treasury to its opening balance.
   // Each target is the account's own opening balance: what is left after its gas key's prepaid NEAR.
