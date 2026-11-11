@@ -48,15 +48,18 @@ export function VaultBalance({ v }: { v: Vault }) {
       <line x1={x} y1={y} x2={x - 46} y2={y + 54} style={{ stroke: "var(--parry-line-strong)" }} />
       <line x1={x} y1={y} x2={x + 46} y2={y + 54} style={{ stroke: "var(--parry-line-strong)" }} />
       <path d={`M${x - 58} ${y + 54} Q ${x} ${y + 80} ${x + 58} ${y + 54} Z`} style={{ fill: filled ? "var(--parry-brass-fill)" : "var(--parry-raised)", stroke: "var(--parry-line-strong)" }} fillOpacity={filled ? 0.18 : 1} />
-      <text x={x} y={y + 102} textAnchor="middle" style={{ fill: "var(--parry-muted)", fontSize: 12 }}>
-        {title}
-      </text>
-      <text x={x} y={y + 124} textAnchor="middle" className="num" style={{ fill: "var(--parry-text)", fontSize: 17 }}>
-        {value}
-      </text>
-      <text x={x} y={y + 142} textAnchor="middle" style={{ fill: "var(--parry-muted)", fontSize: 11.5 }}>
-        {sub}
-      </text>
+      {/* On phones the figure is too small for these; the legend under it carries them. */}
+      <g className="hidden sm:inline">
+        <text x={x} y={y + 102} textAnchor="middle" style={{ fill: "var(--parry-muted)", fontSize: 12 }}>
+          {title}
+        </text>
+        <text x={x} y={y + 124} textAnchor="middle" className="num" style={{ fill: "var(--parry-text)", fontSize: 17 }}>
+          {value}
+        </text>
+        <text x={x} y={y + 142} textAnchor="middle" style={{ fill: "var(--parry-muted)", fontSize: 11.5 }}>
+          {sub}
+        </text>
+      </g>
     </g>
   );
   return (
@@ -71,6 +74,20 @@ export function VaultBalance({ v }: { v: Vault }) {
         </g>
         <circle cx={cx} cy={beamY} r={6} style={{ fill: "var(--parry-brass-fill)" }} />
       </svg>
+      <dl className="grid grid-cols-2 gap-4 border-y border-line py-3 text-sm sm:hidden">
+        <div>
+          <dt className="text-muted">Staked in LiNEAR</dt>
+          <dd className="num mt-0.5 text-fg">
+            {format(longUsd)} <span className="text-[12px] text-muted">{stakedNear.toFixed(3)} NEAR</span>
+          </dd>
+        </div>
+        <div className="text-right">
+          <dt className="text-muted">Short on Hyperliquid</dt>
+          <dd className="num mt-0.5 text-fg">
+            {format(shortUsd)} <span className="text-[12px] text-muted">{v.hedge.currentNear.toFixed(3)} NEAR</span>
+          </dd>
+        </div>
+      </dl>
       <figcaption className="text-[13px] leading-5 text-muted">
         {level
           ? `Level: the short covers ${formatPercent(v.hedge.hedgeRatio, 0)} of the staked NEAR, so a NEAR price move barely changes a share's value.`

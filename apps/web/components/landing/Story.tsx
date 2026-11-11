@@ -34,7 +34,7 @@ export function LiveProof() {
         <div>
           <div className="label">Value under Parry&apos;s protection on NEAR testnet{note ? `, ${note}` : ""}</div>
           <div className="display mt-4 text-[4.5rem] leading-none text-fg sm:text-[7.5rem]">
-            {big === null ? <span className="text-muted/40">{down ? "" : "$0"}</span> : <NumberTicker value={big} format={(v) => formatUsdCompact(v)} />}
+            {big === null ? <span className="text-muted/40">{down || data ? "" : "$0"}</span> : <NumberTicker value={big} format={(v) => formatUsdCompact(v)} />}
           </div>
           {down ? <p className="mt-4 text-sm text-muted">Live data unavailable right now.</p> : null}
         </div>
@@ -133,9 +133,9 @@ function StoryMock({ step }: { step: number }) {
               ["Liquidation in 24 h", "18 %"],
               ["Volatility", "stressed"],
             ].map(([k, v]) => (
-              <div key={k} className="p-5">
+              <div key={k} className="p-3.5 sm:p-5">
                 <dt className="label">{k}</dt>
-                <dd className="num mt-2 text-xl text-fg">{v}</dd>
+                <dd className="num mt-2 text-[15px] text-fg sm:text-xl">{v}</dd>
               </div>
             ))}
           </dl>

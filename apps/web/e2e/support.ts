@@ -44,6 +44,9 @@ export const isAppPage = (path: string) => path === "/app" || path.startsWith("/
 export const STATS_FIXTURE = {
   network: "testnet",
   positionsProtected: 128,
+  positionsWatched: 3252,
+  valueProtectedUsd: 184310.5,
+  insuranceUsd: 7.73,
   rescues: 17,
   vaultTvlUsd: 48250,
   vaultRiskScore: 22,

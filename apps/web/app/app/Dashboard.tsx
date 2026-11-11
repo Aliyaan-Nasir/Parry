@@ -178,18 +178,20 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
           </div>
           <p className="mt-2 text-sm text-fg/80">{status ? `${status.label}. ${status.detail}` : <Skeleton width="30ch" />}</p>
         </div>
-        <dl className="grid w-full grid-cols-3 gap-5 sm:flex sm:w-auto sm:gap-10">
+        <dl className="grid w-full grid-cols-[1fr_1fr_auto] gap-x-4 gap-y-1 sm:flex sm:w-auto sm:gap-10">
           <div>
             <dt className="label">Collateral</dt>
-            <dd className="num mt-1 text-2xl text-fg">{s ? format(collateral) : <Skeleton width="7ch" />}</dd>
+            <dd className="num mt-1 text-lg text-fg sm:text-2xl">{s ? format(collateral) : <Skeleton width="7ch" />}</dd>
           </div>
           <div>
             <dt className="label">Debt</dt>
-            <dd className="num mt-1 text-2xl text-fg">{s ? format(debt) : <Skeleton width="7ch" />}</dd>
+            <dd className="num mt-1 text-lg text-fg sm:text-2xl">{s ? format(debt) : <Skeleton width="7ch" />}</dd>
           </div>
           <div>
-            <dt className="label">Guardian actions</dt>
-            <dd className="num mt-1 text-2xl text-fg">{s ? s.stats.guardianActions : <Skeleton width="3ch" />}</dd>
+            <dt className="label">
+              Guardian <span className="sr-only sm:not-sr-only">actions</span>
+            </dt>
+            <dd className="num mt-1 text-lg text-fg sm:text-2xl">{s ? s.stats.guardianActions : <Skeleton width="3ch" />}</dd>
           </div>
         </dl>
       </section>

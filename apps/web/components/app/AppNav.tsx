@@ -151,7 +151,7 @@ function MobileBar({ pathname, onMore }: { pathname: string | null; onMore: () =
           <li key={item.href}>
             <Link href={item.href} aria-current={active ? "page" : undefined} className={cn("flex h-full flex-col items-center justify-center gap-1 text-[10.5px] transition-colors", active ? "text-fg" : "text-muted hover:text-fg")}>
               <span className={active ? "text-brass" : undefined}>{item.icon}</span>
-              <span className="max-w-full truncate px-1">{item.label.split(" ")[0]}</span>
+              <span className="max-w-full truncate px-1">{item.short ?? item.label.split(" ")[0]}</span>
             </Link>
           </li>
         );

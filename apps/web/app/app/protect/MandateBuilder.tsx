@@ -312,6 +312,7 @@ export function MandateBuilder({
                 }}
               />
             </div>
+            <p className="mt-3 border-t border-line pt-3 text-[12.5px] leading-5 text-muted">With this draft&apos;s caps: setting a mandate starts its counters from zero. The guardian also never spends more than the account holds.</p>
           </div>
         </aside>
         <div className="surface grid content-start gap-6 p-6 lg:order-1">

@@ -672,7 +672,7 @@ export function config(): Config & { dexPool: number } {
 }
 
 export function stats(now: number): Stats {
-  return { network: "testnet", positionsProtected: 128, rescues: 17, vaultTvlUsd: 48_250.4, vaultRiskScore: 22, updatedAt: iso(now) };
+  return { network: "testnet", positionsProtected: 128, positionsWatched: 3252, valueProtectedUsd: 184_310.5, insuranceUsd: 7.73, rescues: 17, vaultTvlUsd: 48_250.4, vaultRiskScore: 22, updatedAt: iso(now) };
 }
 
 export function simulation(): SimulationResult {
