@@ -1,25 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openPolicy, type OwnerAction } from "@parry/sdk";
+import { openPolicy } from "@parry/sdk";
 import * as fx from "./fixtures";
-import { addVirtualAuthenticator, mockApi, seedAccount, type MockHandle } from "./mock";
+import { addVirtualAuthenticator, asPasskeyOwner, mockApi, relayedActions, seedAccount } from "./mock";
 import { POSITION_PATH, watchConsole } from "./support";
 
 // What each app page does with the API mocked: real figures from the fixtures, the owner's
 // actions signed with a passkey in Chromium's virtual authenticator, and plain errors.
 
 test.use({ viewport: { width: 1440, height: 900 } });
-
-/** The owner actions in a relayed passkey request. */
-function relayedActions(api: MockHandle): OwnerAction[][] {
-  return api.calls("POST", "/v1/relay/owner").map((r) => (JSON.parse((r.body as { request: string }).request) as { actions: OwnerAction[] }).actions);
-}
-
-async function asPasskeyOwner(page: Page): Promise<MockHandle> {
-  const api = await mockApi(page, { ownerKind: "passkey" });
-  await seedAccount(page, "passkey");
-  await addVirtualAuthenticator(page, { withFixturePasskey: true });
-  return api;
-}
 
 test.describe("dashboard", () => {
   test("shows the account's positions, the market, alerts and guardian actions", async ({ page }) => {

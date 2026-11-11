@@ -664,7 +664,7 @@ export function config(): Config & { dexPool: number } {
   return {
     network: "testnet",
     contracts: { ...CONTRACTS },
-    dexPool: 0,
+    dexPool: 2939,
     enclave: { publicKey: ENCLAVE_PUBLIC_KEY, sealingPublicKey: SEALING_PUBLIC_KEY, wasmSha256: sha256Hex("parry-e2e:enclave-wasm") },
     reviewModel: REVIEW_MODEL,
     explorers: { near: "https://testnet.nearblocks.io", hyperliquid: "https://app.hyperliquid-testnet.xyz/explorer", intents: "https://explorer.near-intents.org", evm: "https://sepolia.basescan.org" },

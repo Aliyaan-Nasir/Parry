@@ -132,6 +132,9 @@ export function CommandPalette() {
           }}
           onKeyDown={key}
           placeholder="Search pages and actions"
+          role="combobox"
+          aria-expanded="true"
+          aria-autocomplete="list"
           aria-label="Search pages and actions"
           aria-controls="palette-list"
           aria-activedescendant={filtered[i] ? `cmd-${filtered[i]!.id}` : undefined}

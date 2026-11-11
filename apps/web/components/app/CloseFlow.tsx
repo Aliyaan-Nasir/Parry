@@ -43,6 +43,8 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // Where an unwind sends everything: the owner's NEAR account by default, any NEAR account by choice.
+  const [to, setTo] = useState(summary.owner.kind === "near" ? summary.owner.id : (acct.wallet?.accountId ?? ""));
   const ids = config.data?.contracts as Record<string, string> | undefined;
   const isWallet = acct.signer === "wallet";
   const rhea = position?.venue === "rhea";
@@ -89,9 +91,10 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
     run(async () => {
       if (!ids) throw new Error("The contract ids are still loading.");
       const tokens = [ids.usdc, ids.wnear].filter(Boolean) as string[];
-      const to = summary.owner.kind === "near" ? undefined : acct.wallet?.accountId;
-      if (summary.owner.kind !== "near" && !to) throw new Error("A passkey account needs a NEAR account to send everything to: connect a wallet first.");
-      return acct.runOwnerActions([unwindAction(tokens, to)], { title: "Account unwound" });
+      const dest = to.trim().toLowerCase();
+      if (!/^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$/.test(dest)) throw new Error("Enter the NEAR account to send everything to.");
+      // The owner's own account is the contract's default, so it needs no `to`.
+      return acct.runOwnerActions([unwindAction(tokens, summary.owner.kind === "near" && dest === summary.owner.id ? undefined : dest)], { title: "Account unwound" });
     });
 
   const title = mode === "unwind" ? "Unwind the protected account" : position ? `Close ${position.label}` : "Close a position";
@@ -152,6 +155,20 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
                 <span className="num text-fg">{(slippage / 100).toFixed(2)}%</span>
               </span>
               <input type="range" min={10} max={300} step={10} value={slippage} onChange={(e) => setSlippage(Number(e.target.value))} className="parry-range" />
+            </label>
+          ) : null}
+          {mode === "unwind" ? (
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted">Send everything to</span>
+              <input
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder="your-account.near"
+                autoComplete="off"
+                spellCheck={false}
+                className="num h-10 rounded-[10px] border border-line-strong bg-raised px-3 text-[13px] text-fg placeholder:text-muted"
+              />
+              <span className="text-[12.5px] text-muted">A NEAR account you control: the reserve, the collateral and the spare NEAR all go there.</span>
             </label>
           ) : null}
           {acct.signer === "watch" ? <p className="text-sm text-muted">You are watching this account. Connect its owner to close or unwind it.</p> : null}

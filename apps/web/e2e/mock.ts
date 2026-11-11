@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { CDPSession, Page, Request, Route } from "@playwright/test";
 import { p256 } from "@noble/curves/nist.js";
-import { fromBase64, requestDigest, toBase64, toBase64Url, type Alert } from "@parry/sdk";
+import { fromBase64, requestDigest, toBase64, toBase64Url, type Alert, type OwnerAction } from "@parry/sdk";
 import type { Settings } from "@/lib/api-types";
 import * as fx from "./fixtures";
 
@@ -165,7 +165,7 @@ const ROUTES: RouteDef[] = [
   route("GET /v1/routes/savings", (c) => json(fx.savings(c.now))),
   route("GET /v1/incidents", (c) => json(c.query.account === fx.ACCOUNT && !empty(c) ? fx.incidents(c.now) : [])),
   // The stream: one comment, then the connection closes (the client falls back to polling).
-  route("GET /v1/stream", () => ({ status: 200, body: ": parry\n\n", headers: { "content-type": "text/event-stream" } })),
+  route("GET /v1/stream", () => ({ status: 200, body: ": parry\n\nevent: alert\ndata: {}\n\n", headers: { "content-type": "text/event-stream" } })),
   route("GET /v1/certificates", (c) => json(c.query.account === fx.ACCOUNT ? c.state.certificates : [])),
   route("GET /v1/certificates/:hash", (c) => {
     const cert = [...c.state.certificates, fx.certificate(c.now)].find((x) => x.hash === c.params.hash);
@@ -692,4 +692,17 @@ export async function addVirtualAuthenticator(page: Page, opts: { withFixturePas
     });
   }
   return { cdp, authenticatorId };
+}
+
+/** The owner actions in each relayed passkey request, in order. */
+export function relayedActions(api: MockHandle): OwnerAction[][] {
+  return api.calls("POST", "/v1/relay/owner").map((r) => (JSON.parse((r.body as { request: string }).request) as { actions: OwnerAction[] }).actions);
+}
+
+/** The fixture account, owned by the fixture passkey in Chromium's virtual authenticator. */
+export async function asPasskeyOwner(page: Page): Promise<MockHandle> {
+  const api = await mockApi(page, { ownerKind: "passkey" });
+  await seedAccount(page, "passkey");
+  await addVirtualAuthenticator(page, { withFixturePasskey: true });
+  return api;
 }
