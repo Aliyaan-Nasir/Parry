@@ -51,11 +51,18 @@ export function Modal({
   const titleId = useId();
   const descId = useId();
 
+  // Closes the page asks for itself are not the person closing the dialog: they must not report back.
+  const quiet = useRef(false);
+  const closeQuietly = (dialog: HTMLDialogElement) => {
+    quiet.current = true;
+    dialog.close();
+  };
+
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (!open && dialog.open) closeQuietly(dialog);
   }, [open]);
 
   // Lock page scroll while open. Layout effect cleanup also runs when the route is hidden.
@@ -72,7 +79,7 @@ export function Modal({
   useLayoutEffect(() => {
     const dialog = ref.current;
     return () => {
-      if (dialog?.open) dialog.close();
+      if (dialog?.open) closeQuietly(dialog);
     };
   }, []);
 
@@ -83,7 +90,13 @@ export function Modal({
       data-lenis-prevent=""
       aria-labelledby={titleId}
       aria-describedby={description ? descId : undefined}
-      onClose={() => onOpenChange(false)}
+      onClose={() => {
+        if (quiet.current) {
+          quiet.current = false;
+          return;
+        }
+        onOpenChange(false);
+      }}
       onCancel={(e) => {
         e.preventDefault();
         onOpenChange(false);

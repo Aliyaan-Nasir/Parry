@@ -380,7 +380,7 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
   ) : null;
 
   return (
-    <Card as="section" aria-labelledby="mine-title" className="grid content-start gap-5">
+    <Card as="section" id="deposit" aria-labelledby="mine-title" className="grid scroll-mt-24 content-start gap-5">
       <CardHeader titleAs="h2" title={<span id="mine-title">Your shares</span>} description="Held by your protected account, which deposits and withdraws for you." />
       <StatGroup className="grid-cols-2">
         <Stat label="Value" loading={portfolio.isPending} value={portfolio.data ? format(portfolio.data.vault.valueUsd) : ""} />

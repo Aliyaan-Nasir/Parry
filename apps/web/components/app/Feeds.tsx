@@ -107,7 +107,7 @@ export function DecisionRow({ decision }: { decision: Decision }) {
 }
 
 /** A "see everything" link under a feed. */
-export function FeedLink({ href, children }: { href: "/app/alerts" | "/app/guardian"; children: ReactNode }) {
+export function FeedLink({ href, children }: { href: "/app/alerts" | "/app/guardian" | "/app/watched"; children: ReactNode }) {
   return (
     <Link href={href} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brass underline-offset-4 hover:underline">
       {children}

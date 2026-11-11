@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MobileNav, Sidebar } from "@/components/app/AppNav";
+import { HashScroll } from "@/components/app/HashScroll";
 import { TopBar } from "@/components/app/TopBar";
 import { AppProviders } from "@/components/providers/AppProviders";
 import { apiUrl } from "@/lib/env";
@@ -27,6 +28,7 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
           </main>
         </div>
         <MobileNav />
+        <HashScroll />
       </div>
     </AppProviders>
   );

@@ -1,6 +1,15 @@
 "use client";
 
 import { ParryApiError } from "@parry/sdk";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueries } from "@tanstack/react-query";
+import { CloseFlow } from "@/components/app/CloseFlow";
+import { RiskInstrument } from "@/components/instrument/RiskInstrument";
+import { parry } from "@/lib/parry";
+import { shortId } from "@/lib/units";
+import { useWatched, watchState } from "@/lib/watched";
+import { cn } from "@/lib/cn";
 import { AccountAddress } from "@/components/app/AccountAddress";
 import { AccountGate } from "@/components/app/AccountGate";
 import { SIGNER_LABEL } from "@/components/app/AccountButton";
@@ -87,6 +96,34 @@ function GuardianCard({ account }: { account: string }) {
   );
 }
 
+/** The accounts this browser watches, at a glance, with the full table one click away. */
+function WatchedCard() {
+  const { list } = useWatched();
+  const shown = list.slice(0, 5);
+  const checks = useQueries({ queries: shown.map((w) => ({ queryKey: ["risk-check", w.account], queryFn: () => parry().riskCheck(w.account), refetchInterval: 60_000, retry: 1 })) });
+  if (!list.length) return null;
+  return (
+    <Card as="section" aria-labelledby="watched-title" className="grid content-start gap-4">
+      <CardHeader titleAs="h2" title={<span id="watched-title">Watched accounts</span>} actions={<FeedLink href="/app/watched">All {list.length}</FeedLink>} />
+      <ul className="grid divide-y divide-line">
+        {shown.map((w, i) => {
+          const p = checks[i]?.data?.position ?? null;
+          const over = watchState(p, w.thresholds) === "alert";
+          return (
+            <li key={w.account} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_6rem] items-center gap-4 py-2.5 first:pt-0 last:pb-0">
+              <Link href={`/check?account=${encodeURIComponent(w.account)}`} className="num truncate text-[13px] text-fg hover:underline" title={w.account}>
+                {w.label ?? shortId(w.account, 10, 4)}
+              </Link>
+              {p ? <RiskInstrument variant="compact" health={p.health} tier={p.tier} trigger={w.thresholds.health} /> : <span className="text-[13px] text-muted">{checks[i]?.isPending ? "reading" : "no position"}</span>}
+              <span className={cn("text-right text-[13px]", over ? "text-critical" : "text-muted")}>{p ? (over ? "Over threshold" : "Within") : ""}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 function AccountDashboard({ account, signer }: { account: string; signer: Signer }) {
   const acct = useParryAccount();
   const summary = useAccountSummary(account);
@@ -94,6 +131,10 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
   const { format } = useMoney();
   const now = useNow();
   const s = summary.data;
+  // The command palette opens the close and unwind flows here (?action=close|unwind).
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
 
   if (summary.isError && !s) {
     const missing = summary.error instanceof ParryApiError && summary.error.status === 404;
@@ -121,6 +162,9 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
   const status = s && now ? mandateStatus(s.mandate, now / 1000) : null;
   const recent = decisions.data?.pages[0]?.items ?? [];
   const lastFor = (venue: string) => recent.find((d) => d.venue === venue || (venue === "aave" && (d.venue as string) === "evm")) ?? null;
+  const action = params.get("action");
+  const flow = action === "close" || action === "unwind" ? action : null;
+  const closing = positions.find((p) => p.debtUsd > 0) ?? positions[0] ?? null;
 
   return (
     <div className="grid gap-8" data-stagger>
@@ -186,6 +230,8 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
         <GuardianCard account={account} />
         <AlertsCard account={account} />
       </div>
+      <WatchedCard />
+      {s && flow && (flow === "unwind" || closing) ? <CloseFlow summary={s} position={closing} mode={flow} open onOpenChange={(v) => !v && router.replace(pathname)} /> : null}
     </div>
   );
 }
