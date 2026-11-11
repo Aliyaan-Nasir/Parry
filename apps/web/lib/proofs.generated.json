@@ -1,0 +1,119 @@
+{
+  "network": "testnet",
+  "items": [
+    {
+      "name": "NEP-655 universal accounts and global contracts",
+      "what": "every protected account is derived from one published code hash and created by the relayer",
+      "links": [
+        {
+          "label": "transaction",
+          "url": "https://testnet.nearblocks.io/txns/Bh14DgFZQoT1uJPj16rSLxvZ1UHDMXKuHeA1mgvZxemA"
+        }
+      ]
+    },
+    {
+      "name": "Chain Signatures",
+      "what": "a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address",
+      "links": [
+        {
+          "label": "account's Hyperliquid order",
+          "url": "https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL"
+        },
+        {
+          "label": "Aave repay",
+          "url": "https://testnet.nearblocks.io/txns/76HZsxGy3bW2ZS8eEbmYkT8R85hg6pvsgvkGby7eF3kw"
+        }
+      ]
+    },
+    {
+      "name": "MPC foreign-transaction verification",
+      "what": "the MPC network confirms the Aave repay landed on Base Sepolia",
+      "links": [
+        {
+          "label": "transaction",
+          "url": "https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a"
+        }
+      ]
+    },
+    {
+      "name": "OutLayer TEE",
+      "what": "the guardian runs with keys bound to its build",
+      "links": [
+        {
+          "label": "keys run",
+          "url": "https://testnet.nearblocks.io/txns/9ww9V9DhgU43vN1Kjp9ckP1kHeX8nNDnWwBU3pwaSYYT"
+        }
+      ]
+    },
+    {
+      "name": "NEAR AI Cloud verifiable models",
+      "what": "every rescue is reviewed, and the review's TEE signature is checked before acting",
+      "links": [
+        {
+          "label": "AI-reviewed rescue",
+          "url": "https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A"
+        }
+      ]
+    },
+    {
+      "name": "Rhea lending and exchange",
+      "what": "positions, repays and the atomic deleverage, on lending's exact mainnet code",
+      "links": [
+        {
+          "label": "supply",
+          "url": "https://testnet.nearblocks.io/txns/14gNW6irm4NX3k5DXfn5bk58mPkzQEKc7AijXwt6KtWU"
+        },
+        {
+          "label": "borrow",
+          "url": "https://testnet.nearblocks.io/txns/ABPyym2uRx6KWXugUvyKYsjfZ4tL3xmtakaHUvkJMFSb"
+        },
+        {
+          "label": "guardian repay",
+          "url": "https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A"
+        }
+      ]
+    },
+    {
+      "name": "x402 on NEAR",
+      "what": "paid risk checks settled with a signed delegate ft_transfer",
+      "links": [
+        {
+          "label": "transaction",
+          "url": "https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf"
+        }
+      ]
+    },
+    {
+      "name": "Gas keys (NEP-611)",
+      "what": "each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself",
+      "links": [
+        {
+          "label": "keeper, 8 lanes",
+          "url": "https://testnet.nearblocks.io/txns/ForLagMhcnjao6PzVgkRQQBaEpxo7iJ9bfcNXisUa3K1"
+        },
+        {
+          "label": "monitor, 4 lanes",
+          "url": "https://testnet.nearblocks.io/txns/C4GFLKTB9Tkd6gU6eWjD6z5EHVsnBe4DA1iMvn8mTSHC"
+        },
+        {
+          "label": "relayer, 8 lanes",
+          "url": "https://testnet.nearblocks.io/txns/7X4kzrKobrNoqZobrSG9JqDt2C4bNo1JvB16tZR3DtWp"
+        }
+      ]
+    },
+    {
+      "name": "Post-quantum keys (ML-DSA-65)",
+      "what": "the treasury, which holds the most NEAR, signs with an ML-DSA-65 key",
+      "links": [
+        {
+          "label": "key added",
+          "url": "https://testnet.nearblocks.io/txns/CK3M4AqawEHZg7WVBNEK75DNVCUhzSLpnE33ZQm3MtDs"
+        },
+        {
+          "label": "a top-up it signed",
+          "url": "https://testnet.nearblocks.io/txns/GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
+        }
+      ]
+    }
+  ]
+}

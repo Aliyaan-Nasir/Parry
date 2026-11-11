@@ -7,15 +7,19 @@ export type ButtonVariant = "primary" | "secondary" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
-  "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold tracking-[-0.005em] " +
-  "transition-[background-color,border-color,color,box-shadow,scale] duration-150 ease-out enabled:active:scale-[0.985] " +
+  "relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium tracking-[-0.005em] " +
+  "transition-[background-color,border-color,color,box-shadow,scale,translate] duration-200 ease-[var(--ease-std)] enabled:active:scale-[0.985] " +
   "disabled:cursor-not-allowed aria-disabled:cursor-not-allowed";
 
 const variants: Record<ButtonVariant, string> = {
+  // Brass with an inner highlight and a soft lift; the gradient gives it a cast-metal sheen.
   primary:
-    "bg-brass-fill text-on-brass hover:bg-brass-fill-hover active:bg-brass-fill-hover disabled:opacity-55 aria-disabled:opacity-55 disabled:hover:bg-brass-fill",
+    "bg-brass-fill bg-[linear-gradient(180deg,rgb(255_255_255/0.18),rgb(255_255_255/0)_55%)] text-on-brass " +
+    "shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_1px_2px_rgb(0_0_0/0.18),0_8px_24px_-8px_color-mix(in_oklab,var(--parry-brass-fill)_60%,transparent)] " +
+    "hover:bg-brass-fill-hover disabled:opacity-55 aria-disabled:opacity-55 disabled:hover:bg-brass-fill",
   secondary:
-    "border border-line-strong bg-raised text-fg hover:bg-hover active:bg-press disabled:opacity-55 aria-disabled:opacity-55 disabled:hover:bg-raised",
+    "border border-line-strong bg-raised/70 text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] backdrop-blur hover:bg-hover active:bg-press " +
+    "disabled:opacity-55 aria-disabled:opacity-55 disabled:hover:bg-raised",
   ghost: "text-fg hover:bg-hover active:bg-press disabled:opacity-55 aria-disabled:opacity-55 disabled:hover:bg-transparent",
 };
 

@@ -1,35 +1,24 @@
-import { AgentsSection } from "@/components/site/AgentsSection";
-import { Faq } from "@/components/site/Faq";
-import { FinalCta } from "@/components/site/FinalCta";
-import { Hero } from "@/components/site/Hero";
-import { HowItWorks } from "@/components/site/HowItWorks";
-import { LiveStats } from "@/components/site/LiveStats";
-import { ScrollScenes } from "@/components/site/ScrollScenes";
-import {
-  EarnSection,
-  GuardianSection,
-  OnlyOnNearSection,
-  PrivacySection,
-  ProtectSection,
-  ReviewSection,
-} from "@/components/site/sections";
+import { Faq, FinalCall } from "@/components/landing/Closing";
+import { Hero } from "@/components/landing/Hero";
+import { Agents, CascadeSlice, Earn, NearBento, ReplayHeadline, ReviewProof } from "@/components/landing/Sections";
+import { Ledger, LiveProof, Primitives, ProtectStory } from "@/components/landing/Story";
 
 export default function LandingPage() {
   return (
     <>
-      <ScrollScenes />
       <Hero />
-      <LiveStats />
-      <HowItWorks />
-      <ProtectSection />
-      <EarnSection />
-      <GuardianSection />
-      <ReviewSection />
-      <PrivacySection />
-      <OnlyOnNearSection />
-      <AgentsSection />
+      <LiveProof />
+      <Primitives />
+      <ProtectStory />
+      <CascadeSlice />
+      <Ledger />
+      <Earn />
+      <ReviewProof />
+      <NearBento />
+      <ReplayHeadline />
+      <Agents />
       <Faq />
-      <FinalCta />
+      <FinalCall />
     </>
   );
 }

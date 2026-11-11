@@ -16,7 +16,7 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />
           <main id="main" tabIndex={-1} className="flex-1 px-4 pb-28 pt-8 outline-none sm:px-6 lg:px-8 lg:pb-12">
-            <div className="mx-auto w-full max-w-5xl">
+            <div className="mx-auto w-full max-w-6xl">
               {apiUrl ? null : (
                 <p role="alert" className="mb-6 rounded-lg border border-line bg-raised px-4 py-3 text-sm leading-6 text-muted">
                   This build has no Parry API address, so nothing live can load. Set <code className="num text-fg">NEXT_PUBLIC_API_URL</code> and rebuild.

@@ -284,3 +284,44 @@
   background: var(--parry-brass-fill);
   animation: parry-caret 1s steps(1) infinite;
 }
+
+/* The hero's guard swings in like a blade, pivoting on its flat edge. */
+@keyframes guard-swing {
+  from {
+    transform: rotate(-95deg) scale(0.55);
+    opacity: 0;
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.hero-guard path {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: guard-swing 520ms var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-guard path {
+    animation: none;
+  }
+}
+
+/* Line art that draws itself in when its block is revealed. */
+.draw-in path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1400ms var(--ease-out);
+}
+[data-revealed="true"] .draw-in path {
+  stroke-dashoffset: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .draw-in path {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+}

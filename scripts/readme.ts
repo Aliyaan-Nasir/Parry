@@ -72,8 +72,8 @@ function step(n: number, pattern: RegExp, label?: string): string {
   return url ? link(url, label) : "";
 }
 
-function proofsTable(): string {
-  const rows: [string, string, string, string][] = [
+function proofRows(): [string, string, string, string][] {
+  return [
     ["NEP-655 universal accounts and global contracts", "every protected account is derived from one published code hash and created by the relayer", "[`accounts/src/lib.rs`](contracts/accounts/src/lib.rs)", step(2, /relayer creates/)],
     ["Chain Signatures", "a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address", "[`hyperliquid.rs`](contracts/common/src/hyperliquid.rs), [`evm.rs`](contracts/common/src/evm.rs)", [step(8, /signs a Hyperliquid order/, "account's Hyperliquid order"), step(10, /order's signing/, "vault hedge"), step(9, /^evm_repay:/, "Aave repay")].filter(Boolean).join(", ")],
     ["MPC foreign-transaction verification", "the MPC network confirms the Aave repay landed on Base Sepolia", "[`services/src/lib/evm.ts`](services/src/lib/evm.ts)", step(9, /verify_foreign_transaction/) || "waits for Base Sepolia ETH (scenario 9)"],
@@ -84,6 +84,10 @@ function proofsTable(): string {
     ["Gas keys (NEP-611)", "each service signs on a prepaid gas key with parallel nonce lanes, and refills it itself", "[`near.ts`](services/src/lib/near.ts)", Object.entries(dep.keys?.gasKeys ?? {}).map(([svc, k]) => (k.tx ? link(`${NEARBLOCKS}/txns/${k.tx}`, `${svc}, ${k.lanes} lanes`) : "")).filter(Boolean).join(", ")],
     ["Post-quantum keys (ML-DSA-65)", "the treasury, which holds the most NEAR, signs with an ML-DSA-65 key", "[`deploy.ts`](scripts/deploy.ts), [`topup.ts`](services/src/topup.ts)", [dep.keys?.postQuantum?.tx ? link(`${NEARBLOCKS}/txns/${dep.keys.postQuantum.tx}`, "key added") : "", dep.keys?.postQuantum?.signedTx ? link(`${NEARBLOCKS}/txns/${dep.keys.postQuantum.signedTx}`, "a top-up it signed") : ""].filter(Boolean).join(", ")],
   ];
+}
+
+function proofsTable(): string {
+  const rows = proofRows();
   return [
     "| Primitive | What Parry does with it | Code | On testnet |",
     "| --- | --- | --- | --- |",
@@ -158,10 +162,22 @@ function scenariosTable(): string {
   return ["| # | Scenario | On testnet | Transactions |", "| --- | --- | --- | --- |", ...rows].join("\n");
 }
 
+/**
+ * The same proofs as data for the site's "Only on NEAR" grid (apps/web/lib/proofs.generated.json):
+ * each primitive with its testnet transaction links, parsed out of the Markdown links above.
+ */
+function proofsJson(): string {
+  const parse = (md: string) => [...md.matchAll(/\[([^\]]+)\]\((https:[^)]+)\)/g)].map((m) => ({ label: m[1]!, url: m[2]! }));
+  const items = proofRows().map(([name, what, , links]) => ({ name, what: what.replace(/`/g, ""), links: parse(links) }));
+  return `${JSON.stringify({ network: "testnet", items }, null, 2)}\n`;
+}
+
 const check = process.argv.includes("--check");
 const outputs: [string, string, string][] = [];
 const readmeBefore = readFileSync(README, "utf8");
 outputs.push([README, readmeBefore, anchors(fill(fill(fill(readmeBefore, "contracts", contracts()), "proofs", proofsTable()), "links", links()), "README.md")]);
+const proofsPath = join(ROOT, "apps", "web", "lib", "proofs.generated.json");
+outputs.push([proofsPath, existsSync(proofsPath) ? readFileSync(proofsPath, "utf8") : "", proofsJson()]);
 for (const doc of ["JUDGES.md", "AGENTS.md", "SECURITY.md"]) {
   const f = join(ROOT, doc);
   const text = readFileSync(f, "utf8");

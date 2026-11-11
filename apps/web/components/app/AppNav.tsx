@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useLayoutEffect, useState, type ReactNode } from "react";
-import { NAV, isActive } from "./nav";
-import { Logo } from "@/components/brand/Logo";
+import { Suspense, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { GROUPS, NAV, isActive } from "./nav";
+import { Logo, Mark } from "@/components/brand/Logo";
 import { Sheet } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
+
+const RAIL_KEY = "parry-rail";
 
 /**
  * The current path, read under Suspense: on a page with a runtime param (a position) the path is
@@ -25,56 +27,87 @@ function CurrentPath({ children }: { children: (pathname: string | null) => Reac
   return <>{children(pathname)}</>;
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-  return <WithPathname>{(pathname) => <NavList pathname={pathname} onNavigate={onNavigate} />}</WithPathname>;
-}
-
-function NavList({ pathname, onNavigate }: { pathname: string | null; onNavigate?: (() => void) | undefined }) {
+function NavList({ pathname, onNavigate, collapsed = false }: { pathname: string | null; onNavigate?: () => void; collapsed?: boolean }) {
   return (
-    <ul className="grid gap-0.5">
-      {NAV.map((item) => {
-        const active = pathname !== null && isActive(pathname, item.href);
+    <div className="grid gap-5">
+      {GROUPS.map((g) => {
+        const items = NAV.filter((i) => i.group === g);
+        if (!items.length) return null;
         return (
-          <li key={item.href}>
-            <Link
-              href={item.href}
-              onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-colors",
-                active ? "bg-raised text-fg shadow-[0_0_0_1px_var(--parry-line)]" : "text-muted hover:bg-hover hover:text-fg",
-              )}
-            >
-              <span className={cn("transition-colors", active ? "text-brass" : "text-muted group-hover:text-fg")}>{item.icon}</span>
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.tag ? (
-                <span className="rounded-full border border-caution/40 px-1.5 text-[10px] font-semibold uppercase leading-4 tracking-[0.06em] text-caution">
-                  {item.tag}
-                </span>
-              ) : null}
-            </Link>
-          </li>
+          <div key={g}>
+            <div className={cn("mb-1.5 px-3 text-[11.5px] text-muted/80 transition-opacity", collapsed && "opacity-0")}>{g}</div>
+            <ul className="grid gap-px">
+              {items.map((item) => {
+                const active = pathname !== null && isActive(pathname, item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      title={collapsed ? item.label : undefined}
+                      className={cn(
+                        "group relative flex h-9 items-center gap-3 rounded-[8px] px-3 text-[13.5px] transition-colors duration-200",
+                        active ? "bg-raised text-fg shadow-[var(--highlight),0_0_0_1px_var(--parry-line)]" : "text-muted hover:bg-hover hover:text-fg",
+                      )}
+                    >
+                      {active ? <span aria-hidden="true" className="absolute -left-3 top-2 h-5 w-[2px] rounded-full bg-brass-fill" /> : null}
+                      <span className={cn("shrink-0 transition-colors", active ? "text-brass" : "text-muted group-hover:text-fg")}>{item.icon}</span>
+                      <span className={cn("min-w-0 flex-1 truncate transition-opacity", collapsed && "opacity-0")}>{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
-/** Desktop sidebar (lg and up). */
+/** The desktop rail (lg and up): icon and label, collapsible to icons only; remembered per browser. */
+function readRail(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "collapsed";
+  } catch {
+    return false;
+  }
+}
+function subscribeRail(cb: () => void) {
+  window.addEventListener("parry-rail", cb);
+  return () => window.removeEventListener("parry-rail", cb);
+}
+
 export function Sidebar() {
+  const collapsed = useSyncExternalStore(subscribeRail, readRail, () => false);
+  const toggle = () => {
+    try {
+      localStorage.setItem(RAIL_KEY, collapsed ? "open" : "collapsed");
+    } catch {}
+    window.dispatchEvent(new Event("parry-rail"));
+  };
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface lg:flex">
-      <div className="flex h-16 items-center px-5">
-        <Link href="/" className="rounded-md px-1 py-1" aria-label="Parry home">
-          <Logo height={24} />
+    <aside className={cn("sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-surface/60 transition-[width] duration-[var(--dur-2)] ease-[var(--ease-out)] lg:flex", collapsed ? "w-[64px]" : "w-60")}>
+      <div className="flex h-14 items-center justify-between px-4">
+        <Link href="/" className="rounded-md py-1" aria-label="Parry home">
+          {collapsed ? <Mark size={24} /> : <Logo height={20} />}
         </Link>
       </div>
-      <nav aria-label="App" className="flex-1 overflow-y-auto px-3 py-3">
-        <NavLinks />
+      <nav aria-label="App" className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
+        <WithPathname>{(pathname) => <NavList pathname={pathname} collapsed={collapsed} />}</WithPathname>
       </nav>
-      <div className="border-t border-line px-5 py-4 text-xs leading-5 text-muted">
-        The guardian can only protect. You can revoke or override it at any moment.
-      </div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
+        className="m-3 flex h-9 items-center gap-3 rounded-[8px] px-3 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg"
+      >
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true" className={cn("shrink-0 transition-transform duration-300", collapsed && "rotate-180")}>
+          <path d="M12 5 7 10l5 5" />
+        </svg>
+        <span className={cn("transition-opacity", collapsed && "opacity-0")}>Collapse</span>
+      </button>
     </aside>
   );
 }
@@ -82,7 +115,6 @@ export function Sidebar() {
 /** Phone and tablet navigation: a bottom bar with the main pages and a sheet with all of them. */
 export function MobileNav() {
   const [open, setOpen] = useState(false);
-
   // Lets fixed elements elsewhere (toasts) sit above the bottom bar while the app shell is shown.
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -91,18 +123,14 @@ export function MobileNav() {
       delete root.dataset.bottomBar;
     };
   }, []);
-
   return (
     <>
-      <nav
-        aria-label="App"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
-      >
+      <nav aria-label="App" className="surface-glass fixed inset-x-3 bottom-3 z-40 !rounded-2xl pb-[env(safe-area-inset-bottom)] lg:hidden">
         <WithPathname>{(pathname) => <MobileBar pathname={pathname} onMore={() => setOpen(true)} />}</WithPathname>
       </nav>
       <Sheet open={open} onOpenChange={setOpen} title="All pages">
         <nav aria-label="All pages">
-          <NavLinks onNavigate={() => setOpen(false)} />
+          <WithPathname>{(pathname) => <NavList pathname={pathname} onNavigate={() => setOpen(false)} />}</WithPathname>
         </nav>
       </Sheet>
     </>
@@ -113,35 +141,20 @@ function MobileBar({ pathname, onMore }: { pathname: string | null; onMore: () =
   const primary = NAV.filter((i) => i.primary);
   const inMenu = pathname !== null && !primary.some((i) => isActive(pathname, i.href));
   return (
-    <ul className="mx-auto grid h-16 max-w-xl grid-cols-5">
+    <ul className="mx-auto grid h-16 max-w-xl grid-cols-6">
       {primary.map((item) => {
         const active = pathname !== null && isActive(pathname, item.href);
         return (
           <li key={item.href}>
-            <Link
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex h-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
-                active ? "text-fg" : "text-muted hover:text-fg",
-              )}
-            >
+            <Link href={item.href} aria-current={active ? "page" : undefined} className={cn("flex h-full flex-col items-center justify-center gap-1 text-[10.5px] transition-colors", active ? "text-fg" : "text-muted hover:text-fg")}>
               <span className={active ? "text-brass" : undefined}>{item.icon}</span>
-              {item.label}
+              <span className="max-w-full truncate px-1">{item.label.split(" ")[0]}</span>
             </Link>
           </li>
         );
       })}
       <li>
-        <button
-          type="button"
-          onClick={onMore}
-          aria-haspopup="dialog"
-          className={cn(
-            "flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors",
-            inMenu ? "text-fg" : "text-muted hover:text-fg",
-          )}
-        >
+        <button type="button" onClick={onMore} aria-haspopup="dialog" className={cn("flex h-full w-full flex-col items-center justify-center gap-1 text-[10.5px] transition-colors", inMenu ? "text-fg" : "text-muted hover:text-fg")}>
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" className={inMenu ? "text-brass" : undefined}>
             <circle cx="4.5" cy="10" r="1.5" fill="currentColor" />
             <circle cx="10" cy="10" r="1.5" fill="currentColor" />

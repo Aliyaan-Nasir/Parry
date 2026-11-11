@@ -5,6 +5,7 @@ import { GitHubIcon } from "./icons";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeSwitcher } from "@/components/theme/ThemeToggle";
 import { repoUrl } from "@/lib/env";
+import { FooterWordmark } from "./FooterWordmark";
 
 const LEGAL: { href: Route; label: string }[] = [
   { href: "/legal/terms", label: "Terms" },
@@ -15,8 +16,9 @@ const LEGAL: { href: Route; label: string }[] = [
 
 const PRODUCT: { href: Route; label: string }[] = [
   { href: "/app", label: "Open the app" },
-  { href: "/app/protect", label: "Protect" },
-  { href: "/app/vault", label: "Vault" },
+  { href: "/check", label: "Check an account" },
+  { href: "/verify", label: "Verify a proof" },
+  { href: "/replay", label: "Crash replay" },
   { href: "/app/status", label: "Status" },
 ];
 
@@ -24,7 +26,7 @@ const linkClass = "text-sm text-muted transition-colors hover:text-fg";
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-line bg-surface">
+    <footer className="relative overflow-hidden border-t border-line">
       <Container className="py-14">
         <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-12">
           <div className="col-span-2 md:col-span-5">
@@ -78,11 +80,10 @@ export function SiteFooter() {
         </div>
         <div className="mt-12 flex flex-col gap-4 border-t border-line pt-6 text-[13px] text-muted sm:flex-row sm:items-center sm:justify-between">
           <p>Made by Aliyaan Nasir.</p>
-          <p className="inline-flex w-fit items-center rounded-full border border-line px-3 py-1 text-[12px] font-semibold tracking-[0.02em] text-fg">
-            Built on NEAR
-          </p>
+          <p>Built on NEAR.</p>
         </div>
       </Container>
+      <FooterWordmark />
     </footer>
   );
 }

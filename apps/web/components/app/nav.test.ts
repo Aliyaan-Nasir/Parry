@@ -11,22 +11,28 @@ describe("app navigation", () => {
     vi.unstubAllEnvs();
   });
 
-  it("lists Market shock, tagged Testnet, on testnet", async () => {
-    const { NAV } = await navFor("testnet");
-    const shock = NAV.find((i) => i.href === "/app/shock");
-    expect(shock?.tag).toBe("Testnet");
+  it("lists every page, Market shock included, on testnet, each in a group", async () => {
+    const { NAV, GROUPS } = await navFor("testnet");
     expect(NAV.map((i) => i.href)).toEqual([
       "/app",
+      "/app/portfolio",
+      "/app/watched",
       "/app/open",
       "/app/protect",
-      "/app/vault",
-      "/app/portfolio",
       "/app/guardian",
+      "/app/certificates",
       "/app/alerts",
-      "/app/settings",
-      "/app/status",
+      "/app/vault",
+      "/app/rates",
+      "/app/cascade",
       "/app/shock",
+      "/app/status",
+      "/app/settings",
     ]);
+    expect(NAV.every((i) => (GROUPS as readonly string[]).includes(i.group))).toBe(true);
+    // Every page shortcut is unique.
+    const keys = NAV.flatMap((i) => (i.key ? [i.key] : []));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("drops Market shock on mainnet", async () => {

@@ -82,9 +82,9 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 ## Originality
 
 - The AI review is not advice next to an action: it is a condition of the action, bound to the exact bytes by the model's TEE signature and recorded on chain with it.
-- Policies are sealed to the enclave ([`seal::open`](enclave/src/seal.rs#L67)), so nobody watching the chain learns when a position will be defended.
+- Policies are sealed to the enclave ([`seal::open`](enclave/src/seal.rs#L111)), so nobody watching the chain learns when a position will be defended.
 - A protected account is a NEP-655 universal account derived from one published global code hash, created gaslessly by the relayer ([`create_account`](contracts/accounts/src/lib.rs#L123), [`state_init_of`](contracts/accounts/src/lib.rs#L105)), and owned by a passkey verified on chain ([`passkey::verify`](contracts/account/src/passkey.rs#L34)).
-- The Tremor index, cascade pressure and first-passage probability turn volatility and crowding into a time to liquidation, not just a health number: [`tremor`](packages/core/src/risk.ts#L115), [`assess`](packages/core/src/risk.ts#L304).
+- The Tremor index, cascade pressure and first-passage probability turn volatility and crowding into a time to liquidation, not just a health number: [`tremor`](packages/core/src/risk.ts#L132), [`assess`](packages/core/src/risk.ts#L321).
 
 ## Sustainability
 

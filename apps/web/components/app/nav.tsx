@@ -4,18 +4,7 @@ import { isTestnet } from "@/lib/env";
 
 function Glyph({ children }: { children: ReactNode }) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
       {children}
     </svg>
   );
@@ -25,124 +14,33 @@ export type NavItem = {
   href: Route;
   label: string;
   icon: ReactNode;
-  /** Shown on the phone's bottom bar (the rest live in the menu sheet). */
+  group: "Overview" | "Protect" | "Earn" | "Markets" | "System";
+  /** Shown on the phone's bottom bar (the rest live in the palette and the menu). */
   primary?: boolean;
-  /** Small tag after the label. */
-  tag?: string;
+  /** A single key that opens the page from anywhere in the app (shown in the palette). */
+  key?: string;
+  testnetOnly?: boolean;
 };
 
-const ALL: (NavItem & { testnetOnly?: boolean })[] = [
-  {
-    href: "/app",
-    label: "Dashboard",
-    primary: true,
-    icon: (
-      <Glyph>
-        <rect x="3" y="3" width="6" height="8" rx="1.25" />
-        <rect x="11" y="3" width="6" height="5" rx="1.25" />
-        <rect x="3" y="13" width="6" height="4" rx="1.25" />
-        <rect x="11" y="10" width="6" height="7" rx="1.25" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/open",
-    label: "Open position",
-    icon: (
-      <Glyph>
-        <circle cx="10" cy="10" r="7" />
-        <path d="M10 6.5 V13.5 M6.5 10 H13.5" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/protect",
-    label: "Protect",
-    primary: true,
-    icon: (
-      <Glyph>
-        <path d="M10 2.5 L16.5 5 V9.5 C 16.5 13.5, 13.8 16.3, 10 17.5 C 6.2 16.3, 3.5 13.5, 3.5 9.5 V5 Z" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/vault",
-    label: "Vault",
-    primary: true,
-    icon: (
-      <Glyph>
-        <rect x="3" y="4" width="14" height="12" rx="1.75" />
-        <circle cx="10" cy="10" r="2.75" />
-        <path d="M10 7.25 V6 M12.75 10 H14" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/portfolio",
-    label: "Portfolio",
-    icon: (
-      <Glyph>
-        <path d="M10 3 A7 7 0 1 0 17 10 H10 Z" />
-        <path d="M12.5 2.9 A7 7 0 0 1 17.1 7.5 H12.5 Z" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/guardian",
-    label: "Guardian log",
-    icon: (
-      <Glyph>
-        <path d="M5 3 H15 V17 H5 Z" />
-        <path d="M8 7 H12 M8 10 H12 M8 13 H10.5" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/alerts",
-    label: "Alerts",
-    primary: true,
-    icon: (
-      <Glyph>
-        <path d="M5.5 13.5 V9 A4.5 4.5 0 0 1 14.5 9 V13.5 L16 15 H4 Z" />
-        <path d="M8.5 17 H11.5" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/settings",
-    label: "Settings",
-    icon: (
-      <Glyph>
-        <path d="M3 6 H11 M15 6 H17 M3 14 H5 M9 14 H17" />
-        <circle cx="13" cy="6" r="2" />
-        <circle cx="7" cy="14" r="2" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/status",
-    label: "Status",
-    icon: (
-      <Glyph>
-        <path d="M2.5 10 H6 L8 5.5 L12 14.5 L14 10 H17.5" />
-      </Glyph>
-    ),
-  },
-  {
-    href: "/app/shock",
-    label: "Market shock",
-    tag: "Testnet",
-    testnetOnly: true,
-    icon: (
-      <Glyph>
-        <path d="M11 2.5 L5 11 H10 L9 17.5 L15 9 H10 Z" />
-      </Glyph>
-    ),
-  },
+const ALL: NavItem[] = [
+  { href: "/app", label: "Dashboard", group: "Overview", primary: true, key: "d", icon: <Glyph><path d="M3 10.5 10 4l7 6.5" /><path d="M5 9v7h10V9" /></Glyph> },
+  { href: "/app/portfolio", label: "Portfolio", group: "Overview", key: "p", icon: <Glyph><path d="M3 15h14M5 15V9M9 15V5M13 15v-4M17 15V7" /></Glyph> },
+  { href: "/app/watched", label: "Watched accounts", group: "Overview", key: "w", icon: <Glyph><path d="M2.5 10s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5-7.5-5-7.5-5Z" /><circle cx="10" cy="10" r="2.2" /></Glyph> },
+  { href: "/app/open", label: "Open position", group: "Protect", key: "o", icon: <Glyph><circle cx="10" cy="10" r="7" /><path d="M10 6.5v7M6.5 10h7" /></Glyph> },
+  { href: "/app/protect", label: "Protect", group: "Protect", primary: true, key: "m", icon: <Glyph><path d="M10 2.5 16.5 5v4.5c0 4-2.7 6.8-6.5 8-3.8-1.2-6.5-4-6.5-8V5Z" /></Glyph> },
+  { href: "/app/guardian", label: "Guardian log", group: "Protect", primary: true, key: "g", icon: <Glyph><path d="M5 3.5h10v13H5zM7.5 7h5M7.5 10h5M7.5 13h3" /></Glyph> },
+  { href: "/app/certificates", label: "Certificates", group: "Protect", key: "c", icon: <Glyph><path d="M4 3.5h12v9H4z" /><path d="m7.5 15.5 2.5-1.5 2.5 1.5v-3h-5z" /></Glyph> },
+  { href: "/app/alerts", label: "Alerts", group: "Protect", primary: true, key: "a", icon: <Glyph><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5H4z" /><path d="M8.5 17h3" /></Glyph> },
+  { href: "/app/vault", label: "Vault", group: "Earn", primary: true, key: "v", icon: <Glyph><rect x="3" y="4" width="14" height="12" rx="1.75" /><circle cx="10" cy="10" r="2.75" /></Glyph> },
+  { href: "/app/rates", label: "Rates", group: "Earn", key: "r", icon: <Glyph><path d="M4 15 15.5 4.5" /><circle cx="6" cy="6" r="1.8" /><circle cx="14" cy="14" r="1.8" /></Glyph> },
+  { href: "/app/cascade", label: "Cascade map", group: "Markets", key: "h", icon: <Glyph><path d="M3 16h14" /><path d="M5 16v-3M8 16V8M11 16v-6M14 16V5" /></Glyph> },
+  { href: "/app/shock", label: "Market shock", group: "Markets", key: "s", testnetOnly: true, icon: <Glyph><path d="M11 2.5 5 11h4.5L8.5 17.5 15 9h-4.5z" /></Glyph> },
+  { href: "/app/status", label: "Status", group: "System", icon: <Glyph><path d="M2.5 10h3l2-4.5 3.5 9 2-4.5h4.5" /></Glyph> },
+  { href: "/app/settings", label: "Settings", group: "System", icon: <Glyph><circle cx="10" cy="10" r="2.5" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" /></Glyph> },
 ];
 
-/** The app's navigation for this build: Market shock exists only off mainnet. */
-export const NAV: NavItem[] = ALL.filter((i) => !i.testnetOnly || isTestnet).map(({ testnetOnly: _t, ...item }) => item);
+export const NAV: NavItem[] = ALL.filter((i) => !i.testnetOnly || isTestnet);
+export const GROUPS = ["Overview", "Protect", "Earn", "Markets", "System"] as const;
 
 export function isActive(pathname: string, href: string): boolean {
   if (href === "/app") return pathname === "/app";
