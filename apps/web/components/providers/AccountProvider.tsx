@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { fromHex, ownerCallAction, type OwnerAction } from "@parry/sdk";
+import { fromHex, ownerCallAction, type ContractCall, type OwnerAction } from "@parry/sdk";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { api, chain, parry } from "@/lib/parry";
@@ -58,6 +58,8 @@ export type ParryAccount = {
   runOwnerActions: (actions: OwnerAction[], opts: { title: string; quiet?: boolean }) => Promise<string>;
   /** Sends NEAR from the connected wallet to the selected account (yoctoNEAR). */
   fundFromWallet: (amountYocto: bigint) => Promise<string>;
+  /** Signs and sends one contract call from the connected wallet (for example a token transfer to the account). */
+  sendFromWallet: (call: ContractCall) => Promise<string>;
   /** A sign-in token for the selected account's own writes (settings, alerts, push), kept in memory. */
   withSignIn: <T>(fn: (token: string) => Promise<T>) => Promise<T>;
   signedIn: boolean;
@@ -249,6 +251,18 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     [account, wallet, refreshAccount],
   );
 
+  const sendFromWallet = useCallback(
+    async (call: ContractCall) => {
+      if (!account || !wallet) throw new Error("Connect a NEAR wallet first.");
+      const connector = await getConnector();
+      const w = await connector.wallet();
+      const hash = await sendWithWallet(w, wallet.accountId, call);
+      refreshAccount(account);
+      return hash;
+    },
+    [account, wallet, refreshAccount],
+  );
+
   const signIn = useCallback(async (): Promise<string> => {
     if (!account || !signer) throw new Error("Connect an account first.");
     if (signer === "watch") throw new Error("Sign in with the account's owner to change it.");
@@ -316,6 +330,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       stopWatching,
       runOwnerActions,
       fundFromWallet,
+      sendFromWallet,
       withSignIn,
       signedIn: !!token,
     }),
@@ -343,6 +358,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       stopWatching,
       runOwnerActions,
       fundFromWallet,
+      sendFromWallet,
       withSignIn,
       token,
     ],

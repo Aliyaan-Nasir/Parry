@@ -155,7 +155,7 @@ export function Note({ children, tone = "neutral", className }: { children: Reac
 
 /** A small mono label above a group, as on the landing panels. */
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("num text-[11px] font-medium uppercase tracking-[0.14em] text-muted", className)}>{children}</p>;
+  return <p className={cn("label", className)}>{children}</p>;
 }
 
 /** A small choice among a few options, as a radio group (styled like the theme switcher). */

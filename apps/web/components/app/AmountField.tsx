@@ -53,7 +53,7 @@ export function AmountField({ label, value, onChange, unit, hint, error, onMax, 
             type="button"
             onClick={onMax}
             disabled={disabled}
-            className="h-8 rounded-md px-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-brass transition-colors hover:bg-hover disabled:cursor-not-allowed"
+            className="h-8 rounded-md px-2 text-[12.5px] text-brass transition-colors hover:bg-hover disabled:cursor-not-allowed"
           >
             Max
           </button>

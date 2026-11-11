@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { chain } from "@/lib/parry";
-import { useAccountSummary, useMandate, useRescueQuote, useSimulation } from "@/lib/queries";
+import { useAccountSummary, useMandate, useMarket, usePositions, useRescueQuote, useSimulation } from "@/lib/queries";
 import { formatHealth, formatNumber } from "@/lib/units";
 import { MandateBuilder } from "./MandateBuilder";
 import { MandatePanel, type TokenInfo } from "./MandatePanel";
@@ -30,7 +30,7 @@ function Simulation({ account }: { account: string }) {
       <CardHeader
         titleAs="h2"
         title={<span id="sim-title">If the guardian looked now</span>}
-        description="A dry run of the planner on your position right now, with the default target of 1.45 and repay first. Nothing is signed or sent."
+        description="The services' dry run of the planner on your position right now, with the default target of 1.45 and repay first, against live balances. Nothing is signed or sent."
         actions={
           <Button size="sm" variant="ghost" loading={q.isFetching && !q.isPending} loadingLabel="Running the simulation" onClick={() => void q.refetch()}>
             Run again
@@ -109,16 +109,15 @@ function AccountProtect({ account, signer }: { account: string; signer: Signer }
   const mandate = useMandate(account);
   const summary = useAccountSummary(account);
   const contracts = useContracts();
+  const positions = usePositions(account);
+  const market = useMarket();
+  const rhea = positions.data?.find((p) => p.venue === "rhea" && p.health !== null) ?? null;
   const tokens: Record<string, TokenInfo> = contracts.data
     ? { [contracts.data.usdc]: { symbol: "USDC", decimals: 6 }, [contracts.data.wnear]: { symbol: "wNEAR", decimals: 24 } }
     : {};
   return (
     <div className="grid gap-6" data-stagger>
       <MandatePanel view={mandate.data} loading={mandate.isPending} error={mandate.error} onRetry={() => void mandate.refetch()} signer={signer} tokens={tokens} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Simulation account={account} />
-        <RouteQuote />
-      </div>
       {contracts.isError ? (
         <QueryError title="The contract ids could not be loaded" error={contracts.error} onRetry={() => void contracts.refetch()} />
       ) : contracts.data && mandate.data !== undefined && !summary.isPending ? (
@@ -129,10 +128,17 @@ function AccountProtect({ account, signer }: { account: string; signer: Signer }
           current={mandate.data?.mandate ?? null}
           contracts={contracts.data}
           evmAddress={summary.data?.evmAddress ?? null}
+          position={rhea}
+          price={market.data?.near.priceUsd ?? null}
+          annualVol={market.data?.tremor.annual ?? null}
         />
       ) : mandate.isError ? null : (
         <Skeleton height="20rem" shape="block" />
       )}
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <Simulation account={account} />
+        <RouteQuote />
+      </div>
     </div>
   );
 }

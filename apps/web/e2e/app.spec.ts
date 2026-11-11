@@ -161,6 +161,36 @@ test.describe("protect", () => {
     expect(openPolicy(mandate.sealed, { account: fx.ACCOUNT, secret: fx.SEALING_SECRET })).toMatchObject({ triggerScore: 65, strategy: "keep-exposure" });
   });
 
+  test("orders the steps by keyboard and drag, previews them, and seals the order", async ({ page }) => {
+    const api = await asPasskeyOwner(page);
+    await page.goto("/app/protect");
+    const builder = page.getByRole("region", { name: "Change the mandate" });
+    await expect(builder).toBeVisible();
+    const order = builder.getByRole("list", { name: "Order of steps" });
+    // Keyboard: deleverage moves from third to first.
+    const grip = order.getByRole("button", { name: /^Move Deleverage/ });
+    await grip.focus();
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("ArrowUp");
+    await expect(order.getByRole("button", { name: /^Move Deleverage, position 1 of 5/ })).toBeFocused();
+    // Drag: add collateral (now third) goes above repay (second).
+    const add = order.getByRole("button", { name: /^Move Add collateral/ });
+    const repay = order.getByRole("button", { name: /^Move Repay debt/ });
+    const from = (await add.boundingBox())!;
+    const to = (await repay.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, to.y + to.height / 2 - 6, { steps: 8 });
+    await page.mouse.up();
+    await expect(order.getByRole("button", { name: /^Move Add collateral, position 2 of 5/ })).toBeVisible();
+    await expect(builder.getByText(/Your own order/)).toBeVisible();
+    await expect(builder.getByRole("complementary", { name: "Preview" }).getByText(/the guardian would act now|It waits/)).toBeVisible();
+    await page.getByRole("button", { name: "Replace the mandate" }).click();
+    await expect.poll(() => relayedActions(api).length, { timeout: 15_000 }).toBe(1);
+    const mandate = (relayedActions(api)[0]![0] as { set_mandate: { mandate: { sealed: string } } }).set_mandate.mandate;
+    expect(openPolicy(mandate.sealed, { account: fx.ACCOUNT, secret: fx.SEALING_SECRET })).toMatchObject({ steps: ["deleverage", "add_collateral", "repay"] });
+  });
+
   test("revoking asks first", async ({ page }) => {
     const api = await asPasskeyOwner(page);
     await page.goto("/app/protect");

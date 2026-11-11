@@ -114,6 +114,15 @@ export function RiskInstrument({
   const height = compact ? 26 : 96;
   const proj = finite && annualVol && !compact ? projection(health, annualVol, trendHourly) : null;
   const needleX = finite ? x(health) : x(MAX);
+  // Major ticks get a label only where it clears the one before it, so a narrow scale stays legible.
+  const labelled = new Set<number>();
+  let lastLabel = -Infinity;
+  for (const t of TICKS) {
+    if (MAJOR.has(t) && x(t) - lastLabel >= 30) {
+      labelled.add(t);
+      lastLabel = x(t);
+    }
+  }
 
   return (
     <div className={cn("flex w-full items-center gap-5", compact && "gap-3", className)}>
@@ -155,7 +164,7 @@ export function RiskInstrument({
                 ? TICKS.map((t) => (
                     <g key={t}>
                       <line x1={x(t)} x2={x(t)} y1={scaleY + 4} y2={scaleY + (MAJOR.has(t) ? 11 : 7)} style={{ stroke: "var(--parry-muted)" }} strokeOpacity={MAJOR.has(t) ? 0.7 : 0.35} strokeWidth={1} />
-                      {MAJOR.has(t) ? (
+                      {labelled.has(t) ? (
                         <text x={x(t)} y={scaleY + 25} textAnchor="middle" className="num" style={{ fill: "var(--parry-muted)", fontSize: 11 }}>
                           {t === 1 ? "1.00" : t.toFixed(t % 1 ? 1 : 0)}
                         </text>

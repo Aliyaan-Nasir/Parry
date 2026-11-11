@@ -2,21 +2,23 @@
 
 import { useId, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
 import { MAX_TRIGGER_HEALTH } from "@parry/core";
-import { buildMandate, MANDATE_LIMITS, ownerActions, POWERS, sealPolicy, STRATEGIES, toBase64, type ContractIds, type Mandate, type Power, type Strategy } from "@parry/sdk";
+import { buildMandate, MANDATE_LIMITS, ownerActions, POLICY_STEPS, POWERS, sealPolicy, STRATEGIES, STRATEGY_STEPS, toBase64, type ContractIds, type Mandate, type PolicyStep, type Position, type Power, type Strategy } from "@parry/sdk";
 import { AmountField } from "@/components/app/AmountField";
+import { GuardianPreview } from "@/components/app/GuardianPreview";
+import { StepOrder, type OrderItem } from "@/components/app/StepOrder";
+import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { errorMessage, Note, Segmented } from "@/components/app/bits";
 import { POWER_LABEL, STRATEGY_LABEL } from "@/components/app/labels";
 import { DEFAULT_POLICY } from "@/components/app/mandate";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader } from "@/components/ui/Card";
 import { Slider } from "@/components/ui/Slider";
 import { chain } from "@/lib/parry";
 import { useEnclave, useHedgeMarket } from "@/lib/queries";
 import { formatBps, fromUnits, toUnits } from "@/lib/units";
 import { network } from "@/lib/env";
 import { cn } from "@/lib/cn";
-import { rememberPolicy } from "@/lib/policy-memory";
+import { readPolicy, rememberPolicy } from "@/lib/policy-memory";
 
 /**
  * The Aave market EVM rescues run on: Base Sepolia on testnet (the MPC network verifies Base),
@@ -60,7 +62,25 @@ type Draft = {
   triggerHealth: number;
   targetHealth: number;
   strategy: Strategy;
+  steps: OrderItem[];
 };
+
+/** The five protective steps, in `order` first (switched on), then the rest (switched off). */
+function stepItems(order: readonly string[]): OrderItem[] {
+  const rest = POLICY_STEPS.filter((s) => !order.includes(s));
+  return [...order, ...rest].map((id) => ({ id, label: POWER_LABEL[id]?.label ?? id, detail: POWER_LABEL[id]?.detail ?? "", on: order.includes(id) }));
+}
+
+/**
+ * The order the owner chose among the steps the mandate's powers allow, or undefined when it is
+ * just the strategy's own order (the sealed policy then carries no `steps`).
+ */
+function chosenSteps(d: Draft): PolicyStep[] | undefined {
+  const allowed = (s: string) => d.powers.includes(s as Power);
+  const on = d.steps.filter((s) => s.on && allowed(s.id)).map((s) => s.id as PolicyStep);
+  const base = STRATEGY_STEPS[d.strategy].filter(allowed);
+  return on.length === base.length && on.every((s, i) => s === base[i]) ? undefined : on;
+}
 
 function draftFrom(current: Mandate | null, contracts: ContractIds, evmAddress: string | null): Draft {
   const limit = (token: string) => current?.limits.find((l) => l.token === token);
@@ -89,6 +109,7 @@ function draftFrom(current: Mandate | null, contracts: ContractIds, evmAddress: 
     evmMax: current?.evm ? current.evm.max_amount : "",
     evmDecimals: "6",
     ...DEFAULT_POLICY,
+    steps: stepItems(STRATEGY_STEPS[DEFAULT_POLICY.strategy]),
   };
 }
 
@@ -146,17 +167,30 @@ export function MandateBuilder({
   current,
   contracts,
   evmAddress,
+  position,
+  price,
+  annualVol,
 }: {
   account: string;
   signer: Signer;
   current: Mandate | null;
   contracts: ContractIds;
   evmAddress: string | null;
+  position: Position | null;
+  price: number | null;
+  annualVol: number | null;
 }) {
   const acct = useParryAccount();
   const enclave = useEnclave();
   const hedgeMarket = useHedgeMarket();
-  const [d, setD] = useState<Draft>(() => draftFrom(current, contracts, evmAddress));
+  const [d, setD] = useState<Draft>(() => {
+    const draft = draftFrom(current, contracts, evmAddress);
+    // The owner's own copy of the sealed policy, when this browser set it.
+    const own = current && typeof window !== "undefined" ? readPolicy(account) : null;
+    if (!own || !(STRATEGIES as readonly string[]).includes(own.strategy)) return draft;
+    const strategy = own.strategy as Strategy;
+    return { ...draft, triggerScore: own.triggerScore, triggerHealth: own.triggerHealth, targetHealth: own.targetHealth, strategy, steps: stepItems(own.steps ?? STRATEGY_STEPS[strategy]) };
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useLayoutEffect(() => () => setError(null), []);
@@ -206,12 +240,14 @@ export function MandateBuilder({
         expiresAt: Math.floor(Date.now() / 1000) + d.days * 86_400,
       });
       const sealingPublicKey = info.sealingKey?.public_key ?? null;
+      const steps = chosenSteps(d);
+      if (steps && steps.length === 0) throw new Error("Switch on at least one step for the guardian to try.");
       const sealed = sealingPublicKey
-        ? sealPolicy({ triggerScore: d.triggerScore, triggerHealth: d.triggerHealth, targetHealth: d.targetHealth, strategy: d.strategy }, { account, sealingPublicKey })
+        ? sealPolicy({ triggerScore: d.triggerScore, triggerHealth: d.triggerHealth, targetHealth: d.targetHealth, strategy: d.strategy, ...(steps ? { steps } : {}) }, { account, sealingPublicKey })
         : null;
       const final: Mandate = { ...mandate, sealed: sealed ? toBase64(sealed) : null };
       await acct.runOwnerActions([ownerActions.setMandate(final)], { title: sealed ? "Mandate set, policy sealed" : "Mandate set" });
-      rememberPolicy(account, { triggerScore: d.triggerScore, triggerHealth: d.triggerHealth, targetHealth: d.targetHealth, strategy: d.strategy });
+      rememberPolicy(account, { triggerScore: d.triggerScore, triggerHealth: d.triggerHealth, targetHealth: d.targetHealth, strategy: d.strategy, ...(steps ? { steps } : {}) });
     } catch (e2) {
       setError(errorMessage(e2).replace(/^mandate: /, ""));
     } finally {
@@ -219,14 +255,120 @@ export function MandateBuilder({
     }
   };
 
+  const custom = chosenSteps(d) !== undefined;
+  const orderItems = d.steps.map((s) => ({ ...s, blocked: has(s.id as Power) ? null : `Needs the ${(POWER_LABEL[s.id]?.label ?? s.id).toLowerCase()} power, under Powers.` }));
+  const num = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const previewSteps = orderItems.filter((s) => s.on && !s.blocked).map((s) => s.id);
+
   return (
-    <Card as="section" aria-labelledby="builder-title" className="grid content-start gap-6">
-      <CardHeader
-        titleAs="h2"
-        title={<span id="builder-title">{current ? "Change the mandate" : "Set a mandate"}</span>}
-        description="Two halves: hard limits that live on chain in the open, which your account enforces whatever happens, and a policy for when to act, sealed so only the guardian's enclave can read it."
-      />
-      <form onSubmit={onSubmit} className="grid gap-6" noValidate>
+    <section aria-labelledby="builder-title" className="grid gap-6">
+      <div>
+        <h2 id="builder-title" className="text-[17px] text-fg">
+          {current ? "Change the mandate" : "Set a mandate"}
+        </h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+          Two halves: hard limits that live on chain in the open, which your account enforces whatever happens, and a policy for when to act, sealed so only the guardian&apos;s enclave can read it.
+        </p>
+      </div>
+      <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-start" noValidate>
+        <aside className="grid gap-4 lg:sticky lg:top-20 lg:order-2" aria-label="Preview">
+          <div className="surface p-5">
+            <div className="flex items-end justify-between gap-3">
+              <span className="label">Trigger and target</span>
+              {position?.health ? (
+                <span className="text-[13px] text-muted">
+                  now <span className="num text-fg">{position.health.toFixed(2)}</span>
+                </span>
+              ) : null}
+            </div>
+            <RiskInstrument
+              className="mt-4"
+              hideValue
+              health={position?.health ?? null}
+              tier={position?.tier}
+              annualVol={annualVol}
+              trigger={d.triggerHealth}
+              target={d.targetHealth}
+              onTriggerChange={canAct ? (v) => set("triggerHealth", Math.round(Math.min(MAX_TRIGGER_HEALTH, Math.max(1.05, v)) * 100) / 100) : undefined}
+              onTargetChange={canAct ? (v) => set("targetHealth", Math.round(Math.min(3, Math.max(1.1, v)) * 100) / 100) : undefined}
+              label={position ? `${position.label} health` : "Health"}
+            />
+            <p className="mt-3 text-[12.5px] leading-5 text-muted">Drag the trigger and target handles, or use the sliders under Sealed policy.</p>
+          </div>
+          <div className="surface p-5">
+            <div className="label">What the guardian would do</div>
+            <div className="mt-3">
+              <GuardianPreview
+                position={position}
+                price={price}
+                triggerHealth={d.triggerHealth}
+                targetHealth={d.targetHealth}
+                steps={previewSteps}
+                limits={{
+                  repayBudget: Math.min(num(d.usdcReserve), num(d.usdcDaily)),
+                  collateralBudget: Math.min(num(d.wnearReserve), num(d.wnearDaily)),
+                  deleverageBudget: num(d.wnearDaily),
+                  maxSlippage: d.slippageBps / 10_000,
+                }}
+              />
+            </div>
+          </div>
+        </aside>
+        <div className="surface grid content-start gap-6 p-6 lg:order-1">
+        <Fieldset
+          className="border-t-0 pt-0"
+          legend="Sealed policy"
+          description="When the guardian acts and how. Your browser encrypts these to the enclave's key before they go on chain: nobody else, Parry's operators included, can read them, so nobody can see when Parry will step in and trade ahead of it."
+        >
+          {enclave.data && !sealingKey ? (
+            <Note tone="caution">The enclave has not published a sealing key yet, so this policy cannot be sealed. The mandate goes on chain without it, and the guardian uses its defaults: act at score 60 or health 1.15, aim for 1.45, repay first.</Note>
+          ) : null}
+          <div className="grid gap-6 sm:grid-cols-3">
+            <Slider label="Act at score" description="Or above." min={25} max={95} step={5} value={d.triggerScore} onValueChange={(v) => set("triggerScore", v)} disabled={!canAct} />
+            <Slider
+              label="Act at health"
+              description="Or below, whatever the score."
+              min={1.05}
+              max={MAX_TRIGGER_HEALTH}
+              step={0.05}
+              value={d.triggerHealth}
+              formatValue={(v) => v.toFixed(2)}
+              onValueChange={(v) => set("triggerHealth", Math.round(v * 100) / 100)}
+              disabled={!canAct}
+            />
+            <Slider
+              label="Aim for health"
+              description="Where a rescue stops."
+              min={1.1}
+              max={3}
+              step={0.05}
+              value={d.targetHealth}
+              formatValue={(v) => v.toFixed(2)}
+              onValueChange={(v) => set("targetHealth", Math.round(v * 100) / 100)}
+              disabled={!canAct}
+            />
+          </div>
+          <div role="radiogroup" aria-label="Strategy" className="grid gap-2 sm:grid-cols-3">
+            {STRATEGIES.map((s) => (
+              <label key={s} className={cn("flex cursor-pointer gap-3 rounded-[10px] border p-3 transition-colors", d.strategy === s ? "border-brass-fill/60 bg-brass-fill/5" : "border-line hover:bg-hover")}>
+                <input type="radio" name="strategy" value={s} checked={d.strategy === s} onChange={() => setD((x) => ({ ...x, strategy: s, steps: stepItems(STRATEGY_STEPS[s]) }))} disabled={!canAct} className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm text-fg">{STRATEGY_LABEL[s]?.label ?? s}</span>
+                  <span className="mt-0.5 block text-[12.5px] leading-5 text-muted">{STRATEGY_LABEL[s]?.detail}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <span className="text-sm text-fg">The order it tries steps in</span>
+              <span className="text-[12.5px] text-muted">{custom ? `Your own order, starting from ${STRATEGY_LABEL[d.strategy]?.label.toLowerCase()}` : `${STRATEGY_LABEL[d.strategy]?.label}'s order`}</span>
+            </div>
+            <p className="text-[12.5px] leading-5 text-muted">Drag a step by its grip, or focus the grip and use the arrow keys. The guardian takes the first step that is switched on, allowed by the mandate and able to move health, sizes it to land on the target, and checks the position again before the next.</p>
+            <StepOrder items={orderItems} onChange={(next) => set("steps", next.map(({ id, label, detail, on }) => ({ id, label, detail, on })))} disabled={!canAct} />
+          </div>
+        </Fieldset>
+
         <Fieldset legend="Powers" description="What the guardian may do. No power can move money out of your account: the contract has no such action for it.">
           <div className="grid gap-2 sm:grid-cols-2">
             {POWERS.map((p) => (
@@ -330,51 +472,6 @@ export function MandateBuilder({
           </Fieldset>
         ) : null}
 
-        <Fieldset
-          legend="Sealed policy"
-          description="When the guardian acts and how. Your browser encrypts these to the enclave's key before they go on chain: nobody else, Parry's operators included, can read them, so nobody can see when Parry will step in and trade ahead of it."
-        >
-          {enclave.data && !sealingKey ? (
-            <Note tone="caution">The enclave has not published a sealing key yet, so this policy cannot be sealed. The mandate goes on chain without it, and the guardian uses its defaults: act at score 60 or health 1.15, aim for 1.45, repay first.</Note>
-          ) : null}
-          <div className="grid gap-6 sm:grid-cols-3">
-            <Slider label="Act at score" description="Or above." min={25} max={95} step={5} value={d.triggerScore} onValueChange={(v) => set("triggerScore", v)} disabled={!canAct} />
-            <Slider
-              label="Act at health"
-              description="Or below, whatever the score."
-              min={1.05}
-              max={MAX_TRIGGER_HEALTH}
-              step={0.05}
-              value={d.triggerHealth}
-              formatValue={(v) => v.toFixed(2)}
-              onValueChange={(v) => set("triggerHealth", Math.round(v * 100) / 100)}
-              disabled={!canAct}
-            />
-            <Slider
-              label="Aim for health"
-              description="Where a rescue stops."
-              min={1.1}
-              max={3}
-              step={0.05}
-              value={d.targetHealth}
-              formatValue={(v) => v.toFixed(2)}
-              onValueChange={(v) => set("targetHealth", Math.round(v * 100) / 100)}
-              disabled={!canAct}
-            />
-          </div>
-          <div role="radiogroup" aria-label="Strategy" className="grid gap-2 sm:grid-cols-3">
-            {STRATEGIES.map((s) => (
-              <label key={s} className={cn("flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors", d.strategy === s ? "border-brass/50 bg-brass-soft" : "border-line hover:bg-hover")}>
-                <input type="radio" name="strategy" value={s} checked={d.strategy === s} onChange={() => set("strategy", s)} disabled={!canAct} className="mt-0.5 size-4 shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-fg">{STRATEGY_LABEL[s]?.label ?? s}</span>
-                  <span className="mt-0.5 block text-[13px] leading-5 text-muted">{STRATEGY_LABEL[s]?.detail}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </Fieldset>
-
         <div className="grid gap-3 border-t border-line pt-6">
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={!canAct || d.powers.length === 0} loading={busy} loadingLabel="Setting the mandate">
@@ -391,7 +488,8 @@ export function MandateBuilder({
             </p>
           ) : null}
         </div>
+        </div>
       </form>
-    </Card>
+    </section>
   );
 }

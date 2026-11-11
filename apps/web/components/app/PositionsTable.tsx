@@ -35,7 +35,7 @@ export function PositionsTable({ positions, caption }: { positions: Position[]; 
       <table className="hidden w-full border-collapse text-left text-sm md:table">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="border-b border-line text-[12px] font-semibold uppercase tracking-[0.06em] text-muted">
+          <tr className="border-b border-line text-[12.5px] font-normal text-muted">
             <th scope="col" className="px-5 py-3 font-semibold sm:px-6">
               Position
             </th>
