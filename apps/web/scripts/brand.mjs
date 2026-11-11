@@ -40,37 +40,73 @@ function adaptiveStyle() {
   );
 }
 
-// Wordmark: "Parry" in Manrope Bold, outlined so it renders the same everywhere.
-const fontFile = await readFile(join(root, "node_modules", "@fontsource", "manrope", "files", "manrope-latin-700-normal.woff"));
+// Wordmark: the mark stands in for the P, followed by "arry" in Instrument Sans Semibold, outlined
+// so it renders the same everywhere. The mark's stem spans the cap height and sits on the alphabetic line,
+// and the gap to the "a" is the font's own P-to-a spacing, tightened a little.
+const fontFile = await readFile(join(root, "node_modules", "@fontsource", "instrument-sans", "files", "instrument-sans-latin-600-normal.woff"));
 const font = opentype.parse(fontFile.buffer.slice(fontFile.byteOffset, fontFile.byteOffset + fontFile.byteLength));
 const WORD_SIZE = 100;
-const wordOptions = { kerning: true, letterSpacing: -0.03 };
-const probe = font.getPath("Parry", 0, 0, WORD_SIZE, wordOptions).getBoundingBox();
-const x1 = probe.x1;
-const y1 = probe.y1;
+const wordOptions = { kerning: true, letterSpacing: -0.02 };
 // Serialised by hand: opentype's own serialiser prints NaN for values that round to zero.
 const r2 = (v) => {
   const n = Math.round(v * 100) / 100;
   return Object.is(n, -0) ? "0" : String(n);
 };
-let last = "";
-const word = font
-  .getPath("Parry", -x1, -y1, WORD_SIZE, wordOptions)
-  .commands.map((c) => {
-    const here = c.type === "Z" ? "" : `${r2(c.x)} ${r2(c.y)}`;
-    const prev = last;
-    last = here;
-    if (c.type === "L" && here === prev) return "";
-    if (c.type === "M" || c.type === "L") return `${c.type}${here}`;
-    if (c.type === "Q") return `Q${r2(c.x1)} ${r2(c.y1)} ${r2(c.x)} ${r2(c.y)}`;
-    if (c.type === "C") return `C${r2(c.x1)} ${r2(c.y1)} ${r2(c.x2)} ${r2(c.y2)} ${r2(c.x)} ${r2(c.y)}`;
-    return "Z";
-  })
-  .join("");
-const wordW = Math.round((probe.x2 - x1) * 100) / 100;
-const wordH = Math.round((probe.y2 - y1) * 100) / 100;
-// Distance from the top of the box to the alphabetic line (the bottom of "P").
-const lineFromTop = Math.round((0 - y1) * 100) / 100;
+// Glyph-by-glyph layout with the font's advances and kerning (opentype's text shaper does not
+// support every substitution table this font carries).
+const unit = WORD_SIZE / font.unitsPerEm;
+function layout(text, x, y) {
+  const glyphs = [...text].map((ch) => font.charToGlyph(ch));
+  const paths = [];
+  let pen = x;
+  glyphs.forEach((g, i) => {
+    paths.push(g.getPath(pen, y, WORD_SIZE));
+    const kern = i + 1 < glyphs.length ? font.getKerningValue(g, glyphs[i + 1]) : 0;
+    pen += (g.advanceWidth + kern) * unit + wordOptions.letterSpacing * WORD_SIZE;
+  });
+  return paths;
+}
+function box(text, x = 0, y = 0) {
+  const bb = layout(text, x, y).map((p) => p.getBoundingBox());
+  return { x1: Math.min(...bb.map((b) => b.x1)), y1: Math.min(...bb.map((b) => b.y1)), x2: Math.max(...bb.map((b) => b.x2)), y2: Math.max(...bb.map((b) => b.y2)) };
+}
+function pathData(text, x, y) {
+  let last = "";
+  return layout(text, x, y)
+    .flatMap((p) => p.commands)
+    .map((c) => {
+      const here = c.type === "Z" ? "" : `${r2(c.x)} ${r2(c.y)}`;
+      const prev = last;
+      last = here;
+      if (c.type === "L" && here === prev) return "";
+      if (c.type === "M" || c.type === "L") return `${c.type}${here}`;
+      if (c.type === "Q") return `Q${r2(c.x1)} ${r2(c.y1)} ${r2(c.x)} ${r2(c.y)}`;
+      if (c.type === "C") return `C${r2(c.x1)} ${r2(c.y1)} ${r2(c.x2)} ${r2(c.y2)} ${r2(c.x)} ${r2(c.y)}`;
+      return "Z";
+    })
+    .join("");
+}
+// Metrics on the alphabetic line (y = 0, negative is up).
+const capHeight = -box("P").y1;
+const pBox = box("P");
+const aStart = box("Pa").x2 - box("a").x2; // the pen position of "a" after "P"
+const naturalGap = aStart + box("a").x1 - pBox.x2;
+// The mark's visible box on its 32 unit grid.
+const VISIBLE = { x1: 7.25, y1: 5, x2: 24.75, y2: 27 };
+const markScale = capHeight / (VISIBLE.y2 - VISIBLE.y1);
+const markW = (VISIBLE.x2 - VISIBLE.x1) * markScale;
+const gap = naturalGap * 0.82;
+const restBox = box("arry");
+// Layout: the mark's left ink edge at x = 0, the type's alphabetic line at y = capHeight (top of box at
+// the cap line), so the box spans the cap line to the descender of the "y"s.
+const restX = markW + gap - restBox.x1;
+const rest = pathData("arry", restX, capHeight);
+const wordW = Math.round((markW + gap + (restBox.x2 - restBox.x1)) * 100) / 100;
+const wordH = Math.round((capHeight + restBox.y2) * 100) / 100;
+const lineFromTop = Math.round(capHeight * 100) / 100;
+const markTransform = { x: Number(r2(-VISIBLE.x1 * markScale)), y: Number(r2(-VISIBLE.y1 * markScale)), scale: Number(markScale.toFixed(4)) };
+const wordmarkInner = (shapes) =>
+  `<g transform="translate(${markTransform.x} ${markTransform.y}) scale(${markTransform.scale})">${shapes}</g>`;
 
 const header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
 await mkdir(join(root, "public", "brand"), { recursive: true });
@@ -81,27 +117,10 @@ await writeFile(
   join(root, "public", "brand", "parry-mark.svg"),
   `${header}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Parry">${adaptiveStyle()}${adaptiveMarkShapes()}</svg>\n`,
 );
-await writeFile(
-  join(root, "public", "brand", "parry-wordmark.svg"),
-  `${header}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wordW} ${wordH}" width="${wordW}" height="${wordH}" role="img" aria-label="Parry">${adaptiveStyle()}<path class="t" d="${word}"/></svg>\n`,
-);
-// Lockup: the mark's visible box is a little taller than the cap height and centred on it.
-const VISIBLE = { x1: 7.25, y1: 5, x2: 24.75, y2: 27 };
-const capHeight = lineFromTop;
-const lockScale = (capHeight * 1.12) / (VISIBLE.y2 - VISIBLE.y1);
-const markTop = capHeight / 2 - ((VISIBLE.y1 + VISIBLE.y2) / 2) * lockScale;
-const markLeft = -VISIBLE.x1 * lockScale;
-const gap = capHeight * 0.22;
-const wordX = (VISIBLE.x2 - VISIBLE.x1) * lockScale + gap;
-const topEdge = Math.min(0, markTop + VISIBLE.y1 * lockScale);
-const bottomEdge = Math.max(wordH, markTop + VISIBLE.y2 * lockScale);
-const lockW = Math.ceil(wordX + wordW + 1);
-const lockH = Math.ceil(bottomEdge - topEdge + 1);
-const dy = -topEdge + 0.5;
-await writeFile(
-  join(root, "public", "brand", "parry-logo.svg"),
-  `${header}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${lockW} ${lockH}" width="${lockW}" height="${lockH}" role="img" aria-label="Parry">${adaptiveStyle()}<g transform="translate(${r2(markLeft)} ${r2(markTop + dy)}) scale(${lockScale.toFixed(4)})">${adaptiveMarkShapes()}</g><path class="t" transform="translate(${r2(wordX)} ${r2(dy)})" d="${word}"/></svg>\n`,
-);
+// The wordmark is the lockup: the mark is its first letter.
+const wordmarkSvg = `${header}<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${wordW} ${wordH}" width="${wordW}" height="${wordH}" role="img" aria-label="Parry">${adaptiveStyle()}${wordmarkInner(adaptiveMarkShapes())}<path class="t" d="${rest}"/></svg>\n`;
+await writeFile(join(root, "public", "brand", "parry-wordmark.svg"), wordmarkSvg);
+await writeFile(join(root, "public", "brand", "parry-logo.svg"), wordmarkSvg);
 
 // Favicon (SVG): transparent, follows the browser's color scheme.
 await writeFile(
@@ -161,24 +180,21 @@ await writeFile(
   `// Generated by scripts/brand.mjs from the brand geometry. Do not edit by hand; edit the script and run \`pnpm icons\`.
 export const MARK = ${JSON.stringify(MARK, null, 2)} as const;
 
-export const WORDMARK = {
-  width: ${wordW},
-  height: ${wordH},
-  /** Distance from the top of the box to the alphabetic line. */
-  line: ${lineFromTop},
-  d: ${JSON.stringify(word)},
-} as const;
-
 /** The mark's visible box on its 32 unit grid, for optical alignment. */
 export const MARK_VISIBLE = ${JSON.stringify(VISIBLE)} as const;
 
-export const LOCKUP = {
-  width: ${lockW},
-  height: ${lockH},
-  mark: { x: ${r2(markLeft)}, y: ${r2(markTop + dy)}, scale: ${lockScale.toFixed(4)} },
-  word: { x: ${r2(wordX)}, y: ${r2(dy)} },
+/**
+ * The wordmark: the mark as the P, then "arry". The box runs from the cap line to the descender;
+ * \`line\` is the alphabetic line's distance from the top. \`mark\` places the 32 unit mark in the box.
+ */
+export const WORDMARK = {
+  width: ${wordW},
+  height: ${wordH},
+  line: ${lineFromTop},
+  mark: ${JSON.stringify(markTransform)},
+  rest: ${JSON.stringify(rest)},
 } as const;
 `,
 );
 
-console.log(`brand: wordmark ${wordW}x${wordH}, lockup ${lockW}x${lockH}, icons written`);
+console.log(`brand: wordmark ${wordW}x${wordH} (gap ${gap.toFixed(1)}), icons written`);

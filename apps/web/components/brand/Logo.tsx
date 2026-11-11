@@ -1,4 +1,4 @@
-import { LOCKUP, MARK, WORDMARK } from "./paths";
+import { MARK, WORDMARK } from "./paths";
 import { cn } from "@/lib/cn";
 
 type MarkProps = {
@@ -38,17 +38,17 @@ export function Mark({ size = 28, className, title }: MarkProps) {
 }
 
 type LogoProps = {
-  /** Rendered height in pixels; width follows the lockup's proportions. */
+  /** Rendered height in pixels; width follows the wordmark's proportions. */
   height?: number;
   className?: string;
 };
 
-/** Mark and wordmark lockup, the word outlined from Manrope Bold. */
+/** The wordmark: the mark stands in for the P, then "arry" outlined from Instrument Sans Semibold. */
 export function Logo({ height = 26, className }: LogoProps) {
-  const width = Math.round((LOCKUP.width / LOCKUP.height) * height);
+  const width = Math.round((WORDMARK.width / WORDMARK.height) * height * 100) / 100;
   return (
     <svg
-      viewBox={`0 0 ${LOCKUP.width} ${LOCKUP.height}`}
+      viewBox={`0 0 ${WORDMARK.width} ${WORDMARK.height}`}
       width={width}
       height={height}
       className={cn("shrink-0 text-fg", className)}
@@ -56,10 +56,10 @@ export function Logo({ height = 26, className }: LogoProps) {
       aria-label="Parry"
       focusable="false"
     >
-      <g transform={`translate(${LOCKUP.mark.x} ${LOCKUP.mark.y}) scale(${LOCKUP.mark.scale})`}>
+      <g transform={`translate(${WORDMARK.mark.x} ${WORDMARK.mark.y}) scale(${WORDMARK.mark.scale})`}>
         <MarkShapes />
       </g>
-      <path transform={`translate(${LOCKUP.word.x} ${LOCKUP.word.y})`} d={WORDMARK.d} fill="currentColor" />
+      <path d={WORDMARK.rest} fill="currentColor" />
     </svg>
   );
 }

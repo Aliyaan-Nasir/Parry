@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
+import { Fraunces, Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import tokens from "@parry/brand";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
@@ -8,7 +8,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
 import { themeScript } from "@/lib/theme";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap", axes: ["opsz"] });
-const text = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" });
+const text = Instrument_Sans({ subsets: ["latin"], variable: "--font-instrument", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
 
 export const metadata: Metadata = {
