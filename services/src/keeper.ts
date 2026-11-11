@@ -84,14 +84,16 @@ async function sealingKey(): Promise<string> {
 }
 
 /**
- * When the vault's hedge needs margin, records how it would be funded: a dry-run 1Click quote
- * from USDC on NEAR to USDC on HyperCore, delivered to the vault's Chain Signatures address.
- * The operator executes it on mainnet; nothing moves here.
+ * When the vault's hedge needs margin, or its Hyperliquid account has none yet while NEAR is
+ * staked, records how it would be funded: a dry-run 1Click quote from USDC on NEAR to USDC on
+ * HyperCore, delivered to the vault's Chain Signatures address. The operator executes it on
+ * mainnet; nothing moves here.
  */
 async function marginRoute(sql: Sql): Promise<string> {
   if (!contract("vault")) return "no vault in this deployment";
-  const v = await view<{ hedge: { needs_margin?: boolean } }>(contract("vault"), "vault_state");
-  if (!v.hedge.needs_margin) return "margin sufficient";
+  const v = await view<{ staked_linear?: string; hedge: { needs_margin?: boolean; account_value_e6?: string } }>(contract("vault"), "vault_state");
+  const unfunded = BigInt(v.hedge.account_value_e6 ?? "0") === 0n && BigInt(v.staked_linear ?? "0") > 0n;
+  if (!v.hedge.needs_margin && !unfunded) return "margin sufficient";
   const [r] = await sql<{ extra: { hedgeAddress?: string } }[]>`SELECT extra FROM reports WHERE kind = 'vault_report' ORDER BY run_id DESC LIMIT 1`;
   const recipient = r?.extra?.hedgeAddress;
   if (!recipient) return "no hedge address reported yet";

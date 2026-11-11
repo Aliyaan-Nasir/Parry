@@ -62,7 +62,7 @@ function SharePrice() {
       ) : q.isPending ? (
         <Skeleton height="260px" shape="block" />
       ) : (
-        <Chart series={series} label={`Vault share price, last ${label}`} height={260} valueFormat="usd" currency={shown} precision={4} />
+        <Chart series={series} label={`Vault share price, last ${label}`} height={260} valueFormat="usd" currency={shown} precision={4} minSpan={0.02} />
       )}
     </Card>
   );
@@ -72,6 +72,8 @@ function Hedge({ v }: { v: Vault }) {
   const h = v.hedge;
   const { format } = useMoney();
   const hedged = h.targetNear > 0 ? h.currentNear / h.targetNear : null;
+  // With no margin in its Hyperliquid account the vault cannot open the short at all.
+  const unfunded = !h.needsMargin && h.accountValueUsd <= 0 && Number(v.stakedLinear) > 0;
   const addressUrl = h.address ? hyperliquidAddressUrl(h.address) : null;
   return (
     <Card as="section" aria-labelledby="hedge-title" className="grid content-start gap-4">
@@ -79,7 +81,7 @@ function Hedge({ v }: { v: Vault }) {
         titleAs="h2"
         title={<span id="hedge-title">Hedge</span>}
         description={`A NEAR perp short, ${formatPercent(h.hedgeRatio, 0)} of the staked NEAR.`}
-        actions={h.needsMargin ? <Badge tone="critical">Needs margin</Badge> : <Badge tone="safe">Margin ok</Badge>}
+        actions={h.needsMargin ? <Badge tone="critical">Needs margin</Badge> : unfunded ? <Badge tone="caution">Awaiting margin</Badge> : <Badge tone="safe">Margin ok</Badge>}
       />
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-end justify-between gap-2">
@@ -91,6 +93,7 @@ function Hedge({ v }: { v: Vault }) {
         <div className="h-1.5 overflow-hidden rounded-full bg-line" role="meter" aria-label="Hedged share of the target" aria-valuemin={0} aria-valuemax={100} aria-valuenow={hedged !== null ? Math.round(Math.min(1, hedged) * 100) : 0}>
           <div className="h-full rounded-full bg-brass-fill" style={{ width: `${hedged !== null ? Math.min(1, hedged) * 100 : 0}%` }} />
         </div>
+        {unfunded ? <p className="text-[13px] text-muted">The hedge account holds no margin yet, so the short is not open. It opens once USDC reaches the hedge address on Hyperliquid.</p> : null}
       </div>
       <DataList>
         <DataRow label="Leverage">
@@ -126,7 +129,7 @@ function Hedge({ v }: { v: Vault }) {
           )}
         </DataRow>
       </DataList>
-      {h.needsMargin && h.marginRoute ? <MarginRoute route={h.marginRoute} /> : null}
+      {(h.needsMargin || unfunded) && h.marginRoute ? <MarginRoute route={h.marginRoute} /> : null}
       <LastOrder order={h.lastOrder} />
     </Card>
   );
@@ -530,7 +533,7 @@ function Overview({ v }: { v: Vault }) {
         <Stat label="Net asset value" value={format(v.navUsd)} />
         <Stat label="Share price" value={format(v.sharePriceUsd, { digits: 4 })} />
         <Stat label="NEAR price" value={format(v.nearPriceUsd)} hint="As the last report priced it" />
-        <Stat label="Last report" value={v.reportAt && now ? formatRelativeTime(v.reportAt, now) : v.reportAt ? "" : "None yet"} hint={`${v.queueLength} withdrawals queued`} />
+        <Stat label="Last report" value={v.reportAt && now ? formatRelativeTime(v.reportAt, now) : v.reportAt ? "" : "None yet"} hint={`${v.queueLength} ${v.queueLength === 1 ? "withdrawal" : "withdrawals"} queued`} />
       </StatGroup>
     </Card>
   );

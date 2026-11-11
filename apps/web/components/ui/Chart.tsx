@@ -45,6 +45,11 @@ export type ChartProps = {
   precision?: number;
   /** The currency "usd" values are shown in (already converted by the caller); USD by default. */
   currency?: string;
+  /**
+   * The smallest vertical range shown, as a fraction of the values' level (0.02 is 2 %), so a
+   * near-flat series such as a share price does not stretch its noise across the whole height.
+   */
+  minSpan?: number;
   className?: string;
 };
 
@@ -86,7 +91,7 @@ function formatter(kind: NonNullable<ChartProps["valueFormat"]>, precision: numb
 
 type Api = { chart: IChartApi; lib: typeof LightweightCharts; series: ISeriesApi<SeriesType>[] };
 
-export function Chart({ series, label, height = 280, priceLines = [], valueFormat = "number", precision = 2, currency = "USD", className }: ChartProps) {
+export function Chart({ series, label, height = 280, priceLines = [], valueFormat = "number", precision = 2, currency = "USD", minSpan, className }: ChartProps) {
   const box = useRef<HTMLDivElement>(null);
   const api = useRef<Api | null>(null);
   const [ready, setReady] = useState(false);
@@ -141,19 +146,26 @@ export function Chart({ series, label, height = 280, priceLines = [], valueForma
     series.forEach((s, i) => {
       const color = p[s.tone ?? (i === 0 ? "fg" : "brass")];
       const marks = i === 0 ? priceLines.map((l) => l.price) : [];
+      const span = minSpan ?? 0;
       const common = {
         title: s.title ?? "",
         lastValueVisible: true,
         priceLineVisible: false,
         lineWidth: 2 as const,
-        // Markers such as the liquidation level stay in view, however far the data is from them.
-        ...(marks.length > 0
+        // Markers such as the liquidation level stay in view, however far the data is from them,
+        // and the range never shrinks under `minSpan` of the level.
+        ...(marks.length > 0 || span > 0
           ? {
               autoscaleInfoProvider: (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
                 const res = original();
                 if (!res?.priceRange) return res;
-                const lo = Math.min(res.priceRange.minValue, ...marks);
-                const hi = Math.max(res.priceRange.maxValue, ...marks);
+                let lo = Math.min(res.priceRange.minValue, ...marks);
+                let hi = Math.max(res.priceRange.maxValue, ...marks);
+                const mid = (lo + hi) / 2;
+                if (hi - lo < Math.abs(mid) * span) {
+                  lo = mid - (Math.abs(mid) * span) / 2;
+                  hi = mid + (Math.abs(mid) * span) / 2;
+                }
                 const pad = (hi - lo) * 0.04;
                 return { ...res, priceRange: { minValue: lo - pad, maxValue: hi + pad } };
               },
@@ -186,7 +198,7 @@ export function Chart({ series, label, height = 280, priceLines = [], valueForma
       a.series.push(created);
     });
     a.chart.timeScale().fitContent();
-  }, [ready, series, priceLines, valueFormat, precision, currency, resolved]);
+  }, [ready, series, priceLines, valueFormat, precision, currency, minSpan, resolved]);
 
   return (
     <figure className={cn("relative m-0", className)}>

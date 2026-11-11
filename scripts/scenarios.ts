@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { generateKey, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
 import { buildMandate, createParry, verifyReserves, type Decision, type HlOrder, type Policy, type Power } from "../packages/sdk/src/index";
-import { HYPERLIQUID_URL } from "../services/src/lib/config";
+import { HYPERLIQUID_URL, RPC_URLS } from "../services/src/lib/config";
 import { recoverAddress } from "../services/src/lib/evm";
 import { submitOrder } from "../services/src/lib/hyperliquid";
 
@@ -138,15 +138,32 @@ async function call(n: Near, from: string, to: string, method: string, args: obj
   return r;
 }
 
+/** Views go to the runner's RPC first and fall back to the other public providers when it is rate limited. */
+const VIEW_RPCS = sandbox ? [RPC] : [...new Set([RPC, ...RPC_URLS])];
+
 async function view<T>(account: string, method: string, args: object = {}): Promise<T> {
-  const res = await fetch(RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "optimistic", account_id: account, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") } }),
-  });
-  const body = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: unknown };
-  if (!body.result?.result) throw new Error(`${account}.${method}: ${body.result?.error ?? JSON.stringify(body.error).slice(0, 200)}`);
-  return JSON.parse(Buffer.from(body.result.result).toString());
+  let last = "";
+  for (let attempt = 0; attempt < VIEW_RPCS.length * 2; attempt++) {
+    const res = await fetch(VIEW_RPCS[attempt % VIEW_RPCS.length]!, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "optimistic", account_id: account, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") } }),
+    }).catch((e) => e as Error);
+    if (res instanceof Error || res.status === 429 || res.status >= 500) {
+      last = res instanceof Error ? res.message : `HTTP ${res.status}`;
+      await sleep(500 * (attempt + 1));
+      continue;
+    }
+    const body = (await res.json()) as { result?: { result?: number[]; error?: string }; error?: { code?: number; message?: string } };
+    if (body.error?.code === -429) {
+      last = body.error.message ?? "rate limited";
+      await sleep(500 * (attempt + 1));
+      continue;
+    }
+    if (!body.result?.result) throw new Error(`${account}.${method}: ${body.result?.error ?? JSON.stringify(body.error).slice(0, 200)}`);
+    return JSON.parse(Buffer.from(body.result.result).toString());
+  }
+  throw new Error(`${account}.${method}: ${last}`);
 }
 
 async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
@@ -365,10 +382,16 @@ async function vault() {
   if (refund) return save(10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", false, [...steps, { step: "the vault refused the deposit and refunded it", reason: refund.reason }]);
   const shares = await view<string>(c("vault"), "ft_balance_of", { account_id: p.owner });
   steps.push({ step: `EARN balance ${Number(BigInt(shares) / 10n ** 18n) / 1e6}`, totalSharesBefore: before?.total_shares });
-  const hedge = await until("a hedge report after the deposit", 10 * 60_000, async () => {
-    const s = await api<{ hedge: { sizeE8: string } | null; risk: { score: number } | null }>("/v1/vault");
-    return s.hedge && BigInt(s.hedge.sizeE8 ?? "0") !== 0n ? s : null;
-  }).catch((e) => ({ error: String(e) }));
+  // The short needs margin in the vault's Hyperliquid account: until it has some, the hedge target
+  // is capped at zero and there is nothing to wait for.
+  const funded = (await api<{ hedge: { accountValueUsd: number; address: string | null } }>("/v1/vault")).hedge;
+  const hedge =
+    funded.accountValueUsd > 0
+      ? await until("a hedge position after the deposit", 10 * 60_000, async () => {
+          const s = await api<{ hedge: { currentNear: number; targetNear: number } }>("/v1/vault");
+          return s.hedge.currentNear > 0 ? s.hedge : null;
+        }).catch((e) => ({ error: String(e) }))
+      : { pending: `the hedge account ${funded.address ?? "(not reported yet)"} holds no Hyperliquid margin yet; the keeper signs the short once it does` };
   steps.push({ step: "the keeper rebalances: a Chain Signatures order shorts NEAR on Hyperliquid", hedge });
   const lastOrder = (await api<{ hedge: { lastOrder: { tx: string } | null } }>("/v1/vault")).hedge.lastOrder;
   if (lastOrder) {
@@ -387,8 +410,18 @@ async function vault() {
   const rv = verifyReserves(reserves, { onChainRoot: onChain?.root ?? null });
   steps.push({ step: "proof of reserves: every leaf's proof and the root on chain", ok: rv.ok, root: reserves.root });
   save(10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", paid === true && rv.ok && !("error" in hedge), steps);
-  const state = await view<{ deposits_paused: boolean; risk_score?: number }>(c("vault"), "vault_state");
-  save(11, "The vault pauses deposits from its risk score", true, [{ step: "vault state after the shock", state }]);
+}
+
+async function vaultPause() {
+  if (!c("vault")) return save(11, "The vault pauses deposits from its risk score", false, [{ step: "no vault in this deployment" }]);
+  // A score of 70 or more pauses deposits and one under 60 resumes them (the sandbox suite drives
+  // the score across both); here the live state must agree with the enclave's latest score.
+  const state = await view<{ risk_paused: boolean; risk_score: number | null }>(c("vault"), "vault_state");
+  const score = state.risk_score ?? 0;
+  const consistent = score >= 70 ? state.risk_paused : score < 60 ? !state.risk_paused : true;
+  save(11, "The vault pauses deposits from its risk score", state.risk_score !== null && consistent, [
+    { step: `the enclave's latest score is ${state.risk_score ?? "missing"}; deposits are ${state.risk_paused ? "paused" : "open"} (70 pauses, under 60 resumes)`, ok: consistent },
+  ]);
 }
 
 async function paid() {
@@ -539,7 +572,8 @@ if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
 if (runs(7)) await limits();
 if (runs(8) && !sandbox) await hlOrder().catch((e) => save(8, "A Hyperliquid order signed by the protected account through Chain Signatures", false, [{ error: String(e) }]));
 if (runs(9) && !sandbox) await evmRescue();
-if (runs(10) || runs(11)) await vault();
+if (runs(10)) await vault();
+if (runs(11)) await vaultPause();
 if (runs(12)) await paid().catch((e) => save(12, "A paid risk check over x402 on NEAR", false, [{ error: String(e) }]));
 if (runs(13)) await agents().catch((e) => save(13, "Core flows through the SDK and the MCP server", false, [{ error: String(e) }]));
 console.log(`proofs in ${proofFile.replace(`${ROOT_DIR}/`, "")}`);
