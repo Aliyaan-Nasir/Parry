@@ -63,6 +63,8 @@ export type MockState = {
   balances: Map<string, bigint>;
   /** Watched accounts per signed-in account. */
   watch: Map<string, Map<string, { thresholds: { score: number; health: number }; label: string | null }>>;
+  /** Set once a relayed owner request closes the Rhea position (`close_rhea`): its debt is then gone. */
+  rheaClosed: boolean;
   /** Certificates issued through the API, newest first. */
   certificates: ReturnType<typeof fx.certificate>[];
 };
@@ -410,6 +412,7 @@ const ROUTES: RouteDef[] = [
       if (problem) return error(`Smart contract panicked: ${problem}`, 400);
     }
     c.state.ownerNonce.set(b.account, request.nonce);
+    if (((request as { actions?: unknown[] }).actions ?? []).some((a) => typeof a === "object" && a !== null && "close_rhea" in a)) c.state.rheaClosed = true;
     return json({ txHash: fx.txHash(`owner:${b.account}:${request.nonce}`) });
   }),
   route("POST /v1/relay/delegate", (c) => json({ txHash: fx.txHash(`delegate:${c.state.tokens.size}`) })),
@@ -455,6 +458,14 @@ function view(state: MockState, now: number, accountId: string, method: string, 
   if (accountId === C.risk && method === "enclave_history") return [enclaveKey];
   if (accountId === C.risk && method === "sealing_key") return { public_key: fx.SEALING_PUBLIC_KEY, run_id: 412, at: Math.floor(now / 1000) - 3_600, key_index: 0 };
   if (accountId === C.vault && method === "vault_state") return fx.vaultChainState(now);
+  // The close: no round in flight, and the Rhea position's lines until a close round lands.
+  if (accountId === fx.ACCOUNT && method === "closing") return null;
+  if (accountId === C.lending && method === "get_account") {
+    if ((args.account_id as string) !== fx.ACCOUNT || isEmpty) return null;
+    const debt = state.rheaClosed ? [] : [{ token_id: C.usdc, balance: "195000000000000000000" }];
+    const collateral = state.rheaClosed ? [] : [{ token_id: C.wnear, balance: "100000000000000000000000000" }];
+    return { account_id: fx.ACCOUNT, supplied: [], collateral, borrowed: debt };
+  }
   if (accountId === C.vault && method === "ft_balance_of") return (args.account_id as string) === fx.ACCOUNT && !isEmpty ? "1500000000000000000000000000" : "0";
   if (accountId === C.lending && method === "get_asset") {
     const token = args.token_id as string;
@@ -543,6 +554,7 @@ export function freshState(options: MockOptions, now: number): MockState {
     passkeys: new Map(),
     balances: new Map(),
     watch: new Map(),
+    rheaClosed: false,
     certificates: [],
   };
 }

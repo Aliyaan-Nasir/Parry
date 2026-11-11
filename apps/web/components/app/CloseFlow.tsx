@@ -1,10 +1,11 @@
 "use client";
 
-import { closeFromWalletActions, closePerpAction, closeRheaAction, unwindAction, type AccountSummary, type Position } from "@parry/sdk";
+import { closeFromWalletActions, closePerpAction, closeRheaRounds, unwindAction, type AccountSummary, type CloseRound, type Position } from "@parry/sdk";
 import { useState } from "react";
 import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { chain } from "@/lib/parry";
 import { useConfig, useMarket } from "@/lib/queries";
 import { cn } from "@/lib/cn";
 
@@ -43,6 +44,7 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [rounds, setRounds] = useState<CloseRound[]>([]);
   // Where an unwind sends everything: the owner's NEAR account by default, any NEAR account by choice.
   const [to, setTo] = useState(summary.owner.kind === "near" ? summary.owner.id : (acct.wallet?.accountId ?? ""));
   const ids = config.data?.contracts as Record<string, string> | undefined;
@@ -66,7 +68,29 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
       if (how === "sell") {
         const poolId = (config.data as { dexPool?: number | null } | undefined)?.dexPool;
         if (!poolId) throw new Error("The exchange pool is still loading.");
-        return acct.runOwnerActions([closeRheaAction({ slippageBps: slippage, poolId })], { title: "Closing round sent" });
+        // Rhea lets collateral out only while health stays above 1, so a close runs in rounds:
+        // each sells what keeps health above 1.02, repays, and the next starts from there.
+        setRounds([]);
+        const c = await chain();
+        const res = await closeRheaRounds({
+          account: summary.account,
+          slippageBps: slippage,
+          poolId,
+          read: c,
+          sendOwnerActions: async (actions) => ({ txHash: await acct.runOwnerActions(actions, { title: "Closing round sent", quiet: true }) }),
+          ...(isWallet ? { sendCall: async (call) => ({ txHash: await acct.sendFromWallet(call) }) } : {}),
+          onRound: (r) => setRounds((x) => [...x, r]),
+        });
+        if (!res.closed) {
+          throw new Error(
+            res.stopped === "rolled_back"
+              ? "A round was rolled back and nothing changed: the swap would have slipped too far. Allow more slippage, or repay from the wallet."
+              : res.stopped === "stuck"
+                ? "A round stopped after its swap. Anyone can finish it with retry_close: connect a NEAR wallet to send it from here."
+                : "The position is not fully closed after 4 rounds: run it again to continue.",
+          );
+        }
+        return res.rounds.at(-1)?.txHash ?? "";
       }
       if (!ids?.usdc || !ids.wnear || !position) throw new Error("The contract ids are still loading.");
       // The debt in USDC units (6 decimals), with a small margin for interest that accrues meanwhile.
@@ -106,7 +130,7 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
       description={
         mode === "unwind"
           ? "Revokes the guardian's mandate, withdraws every position from lending, and sends the rescue reserve, the collateral and the spare NEAR back to you. Whatever cannot move stays in the account and is listed."
-          : "All or nothing: if any step fails, every step before it is undone and nothing changes."
+          : "Each round is all or nothing: if a step fails, the steps before it in that round are undone."
       }
       footer={
         done ? (
@@ -124,9 +148,11 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
       }
     >
       {done ? (
-        <p className="text-sm text-fg">
-          Sent in transaction <span className="num break-all text-muted">{done}</span>.
-        </p>
+        <div className="grid gap-2 text-sm text-fg">
+          <p>
+            {rounds.length > 1 ? `Closed in ${rounds.length} rounds; the last` : "Sent"} in transaction <span className="num break-all text-muted">{done}</span>.
+          </p>
+        </div>
       ) : (
         <div className="grid gap-5">
           {mode === "close" && rhea ? (
@@ -134,7 +160,7 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
               <legend className="label mb-2">How to repay the debt</legend>
               {(
                 [
-                  ["sell", "Sell collateral to repay", "The account withdraws just enough collateral, swaps it on the Rhea exchange, repays all the debt and withdraws the rest, in one atomic step."],
+                  ["sell", "Sell collateral to repay", "The account sells collateral on the Rhea exchange, repays and withdraws, in rounds that each keep health above 1; any failed step in a round is rolled back."],
                   ["wallet", "Repay from my wallet", "Your wallet sends the debt in USDC to the account, which repays it and withdraws all the collateral."],
                 ] as const
               ).map(([v, label, body]) => (
@@ -172,6 +198,18 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
             </label>
           ) : null}
           {acct.signer === "watch" ? <p className="text-sm text-muted">You are watching this account. Connect its owner to close or unwind it.</p> : null}
+          {rounds.length ? (
+            <ol className="grid gap-1 border-t border-line pt-3 text-[13px]" aria-live="polite">
+              {rounds.map((r, i) => (
+                <li key={r.txHash} className="flex justify-between gap-4">
+                  <span className="text-fg">
+                    Round {i + 1}: {r.kind === "retry" ? "finished a stuck round" : "sold, repaid and withdrew"}
+                  </span>
+                  <span className="text-muted">{r.after.kind === "closed" ? "closed" : r.after.kind === "open" ? "debt left" : r.after.kind}</span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
           {error ? <p className="text-sm text-critical">{error}</p> : null}
         </div>
       )}
