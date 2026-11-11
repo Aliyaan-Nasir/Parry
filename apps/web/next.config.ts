@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import { buildCsp } from "./lib/csp";
 
 const dev = process.env.NODE_ENV === "development";
+// In development the app talks to the local API (`pnpm dev`) unless told otherwise; a production
+// build must name its API, and the app says so when it does not.
+if (dev && !process.env.NEXT_PUBLIC_API_URL) process.env.NEXT_PUBLIC_API_URL = "http://localhost:4000";
 
 const securityHeaders = [
   // See lib/csp.ts for what each entry allows and why.

@@ -137,6 +137,8 @@ export interface SenderOptions {
   lanes?: number;
 }
 
+const SEND_TIMEOUT_MS = Number(process.env.SEND_TIMEOUT_MS ?? 60_000);
+
 export class Sender {
   readonly accountId: string;
   readonly publicKey: string;
@@ -197,7 +199,12 @@ export class Sender {
           try {
             await tx.sign();
             hash = tx.getHash() ?? undefined;
-            const o = (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+            // A provider that never answers would hold this task forever: give up on it after a
+            // minute, look the hash up, and move on to the next provider.
+            const o = (await Promise.race([
+              tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" }),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error("send timed out after 60 s")), SEND_TIMEOUT_MS)),
+            ])) as FinalExecutionOutcome;
             const failed = failureOf(o);
             if (failed) throw new TxError(failed, o.transaction?.hash ?? hash, o);
             return o;
