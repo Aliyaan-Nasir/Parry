@@ -66,8 +66,8 @@ export interface CloseRoundsOptions {
   sendCall?(call: ContractCall): Promise<{ txHash: string }>;
   /** Most transactions to send (default 4: a 1.425-health position closes in two). */
   maxRounds?: number;
-  /** Called after each round. */
-  onRound?(round: CloseRound): void;
+  /** Called after each round; the next round waits for a returned promise (a UI may pause, a test may move the market). */
+  onRound?(round: CloseRound): void | Promise<void>;
   /** How long to wait for a round still in flight, and how often to read (defaults 90 s and 3 s). */
   waitMs?: number;
   pollMs?: number;
@@ -112,7 +112,7 @@ export async function closeRheaRounds(o: CloseRoundsOptions): Promise<CloseRound
       status = await settle();
       const round: CloseRound = { kind: "retry", txHash, after: status };
       rounds.push(round);
-      o.onRound?.(round);
+      await o.onRound?.(round);
       continue;
     }
     const before = status.kind === "open" ? BigInt(status.debt) : 0n;
@@ -120,7 +120,7 @@ export async function closeRheaRounds(o: CloseRoundsOptions): Promise<CloseRound
     status = await settle();
     const round: CloseRound = { kind: "close", txHash, after: status };
     rounds.push(round);
-    o.onRound?.(round);
+    await o.onRound?.(round);
     if (status.kind === "open" && BigInt(status.debt) >= before) return { closed: false, status, rounds, stopped: "rolled_back" };
   }
   return { closed: true, status, rounds, stopped: null };

@@ -28,18 +28,20 @@
     },
     "risk": {
       "account": "risk.parry.testnet",
-      "codeHash": "EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg",
-      "tx": "AGq9Z6vx6fo9LNq4EfyJSWJ9HVu2poNpPX3tMPHi7x6j",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "CLuq6pzqb2ZcFF3KiLUpQLVm347LVeoPWjmnyQNzJsqV",
+      "tx": "G4e3nK8GLKXdtSovEGCnXJ1BiyKsk4Nroebn9znp4yxN",
+      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
       "source": "contracts/risk",
+      "migrated": true,
       "verified": "2026-11-11"
     },
     "vault": {
       "account": "vault.parry.testnet",
-      "codeHash": "9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz",
-      "tx": "Hv7w1BYLhBCBbYnCxeGWXuT5TkFd2dbPRc9nS4MPhhp8",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "8RYKZV9NEwxsvJifSPsS2TYjgnL9pEoHyZHHhwiH1JGQ",
+      "tx": "EQt3ub13wusUrDZrsjep3BXihknBx8k3wLSgqPQBXvKt",
+      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
       "source": "contracts/vault",
+      "migrated": true,
       "verified": "2026-11-11"
     },
     "usdc": {
@@ -52,9 +54,9 @@
     },
     "account": {
       "account": "global",
-      "codeHash": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
-      "tx": "BuMSLcZ2x13ayxe4vmBPWdZwue5xC1cK8N4yQzEGdmzT",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF",
+      "tx": "FK6ErZiXHLYbcDKx7HWaiW5zngXiJjX5z2fUjjpLX6XX",
+      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
       "source": "contracts/account",
       "verified": "2026-11-11"
     },
@@ -110,17 +112,26 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-11T00:31:58.888Z",
+  "updatedAt": "2026-11-11T07:32:22.375Z",
   "dexPool": 2939,
   "enclave": {
-    "wasmSha256": "219aab9d9daf69d006cde9d4fd1ab4eafbd5cca76394256c71a33bf3cae398e0",
-    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/219aab9d9daf69d006cde9d4fd1ab4eafbd5cca76394256c71a33bf3cae398e0.wasm",
+    "wasmSha256": "dd6532eda8d971dcecb009c2af3d41a767a03f2c19b8f0c45196d1b8cfaa203c",
+    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/dd6532eda8d971dcecb009c2af3d41a767a03f2c19b8f0c45196d1b8cfaa203c.wasm",
     "secretsProfile": "parry",
     "secretsOwner": "enclave.parry.testnet",
-    "publicKey": "ed25519:5GyfXaaiiryC3Bneh8Aw8dEibxUP4C8DLs22p2YecgCX",
-    "sealingPublicKey": "7e9a6d10f310ea09b83f60ac5f659300e00874ff594ef97fd5ba667328094f5b",
-    "keysRun": "9ww9V9DhgU43vN1Kjp9ckP1kHeX8nNDnWwBU3pwaSYYT",
-    "sealingReport": "{\"at\":1794369125,\"kind\":\"sealing_key\",\"public_key\":\"7e9a6d10f310ea09b83f60ac5f659300e00874ff594ef97fd5ba667328094f5b\",\"run_id\":1794369125000}",
-    "sealingSignature": "8Evi2wWNN3eB643ZQ/UoWULpv6j2c7GFOksnXjjFp4qRbTVwr44XR1IA/nQJGwA8IBkIXFFpDWWjFsR/LOuLCg=="
+    "publicKey": "ed25519:EjEdGZAboqFx9EB2RPNgkc46ULBbXr88314fbnkGe21n",
+    "sealingPublicKey": "a640cf488693e229121fc1b9d5b6e02857bd50fa87261ea15d81ddc82db26a3b",
+    "keysRun": "AZr51DDTUSFnW1EE3WngUEnp1Mz6Uir4asau9Q3TkBj5",
+    "sealingReport": "{\"at\":1794381711,\"kind\":\"sealing_key\",\"public_key\":\"a640cf488693e229121fc1b9d5b6e02857bd50fa87261ea15d81ddc82db26a3b\",\"run_id\":1794381711000}",
+    "sealingSignature": "3C/DVpMeJys61WtmU8ybNv+k7nDmD7LcG+gLhXeJQridBsX+DrS6biKi6qURfYPxxAGaOqsCyjMIf+C0K8pDDQ==",
+    "modes": [
+      "keys",
+      "risk_update",
+      "guardian",
+      "vault_report",
+      "certificate"
+    ],
+    "setEnclaveTx": "5VbokFFC4TJjXaZ9eq5ATkLnqVFbjrBShYfKzZrg93ao",
+    "sealingTx": "8rdhz3BL5Rcw1WekSHLaRTmr6sznXpFiJTPiExTmxDDE"
   }
 }

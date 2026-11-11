@@ -10,7 +10,7 @@
  * Needs `outlayer login <network>` with the enclave account's key, ENCLAVE_ACCOUNT_ID and one
  * ENCLAVE_KEY_* in the environment (from .env.services), and NEARAI_API_KEY for `publish`.
  * PARRY_NETWORK=mainnet builds the mainnet program (enclave/build.sh compiles mainnet's ids in).
- * Results go to deployments/<network>.json under `enclave`.
+ * Results go to deployments/<network>.json under `enclave` (with the modes the build serves).
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -38,7 +38,12 @@ async function publish() {
   const url = uploaded.match(/https:\/\/\S+\.wasm/)?.[0];
   if (!url) throw new Error(`no FastFS URL in:\n${uploaded}`);
   const caller = process.env.ENCLAVE_ACCOUNT_ID ?? `enclave.${dep.root ?? "parry.testnet"}`;
-  dep.enclave = { ...(dep.enclave ?? {}), wasmSha256: hash, wasmUrl: url, secretsProfile: "parry", secretsOwner: process.env.OUTLAYER_ACCOUNT ?? caller };
+  // The modes this build serves, read from its dispatch: the services run only the recorded ones.
+  const source = readFileSync(join(ROOT, "enclave", "src", "modes.rs"), "utf8");
+  const dispatch = source.slice(source.indexOf("pub fn run("), source.indexOf("other => Err", source.indexOf("pub fn run(")));
+  const modes = [...dispatch.matchAll(/"([a-z_]+)" => [a-z_]+\(io/g)].map((m) => m[1]);
+  if (!modes.includes("guardian")) throw new Error("could not read the enclave's modes from enclave/src/modes.rs");
+  dep.enclave = { ...(dep.enclave ?? {}), wasmSha256: hash, wasmUrl: url, modes, secretsProfile: "parry", secretsOwner: process.env.OUTLAYER_ACCOUNT ?? caller };
   save();
   console.log(`enclave ${hash}\n  ${url}`);
   // The keys are bound to the build, not to the secret, so the secret can follow later.

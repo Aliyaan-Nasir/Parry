@@ -98,6 +98,7 @@ Calls and payments:
 - `verifyDecision(decisionOrId)`: verifies a decision with the key read from the risk board.
 - `paidRiskCheck(accountId, { payer, maxAmount })`: a risk check paid per call over x402 on NEAR.
 - `signIn(accountId, privateKey)`: a session token for the API, signed with the owner's full-access key (NEP-413).
+- `closing(accountId)`, `rheaPosition(accountId)`: the close round in flight on a protected account (null when none) and its Rhea lending position, read from the chain.
 - `verifyCertificate(certificateOrHash, { reader })`: verifies a health certificate with the key the risk board trusted at issue time and the board's anchor.
 - `subscribe({ events, account, onEvent })`: live updates over Server-Sent Events, polling where there is no EventSource; returns a stop function.
 
@@ -105,14 +106,19 @@ Calls and payments:
 
 Owner actions:
 
-- `ownerActions`: a builder for every owner action (`setMandate`, `revokeMandate`, `pauseGuardian`, `clearPending`, `supply`, `borrow`, `repay`, `withdraw`, `call`, `transfer`, `ftTransfer`, `mpcSign`, `hlOrder`, `upgrade`).
-- `ownerCallAction(account, actions)`: `owner_call` for a NEAR-account owner, 1 yoctoNEAR, 300 Tgas.
+- `ownerActions`: a builder for every owner action (`setMandate`, `revokeMandate`, `pauseGuardian`, `clearPending`, `supply`, `borrow`, `repay`, `withdraw`, `call`, `transfer`, `ftTransfer`, `mpcSign`, `hlOrder`, `closeRhea`, `unwind`, `upgrade`).
+- `ownerCallAction(account, actions, { protocolTokens? })`: `owner_call` for a NEAR-account owner, 1 yoctoNEAR, with the gas the actions need (`ownerActionsTgas`): 300 Tgas, 900 for a close, `unwindTgas(tokens)` (at least 600) for an unwind.
+  One call may carry up to 1 PGas; the account refuses a close or unwind sent with less than its whole chain needs.
+- `retryCloseAction(account)`: `retry_close()`, 400 Tgas, no deposit: resumes a close stuck after its swap (anyone may send it).
 - `ownerRequest({ account, network, nonce, actions })`: the request text a passkey signs, and its WebAuthn challenge.
 - `requestDigest(text)`: SHA-256 of the domain-separated request, the challenge.
 - `assertionFromWebAuthn(credential)`: a browser passkey assertion in the contract's form (low-s r and s in hex).
 - `derToRawSignature(der)`: a DER P-256 signature as 64 bytes, low-s.
 - `compressedPasskey(key)`: a passkey public key as 66 hex characters.
-- `closeRheaAction(slippageBps)`, `closeFromWalletActions(...)`, `unwindAction(tokens, to?)`: closing the Rhea position atomically or from the wallet, and unwinding the account.
+- `closeRheaAction({ slippageBps, poolId })`: one `close_rhea` round through the exchange pool `poolId` (`dexPool` in `/v1/config`); slippage is 1 to 1000 bps.
+  A round sells at most the collateral that keeps health at 1.02, so a position under about 1.5 health closes over several rounds (`close_progress`, then `position_closed`); a failed step before the swap restores the round (`close_rolled_back`).
+- `closeRheaRounds({ account, slippageBps, poolId, read, sendOwnerActions, sendCall?, maxRounds?, onRound? })` (or `parry.closeRheaRounds` with the client's reads): sends rounds until no debt is left, `retry_close` for a stuck round, and waits while a round is in flight; `closeStatus(closing, position)` says where a close stands (`closed`, `open`, `in_flight`, `stuck`).
+- `closeFromWalletActions(...)`, `unwindAction(tokens, to?)`: closing the Rhea position with the owner's own debt tokens, and unwinding the account (at most 16 tokens).
 - `closePerpAction(...)`: a reduce-only order that closes a Hyperliquid perp; `repayAaveActions(...)`: the approve and repay transactions of an Aave loan, each with its `mpc_sign` action.
 
 Mandates:

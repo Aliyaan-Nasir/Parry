@@ -60,6 +60,7 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `verify_certificate(hash, reader?)`: checks a health certificate's hash, enclave signature (with the key in force at issue time), expiry, reader and anchor locally.
 - `get_incidents(account)`: an account's alerts grouped into incidents.
 - `get_route_savings(account?)`: what each rescue's route choice saved against the worst quote.
+- `get_closing(account)`: where a close of the account's Rhea position stands (`closed`, `open`, `in_flight` or `stuck`), with the round in flight and the debt and collateral left.
 
 ## Write tools (testnet, agent account only)
 
@@ -67,6 +68,8 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 - `set_mandate(powers, limits, ...)`: sets the guardian mandate on the agent's protected account, with an optional sealed policy, at most 10 calls per UTC day.
 - `vault_deposit(amount_near)`: deposits NEAR from the agent account into the vault, at most 1 NEAR per call and 5 calls per UTC day.
 - `vault_withdraw(shares)`: queues a withdrawal of the agent's vault shares, at most 5 calls per UTC day.
+- `close_position(slippage_bps?)`: closes the Rhea position of the agent's protected account round by round through the API's exchange pool (900 Tgas a round, `retry_close` for a stuck round), at most 300 bps of slippage and 3 calls per UTC day.
+- `unwind_account(tokens?)`: revokes the mandate, withdraws every lending supply and sends the listed tokens (default USDC and wNEAR) and the spare NEAR back to the agent account, at most 2 calls per UTC day.
 - `paid_risk_check(account)`: a risk check paid per call over x402 on NEAR from the agent account (at most 0.05 test USDC a call), at most 20 calls per UTC day.
 - `list_watched()`: the agent's watched accounts with live risk (a read, listed only with an agent because it signs in with the agent key).
 - `watch_account(account, score, health, label?)` and `unwatch_account(account)`: the agent's watch list, at most 20 calls per UTC day together.

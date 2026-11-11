@@ -195,7 +195,7 @@ Claude Desktop (`claude_desktop_config.json`):
 ```
 
 From a clone, the same server runs with `pnpm -F @parry/mcp build && node packages/mcp/dist/bin.js`, and the API serves it over Streamable HTTP at `/mcp`.
-Read tools: `risk_check`, `get_position_risk`, `get_market`, `get_vault`, `get_reserves`, `get_guardian_log`, `verify_guardian_decision`, `simulate_rescue`, `get_rescue_route`, `get_status`; write tools: `create_protected_account`, `set_mandate`, `vault_deposit`, `vault_withdraw`, `paid_risk_check`.
+Read tools: `risk_check`, `get_position_risk`, `get_market`, `get_vault`, `get_reserves`, `get_guardian_log`, `verify_guardian_decision`, `simulate_rescue`, `get_rescue_route`, `get_status`; write tools: `create_protected_account`, `set_mandate`, `vault_deposit`, `vault_withdraw`, `close_position`, `unwind_account`, `paid_risk_check`.
 The agent skill installs with `npx skills add Aliyaan-Nasir/Parry`, and the site serves [`llms.txt`](apps/web/public/llms.txt).
 
 ## Security

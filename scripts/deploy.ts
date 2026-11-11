@@ -53,6 +53,15 @@ const arg = (name: string) => {
   return i > 0 ? process.argv[i + 1] : undefined;
 };
 
+/**
+ * `--only risk,vault,account`: (re)deploy only these contracts ("account" is the published global
+ * code, "accounts" the factory); every other step still runs and stays idempotent. A reproducible
+ * build at another commit has other code hashes (NEP-330 names the commit), so an upgrade of some
+ * contracts names them here instead of redeploying the rest.
+ */
+const ONLY = arg("only")?.split(",").map((x) => x.trim()).filter(Boolean) ?? null;
+const wanted = (name: string) => !ONLY || ONLY.includes(name);
+
 const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: ROOT_DIR }).stdout.toString().trim();
 const wasmDir = arg("wasm-dir") ?? join(ROOT_DIR, "contracts", "target", "near-reproducible", commit);
 /** The commit the deployed wasm was built from (its reproducible build directory), which its NEP-330 metadata names. */
@@ -63,7 +72,7 @@ type Dep = {
   status: string;
   root: string;
   commit: string;
-  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string }>;
+  contracts: Record<string, { account: string; codeHash?: string; tx?: string; commit?: string; source?: string; migrated?: boolean; verified?: string }>;
   dexPool?: number;
   enclave?: Record<string, string>;
   services?: Record<string, string>;
@@ -189,8 +198,17 @@ function wasm(name: string): Uint8Array {
   return code;
 }
 
-/** Deploys `name`'s wasm to `id` and calls `init` once (skipped when the same code is there). */
-async function deploy(name: string, id: string, init: { method: string; args: object } | null) {
+/**
+ * Deploys `name`'s wasm to `id` and calls `init` once (skipped when the same code is there). With
+ * `migrate`, new code on an existing contract runs `migrate()` in the same batch, so the state is
+ * never read with a layout it does not have; a contract already migrated refuses it (the whole
+ * batch reverts) and the code alone is deployed.
+ */
+async function deploy(name: string, id: string, init: { method: string; args: object } | null, opts: { migrate?: boolean } = {}) {
+  if (!wanted(name)) {
+    console.log(`skip    ${id} (not in --only)`);
+    return;
+  }
   const code = wasm(name);
   const hash = codeHash(code);
   const a = await account(id);
@@ -198,14 +216,24 @@ async function deploy(name: string, id: string, init: { method: string; args: ob
     console.log(`same    ${id} ${hash}`);
     return;
   }
-  let tx = client(id).transaction(id).deployContract(id, code);
-  if (init && (!a || a.code_hash === "11111111111111111111111111111111")) tx = tx.functionCall(id, init.method, init.args, { gas: "100 Tgas" as never });
-  const o = (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+  const fresh = !a || a.code_hash === "11111111111111111111111111111111";
+  const send = async (migrate: boolean) => {
+    let tx = client(id).transaction(id).deployContract(id, code);
+    if (init && fresh) tx = tx.functionCall(id, init.method, init.args, { gas: "100 Tgas" as never });
+    if (migrate) tx = tx.functionCall(id, "migrate", {}, { gas: "100 Tgas" as never });
+    return (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
+  };
+  let migrated = !!opts.migrate && !fresh;
+  let o = await send(migrated);
+  if (migrated && /already migrated/.test(failure(o) ?? "")) {
+    migrated = false;
+    o = await send(false);
+  }
   const f = failure(o);
   if (f) throw new Error(`deploy ${id}: ${f}`);
-  dep.contracts[name] = { account: id, codeHash: hash, tx: hashOf(o), commit: builtFrom, source: "contracts/" + name };
+  dep.contracts[name] = { account: id, codeHash: hash, tx: hashOf(o), commit: builtFrom, source: "contracts/" + name, ...(migrated ? { migrated: true } : {}) };
   save();
-  console.log(`deployed ${id} ${hash} (${hashOf(o)})`);
+  console.log(`deployed ${id} ${hash} (${hashOf(o)})${migrated ? ", state migrated in the same batch" : ""}`);
 }
 
 /** Contract accounts and their opening balances (code storage at 1 NEAR per 100 kB, plus room for state). */
@@ -291,8 +319,8 @@ async function main() {
   // key with nonce lanes on their own account, for parallel transactions.
   const env: string[] = [`PARRY_NETWORK=${NETWORK}`, `ENCLAVE_ACCOUNT_ID=${wallets.enclave}`, `X402_PAY_TO=${wallets.api}`];
   // The services that run the enclave: the risk engine (risk reports), the keeper (vault reports,
-  // the sealing key) and the guardian.
-  for (const svc of ["risk", "keeper", "guardian"]) {
+  // the sealing key), the guardian, and the API (health certificates).
+  for (const svc of ["risk", "keeper", "guardian", "api"]) {
     const file = join(ROOT_DIR, "internal", "keys", `enclave-${svc}.json`);
     if (!existsSync(file)) {
       const k = generateKey();
@@ -443,17 +471,22 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
   if (!enclaveKey || !enclaveHash) throw new Error("pass --enclave-key and --enclave-wasm-sha256 from the enclave's keys run on OutLayer (scripts/enclave.ts keys)");
   dep.enclave = { ...(dep.enclave ?? {}), publicKey: enclaveKey, wasmSha256: enclaveHash };
   save();
-  await deploy("risk", ids.risk!, { method: "new", args: { owner_id: ROOT, enclave_key: enclaveKey, wasm_sha256: enclaveHash, vault: ids.vault } });
+  // The board must be migrated before an enclave build that writes the new report fields runs: it refuses unknown fields.
+  await deploy("risk", ids.risk!, { method: "new", args: { owner_id: ROOT, enclave_key: enclaveKey, wasm_sha256: enclaveHash, vault: ids.vault } }, { migrate: true });
   // Another enclave build has other keys (OutLayer derives them from the build): rotate the board to them.
   const trusted = await viewCall<{ public_key: string; wasm_sha256: string } | null>(ids.risk!, "get_enclave").catch(() => null);
   if (trusted && (trusted.public_key !== enclaveKey || trusted.wasm_sha256 !== enclaveHash)) {
     const o = await call(ROOT, ids.risk!, "set_enclave", { public_key: enclaveKey, wasm_sha256: enclaveHash, note: `build ${enclaveHash.slice(0, 16)}` }, 1n, 30);
+    dep.enclave = { ...dep.enclave, setEnclaveTx: hashOf(o) };
+    save();
     console.log(`enclave key rotated to ${enclaveKey} (${hashOf(o)})`);
   }
   // The enclave's signed sealing-key report (scripts/enclave.ts keys): owners seal policies to it.
   const sealing = await viewCall<{ public_key: string } | null>(ids.risk!, "sealing_key").catch(() => null);
   if (dep.enclave.sealingReport && sealing?.public_key !== dep.enclave.sealingPublicKey) {
     const o = await call(ROOT, ids.risk!, "submit", { report_json: dep.enclave.sealingReport, signature: dep.enclave.sealingSignature }, 0n, 50);
+    dep.enclave = { ...dep.enclave, sealingTx: hashOf(o) };
+    save();
     console.log(`sealing key ${dep.enclave.sealingPublicKey} (${hashOf(o)})`);
   }
 
@@ -463,16 +496,16 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
     owner_id: ROOT, network: NETWORK, risk: ids.risk, keeper: wallets.keeper, linear: X.linear, wnear: X.wnear, usdc: X.usdc, oracle: X.oracle, signer: X.signer,
     hedge: { asset: "NEAR", asset_index: v.hyperliquidNearIndex, sz_decimals: 1, hedge_ratio_bps: v.hedgeRatioBps, max_leverage_x100: v.maxLeverageX100, band_bps: v.bandBps },
     deposit_cap: near(Number(v.depositCapNear)).toString(), min_deposit: near(Number(v.minDepositNear)).toString(),
-  } });
+  } }, { migrate: true });
   const linReg = await viewCall<unknown>(X.linear!, "storage_balance_of", { account_id: ids.vault }).catch(() => null);
   if (!linReg) await call(ROOT, X.linear!, "storage_deposit", { account_id: ids.vault, registration_only: true }, near(0.01), 30);
 
   step("protected-account code (global, by hash) and the factory");
-  const acctCode = wasm("account");
-  const acctHash = codeHash(acctCode);
+  const acctCode = wanted("account") ? wasm("account") : null;
+  const acctHash = acctCode ? codeHash(acctCode) : dep.contracts.account!.codeHash!;
   // Publishing burns ten times the storage price (about 36 NEAR for this code): never twice for
   // the same hash, so the recorded deployment is the check.
-  if (dep.contracts.account?.codeHash !== acctHash) {
+  if (acctCode && dep.contracts.account?.codeHash !== acctHash) {
     const o = (await client(ROOT).transaction(ROOT).publishContract(acctCode, { identifiedBy: "hash" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
     if (failure(o)) throw new Error(`publish: ${failure(o)}`);
     dep.contracts.account = { account: "global", codeHash: acctHash, tx: hashOf(o), commit: builtFrom, source: "contracts/account" };

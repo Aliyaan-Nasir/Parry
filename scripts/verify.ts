@@ -157,18 +157,24 @@ async function main() {
   }
 
   if (rebuild) {
-    const commit = Object.values(dep.contracts).find((c) => c.commit)?.commit;
-    if (commit) await check(`A fresh reproducible build of ${commit.slice(0, 12)} matches every deployed contract`, async () => {
-      run(["./scripts/build.sh", "--reproducible", commit], join(ROOT, "contracts"));
-      const mismatched: string[] = [];
-      for (const [name, c] of Object.entries(dep.contracts)) {
-        const f = join(ROOT, "contracts", "target", "near-reproducible", commit, `parry_${WASM[name] ?? name}.wasm`);
-        if (!c.codeHash || !existsSync(f)) continue;
-        if (b58(createHash("sha256").update(readFileSync(f)).digest()) !== c.codeHash) mismatched.push(name);
-      }
-      if (mismatched.length) throw new Error(`differs: ${mismatched.join(", ")}`);
-      return "byte for byte";
-    });
+    // Contracts upgraded later carry a later commit: rebuild each recorded commit once.
+    const commits = [...new Set(Object.values(dep.contracts).map((c) => c.commit).filter((c): c is string => !!c))];
+    for (const commit of commits) {
+      await check(`A fresh reproducible build of ${commit.slice(0, 12)} matches every contract deployed from it`, async () => {
+        run(["./scripts/build.sh", "--reproducible", commit], join(ROOT, "contracts"));
+        const mismatched: string[] = [];
+        const matched: string[] = [];
+        for (const [name, c] of Object.entries(dep.contracts)) {
+          if (c.commit !== commit) continue;
+          const f = join(ROOT, "contracts", "target", "near-reproducible", commit, `parry_${WASM[name] ?? name}.wasm`);
+          if (!c.codeHash || !existsSync(f)) continue;
+          if (b58(createHash("sha256").update(readFileSync(f)).digest()) !== c.codeHash) mismatched.push(name);
+          else matched.push(name);
+        }
+        if (mismatched.length) throw new Error(`differs: ${mismatched.join(", ")}`);
+        return `byte for byte: ${matched.join(", ")}`;
+      });
+    }
   }
 
   await check("The testnet lending contract is byte for byte mainnet Rhea lending", async () => {

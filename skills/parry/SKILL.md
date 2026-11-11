@@ -53,7 +53,7 @@ Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_K
 
 ## Write tools (testnet, the agent's own account only)
 
-`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`, and `paid_risk_check(account)`, which pays per call over x402 on NEAR.
+`create_protected_account()`, `set_mandate(...)`, `vault_deposit(amount_near)`, `vault_withdraw(shares)`, `close_position(slippage_bps?)` (closes the Rhea position in rounds), `unwind_account(tokens?)`, and `paid_risk_check(account)`, which pays per call over x402 on NEAR.
 Every refusal says why; nothing is sent when a call is refused.
 
 ## How to explain a risk result

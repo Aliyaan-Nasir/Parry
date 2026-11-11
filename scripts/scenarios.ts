@@ -14,7 +14,10 @@
  * through the queue, proof of reserves, pausing from risk), 9 an Aave loan on Base Sepolia rescued
  * through Chain Signatures and verified by the MPC network, 12 a paid risk check over x402, 13 the
  * SDK and the MCP server, 8 a Hyperliquid order the protected account signs through Chain
- * Signatures. Scenario 1 (sign-in) runs in a browser; filling 8's order and the vault's hedge need
+ * Signatures, 14 closing a Rhea position in rounds by selling (a NEAR-wallet owner and a passkey
+ * owner through the relayer), 15 closing from the wallet, 16 unwinding accounts, 17 a health
+ * certificate issued, anchored and verified, 18 an insurance inflow into the vault's fund.
+ * Scenario 1 (sign-in) runs in a browser; filling 8's order and the vault's hedge need
  * Hyperliquid testnet USDC at the derived addresses, and 9 needs Base Sepolia ETH.
  *
  * Proofs go to deployments/testnet-proofs.json (deployments/sandbox-proofs.json with --sandbox).
@@ -26,9 +29,25 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { p256 } from "@noble/curves/nist.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { generateKey, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
-import { buildMandate, createParry, verifyReserves, type Decision, type HlOrder, type Policy, type Power } from "../packages/sdk/src/index";
+import {
+  buildMandate,
+  closeFromWalletActions,
+  compressedPasskey,
+  createParry,
+  ownerActions,
+  ownerActionsTgas,
+  verifyReserves,
+  type Decision,
+  type HlOrder,
+  type OwnerAction,
+  type PasskeyAssertion,
+  type Policy,
+  type Power,
+} from "../packages/sdk/src/index";
 import { HYPERLIQUID_URL, RPC_URLS } from "../services/src/lib/config";
 import { recoverAddress } from "../services/src/lib/evm";
 import { submitOrder } from "../services/src/lib/hyperliquid";
@@ -132,8 +151,16 @@ async function send(n: Near, from: string, to: string, method: string, args: obj
   }
 }
 
+/** A lending action priced with an oracle price past the lending contract's 90 s staleness bound (the feeder runs every 30 s, slower when RPC providers rate limit). */
+const STALE_PRICE = /Missing [0-9a-f]{64} price/;
+
 async function call(n: Near, from: string, to: string, method: string, args: object, deposit = 0n, tgas = 300): Promise<Outcome> {
-  const r = await send(n, from, to, method, args, deposit, tgas);
+  let r = await send(n, from, to, method, args, deposit, tgas);
+  if (r.failure && STALE_PRICE.test(r.failure)) {
+    // Once the feeder has caught up, the same call goes through.
+    await sleep(40_000);
+    r = await send(n, from, to, method, args, deposit, tgas);
+  }
   if (r.failure) throw new Error(`${to}.${method} failed in ${r.hash}: ${r.failure}`);
   return r;
 }
@@ -207,31 +234,56 @@ async function person(tag: string, fundNear: number): Promise<Person> {
   // Scenario 2: the relayer creates the protected account and pays for it.
   const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: owner } });
   steps.push({ step: `relayer creates ${created.accountId} for ${owner}, gasless for the owner`, tx: explorer(created.txHash) });
-  return { owner, key: k.secretKey, n: client(owner, k.secretKey), account: created.accountId, steps };
+  const p: Person = { owner, key: k.secretKey, n: client(owner, k.secretKey), account: created.accountId, steps };
+  if (!sandbox) await upgraded(p);
+  return p;
 }
 
-const ownerCall = (p: Person, actions: unknown[], deposit = 1n) => call(p.n, p.owner, p.account, "owner_call", { actions }, deposit, 300);
+/** `owner_call` with the gas its actions need (900 Tgas for a close, 600 or more for an unwind). */
+const ownerCall = (p: Person, actions: unknown[], deposit = 1n) => call(p.n, p.owner, p.account, "owner_call", { actions }, deposit, ownerActionsTgas(actions as OwnerAction[]));
+
+/** The published account code. The factory cannot be repointed, so it creates accounts on the code it was configured with, and the owner moves each one. */
+const ACCOUNT_CODE: string = dep.contracts.account?.codeHash ?? "";
+
+async function upgraded(p: Person, send: (actions: OwnerAction[]) => Promise<Outcome> = (a) => ownerCall(p, a)): Promise<void> {
+  // Accounts on the earlier code have no closing() view.
+  if (await view<unknown>(p.account, "closing").then(() => true, () => false)) return;
+  const o = await send([ownerActions.upgrade(ACCOUNT_CODE)]);
+  p.steps.push({ step: `the owner moves the account to the published code ${ACCOUNT_CODE} (upgrade)`, tx: explorer(o.hash) });
+}
 
 async function nearPrice(): Promise<number> {
   const p = await view<{ price: string; expo: number }>(c("oracle"), "get_price_no_older_than", { price_id: "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750", age: 600 });
   return Number(p.price) * 10 ** p.expo;
 }
 
-/** Scenario 3: wrap and supply `COLLATERAL` NEAR (plus `extraWNear` kept in the account), borrow to health 1.3. */
-async function position(p: Person, extraWNear = 0): Promise<{ borrowUsd: number }> {
-  const wrap = near(COLLATERAL + extraWNear + 0.5);
-  // Fund the protected account from the owner, then wrap and supply from it.
-  const t = await p.n.transaction(p.owner).transfer(p.account, `${wrap + near(0.2)} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
-  p.steps.push({ step: "owner funds the protected account", tx: explorer((t as FinalExecutionOutcome).transaction?.hash ?? "") });
-  const supply = await ownerCall(p, [
+/**
+ * Scenario 3: wrap and supply `collateral` NEAR (plus `extraWNear` kept in the account), borrow to
+ * `targetHealth`. `send` runs owner actions (a passkey owner's go through the relayer), and
+ * `fund` pays the account its NEAR (the owner's wallet, or the root for a passkey owner).
+ */
+async function position(
+  p: Person,
+  extraWNear = 0,
+  o: { collateral?: number; targetHealth?: number; send?: (actions: OwnerAction[]) => Promise<Outcome>; fund?: (yocto: bigint) => Promise<string> } = {},
+): Promise<{ borrowUsd: number }> {
+  const collateral = o.collateral ?? COLLATERAL;
+  const health = o.targetHealth ?? 1.3;
+  const send = o.send ?? ((a: OwnerAction[]) => ownerCall(p, a));
+  const fund = o.fund ?? (async (amount: bigint) => ((await p.n.transaction(p.owner).transfer(p.account, `${amount} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome).transaction?.hash ?? "");
+  const wrap = near(collateral + extraWNear + 0.5);
+  // Fund the protected account, then wrap and supply from it.
+  const t = await fund(wrap + near(0.2));
+  p.steps.push({ step: "the protected account is funded", tx: explorer(t) });
+  const supply = await send([
     { call: { receiver_id: c("wnear"), method_name: "near_deposit", args: Buffer.from("{}").toString("base64"), deposit: wrap.toString(), gas: "20000000000000" } },
-    { supply: { token: c("wnear"), amount: near(COLLATERAL).toString() } },
+    { supply: { token: c("wnear"), amount: near(collateral).toString() } },
   ]);
-  p.steps.push({ step: `wrap and supply ${COLLATERAL} NEAR on Rhea`, tx: explorer(supply.hash) });
+  p.steps.push({ step: `wrap and supply ${collateral} NEAR on Rhea`, tx: explorer(supply.hash) });
   const price = await nearPrice();
-  const borrowUsd = Math.floor(((COLLATERAL * price * 0.75 * 0.95) / 1.3) * 100) / 100;
-  const borrow = await ownerCall(p, [{ borrow: { token: c("usdc"), amount: String(Math.round(borrowUsd * 1e6)) } }]);
-  p.steps.push({ step: `borrow ${borrowUsd} USDC (health about 1.30 at $${price.toFixed(3)})`, tx: explorer(borrow.hash) });
+  const borrowUsd = Math.floor(((collateral * price * 0.75 * 0.95) / health) * 100) / 100;
+  const borrow = await send([{ borrow: { token: c("usdc"), amount: String(Math.round(borrowUsd * 1e6)) } }]);
+  p.steps.push({ step: `borrow ${borrowUsd} USDC (health about ${health.toFixed(3)} at $${price.toFixed(3)})`, tx: explorer(borrow.hash) });
   return { borrowUsd };
 }
 
@@ -303,7 +355,7 @@ async function protect() {
   // A reused owner adds no new account or position: the earlier records stand.
   if (!process.env.SCENARIO_REPAY_OWNER) {
     save(2, "A protected account without gas", true, Object.values(people).map((p) => p.steps[0]));
-    save(3, "A leveraged Rhea position", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /supply|borrow|funds/.test(JSON.stringify(s)))));
+    save(3, "A leveraged Rhea position", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /supply|borrow|fund/.test(JSON.stringify(s)))));
   }
   save(4, "A mandate with a sealed policy", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /mandate/.test(JSON.stringify(s)))));
 
@@ -613,6 +665,346 @@ async function agents() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Closing, unwinding, certificates and the insurance fund
+// ---------------------------------------------------------------------------------------------
+
+const DEX = dep.contracts.dex?.account ?? "ref-finance-101.testnet";
+const POOL = Number(dep.dexPool);
+const CLOSE_COLLATERAL = Number(process.env.SCENARIO_CLOSE_COLLATERAL_NEAR ?? 0.6);
+const CLOSE_SLIPPAGE_BPS = Number(process.env.SCENARIO_CLOSE_SLIPPAGE_BPS ?? 500);
+/** A close round sends 900 Tgas, checked against the pessimistic gas price: the owner holds about 1.1 NEAR for it. */
+const CLOSE_GAS_NEAR = 1.2;
+
+/** The transaction's outcome (for its events), looked up by hash. */
+async function outcome(hash: string, sender: string): Promise<FinalExecutionOutcome | null> {
+  for (const url of VIEW_RPCS) {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tx", params: { tx_hash: hash, sender_account_id: sender, wait_until: "EXECUTED_OPTIMISTIC" } }) }).catch(() => null);
+    const body = (await r?.json().catch(() => null)) as { result?: FinalExecutionOutcome } | null;
+    if (body?.result) return body.result;
+  }
+  return null;
+}
+
+const eventData = (o: FinalExecutionOutcome | null, name: string) => (o ? eventsOf(o).filter((e) => e.event === name).map((e) => e.data as Record<string, unknown>) : []);
+
+/**
+ * The exchange pool is a testnet pool with little depth and no arbitrage: after a close round sells
+ * NEAR into it, the root buys NEAR back with test USDC until the pool's price is the oracle's again,
+ * as arbitrage would on mainnet. Returns the swap's transaction, or null when the pool was in line.
+ */
+async function alignPool(): Promise<string | null> {
+  const pool = await view<{ amounts: string[]; token_account_ids: string[] }>(DEX, "get_pool", { pool_id: POOL });
+  const iNear = pool.token_account_ids.indexOf(c("wnear"));
+  const nearIn = Number(BigInt(pool.amounts[iNear]!) / 10n ** 18n) / 1e6;
+  const usdcIn = Number(pool.amounts[1 - iNear]) / 1e6;
+  const price = await nearPrice();
+  const targetUsdc = Math.sqrt(nearIn * usdcIn * price);
+  if (targetUsdc <= usdcIn * 1.002) return null;
+  const amount = String(Math.ceil(((targetUsdc - usdcIn) / 0.9975) * 1e6));
+  const have = BigInt(await view<string>(c("usdc"), "ft_balance_of", { account_id: rootId }));
+  if (have < BigInt(amount)) await call(root, rootId, c("usdc"), "mint", { account_id: rootId, amount: "1000000000" }, 1n, 30);
+  const msg = JSON.stringify({ actions: [{ pool_id: POOL, token_in: c("usdc"), token_out: c("wnear"), amount_in: amount, min_amount_out: "0" }] });
+  const o = await call(root, rootId, c("usdc"), "ft_transfer_call", { receiver_id: DEX, amount, msg }, 1n, 150);
+  return o.hash;
+}
+
+// A passkey owner: a P-256 key in software standing in for the authenticator, as WebAuthn signs.
+
+interface PasskeyPerson extends Person {
+  secret: Uint8Array;
+}
+
+async function passkeyPerson(tag: string): Promise<PasskeyPerson> {
+  const secret = p256.utils.randomSecretKey();
+  const passkey = compressedPasskey(p256.getPublicKey(secret, true));
+  const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { passkey } });
+  // The key stays in the private keys folder, so what is left in the account can be recovered later.
+  if (!sandbox) writeFileSync(join(ROOT_DIR, "internal", "keys", `passkey-${tag}-${created.accountId.slice(0, 12)}.json`), JSON.stringify({ account: created.accountId, passkey, secret: Buffer.from(secret).toString("hex") }), { mode: 0o600 });
+  return { owner: `passkey ${passkey.slice(0, 10)}...`, key: "", n: root, account: created.accountId, secret, steps: [{ step: `relayer creates ${created.accountId} for a passkey, gasless for the owner`, tx: explorer(created.txHash) }] };
+}
+
+function assertion(secret: Uint8Array, challengeBase64Url: string): PasskeyAssertion {
+  const clientData = JSON.stringify({ type: "webauthn.get", challenge: challengeBase64Url, origin: "http://localhost:3000", crossOrigin: false });
+  // rp id hash, flags (user present | user verified), counter.
+  const auth = new Uint8Array([...sha256(new TextEncoder().encode("localhost")), 0x05, 0, 0, 0, 1]);
+  const signed = new Uint8Array([...auth, ...sha256(new TextEncoder().encode(clientData))]);
+  const sig = p256.sign(signed, secret, { lowS: true });
+  return { authenticator_data: Buffer.from(auth).toString("base64url"), client_data_json: clientData, signature: Buffer.from(sig).toString("hex") };
+}
+
+/** A passkey-signed owner request, relayed by the relayer (which attaches the gas the actions need). */
+async function relayOwner(p: PasskeyPerson, actions: OwnerAction[], retried = false): Promise<Outcome> {
+  if (!retried) {
+    const first = await relayOwner(p, actions, true).catch((e: Error) => e);
+    if (!(first instanceof Error)) return first;
+    if (!STALE_PRICE.test(first.message)) throw first;
+    await sleep(40_000);
+  }
+  const { owner } = await parry.nonces(p.account);
+  const req = parry.ownerRequest({ account: p.account, nonce: owner + 1, actions });
+  const r = await fetch(`${API}/v1/relay/owner`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ account: p.account, request: req.text, assertion: assertion(p.secret, req.challengeBase64Url) }) });
+  const body = (await r.json()) as { txHash?: string; error?: string };
+  if (!r.ok || !body.txHash) throw new Error(`relay: ${body.error ?? r.status}`);
+  const o = await outcome(body.txHash, dep.services?.relayer ?? `relayer.${rootId}`);
+  return { hash: body.txHash, failure: o ? failureOf(o) : null, o };
+}
+
+const lines = async (account: string) => (await view<{ collateral: { token_id: string; balance: string }[]; borrowed: { token_id: string; balance: string }[]; supplied: { token_id: string; balance: string }[] } | null>(c("lending"), "get_account", { account_id: account })) ?? { collateral: [], borrowed: [], supplied: [] };
+
+/**
+ * 14 for one owner: close the Rhea position round by round with the SDK (`closeRheaRounds`), the
+ * pool brought back to the oracle's price between rounds.
+ */
+async function closeInRounds(p: Person, send: (actions: OwnerAction[]) => Promise<Outcome>, label: string): Promise<boolean> {
+  const outcomes = new Map<string, Outcome>();
+  const aligned = await alignPool();
+  if (aligned) p.steps.push({ step: "the root brings the exchange pool to the oracle's price", tx: explorer(aligned) });
+  const rounds = () => parry.closeRheaRounds({
+    account: p.account,
+    slippageBps: CLOSE_SLIPPAGE_BPS,
+    poolId: POOL,
+    sendOwnerActions: async (actions) => {
+      const o = await send(actions);
+      outcomes.set(o.hash, o);
+      return { txHash: o.hash };
+    },
+    sendCall: async (callData) => {
+      const o = await call(root, rootId, callData.receiverId, callData.methodName, callData.args, 0n, Number(BigInt(callData.gas) / 10n ** 12n));
+      outcomes.set(o.hash, o);
+      return { txHash: o.hash };
+    },
+    onRound: async (round) => {
+      const o = outcomes.get(round.txHash)?.o ?? null;
+      const progress = eventData(o, "close_progress")[0];
+      const closed = eventData(o, "position_closed")[0];
+      const rolled = eventData(o, "close_rolled_back")[0];
+      p.steps.push({
+        step: `${label}: ${round.kind === "retry" ? "retry_close" : "close_rhea"} round ${p.steps.filter((x) => /round \d/.test(JSON.stringify(x))).length + 1}${closed ? ", position closed" : progress ? ", progress" : rolled ? `, rolled back at ${String(rolled.stage)}` : ""}`,
+        tx: explorer(round.txHash),
+        ...(closed ? { position_closed: closed } : progress ? { close_progress: progress } : rolled ? { close_rolled_back: rolled } : {}),
+        after: round.after.kind,
+      });
+      if (round.after.kind === "open") {
+        const tx = await alignPool();
+        if (tx) p.steps.push({ step: "the root brings the exchange pool back to the oracle's price", tx: explorer(tx) });
+      }
+    },
+  });
+  let r = await rounds();
+  // A round refused at its read (a stale oracle price) moved nothing: once the feeder caught up, go on.
+  const refusedAtRead = () => r.stopped === "rolled_back" && eventData(outcomes.get(r.rounds.at(-1)?.txHash ?? "")?.o ?? null, "close_rolled_back")[0]?.stage === "read";
+  for (let i = 0; i < 2 && refusedAtRead(); i++) {
+    await sleep(40_000);
+    r = await rounds();
+  }
+  const after = await lines(p.account);
+  const ok = r.closed && after.borrowed.length === 0 && after.collateral.every((x) => BigInt(x.balance) === 0n);
+  p.steps.push({ step: `${label}: ${r.closed ? `closed in ${r.rounds.length} round(s)` : `not closed (${r.stopped})`}; lending position now ${JSON.stringify({ collateral: after.collateral.length, borrowed: after.borrowed.length })}`, ok });
+  return ok;
+}
+
+const closers: { wallet?: Person; passkey?: PasskeyPerson; fromWallet?: Person } = {};
+
+/** 14 and 17: close in rounds by selling, for a NEAR-wallet owner and a passkey owner; a certificate first, while the position is healthy. */
+async function closeBySelling() {
+  const title = "Closing a Rhea position in rounds by selling collateral (a NEAR-wallet owner and a passkey owner through the relayer)";
+  let ok = true;
+  const steps: unknown[] = [];
+  try {
+    // A NEAR-wallet owner: its own owner_call carries 900 Tgas per round.
+    const a = (closers.wallet = await person("closer", CLOSE_COLLATERAL + 0.7 + CLOSE_GAS_NEAR + 0.3));
+    await upgraded(a);
+    await position(a, 0, { collateral: CLOSE_COLLATERAL, targetHealth: 1.425 });
+    if (runs(17)) await certificate(a);
+    if (!(await closeInRounds(a, (x) => ownerCall(a, x), "wallet owner"))) ok = false;
+    steps.push(...a.steps);
+  } catch (e) {
+    ok = false;
+    steps.push({ step: "wallet owner", error: String(e).slice(0, 400) });
+  }
+  try {
+    // A passkey owner: every request goes through the relayer, which attaches the 900 Tgas.
+    // SCENARIO_PASSKEY_REUSE names an earlier run's passkey file (internal/keys/passkey-*.json) and
+    // closes the position that account already holds.
+    const reuse = process.env.SCENARIO_PASSKEY_REUSE;
+    const b = (closers.passkey = reuse
+      ? (() => {
+          const f = JSON.parse(readFileSync(reuse, "utf8")) as { account: string; secret: string };
+          return { owner: "passkey (an earlier run)", key: "", n: root, account: f.account, secret: Uint8Array.from(Buffer.from(f.secret, "hex")), steps: [] } as PasskeyPerson;
+        })()
+      : await passkeyPerson("closer"));
+    const send = (x: OwnerAction[]) => relayOwner(b, x).then((o) => {
+      if (o.failure) throw new Error(`relayed request failed in ${o.hash}: ${o.failure}`);
+      return o;
+    });
+    await upgraded(b, send);
+    // The passkey owner has no NEAR wallet: the root pays the account its collateral (the unwind sends it back).
+    const fund = async (amount: bigint) => ((await root.transaction(rootId).transfer(b.account, `${amount} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome).transaction?.hash ?? "";
+    if ((await lines(b.account)).borrowed.length === 0) await position(b, 0, { collateral: CLOSE_COLLATERAL, targetHealth: 1.425, send, fund });
+    if (!(await closeInRounds(b, send, "passkey owner"))) ok = false;
+    steps.push(...b.steps);
+  } catch (e) {
+    ok = false;
+    steps.push({ step: "passkey owner", error: String(e).slice(0, 400) });
+  }
+  save(14, title, ok, steps);
+}
+
+/** 15: the owner repays from the wallet: sends the debt token to the account, then repay and withdraw in one owner call. */
+async function closeFromWallet() {
+  const title = "Closing a Rhea position from the wallet (repay with the owner's own USDC, then withdraw the collateral)";
+  const p = (closers.fromWallet = await person("walletclose", CLOSE_COLLATERAL + 0.7 + 0.8));
+  try {
+    await upgraded(p);
+    await position(p, 0, { collateral: CLOSE_COLLATERAL });
+    // The owner's own test USDC: register, take it from the faucet.
+    await call(p.n, p.owner, c("usdc"), "storage_deposit", { account_id: p.owner, registration_only: true }, near(0.0125), 30);
+    const fau = await call(p.n, p.owner, c("usdc"), "faucet", {}, 0n, 30);
+    p.steps.push({ step: "the owner takes test USDC from the faucet into the wallet", tx: explorer(fau.hash) });
+    const before = await lines(p.account);
+    const debtInner = BigInt(before.borrowed.find((x) => x.token_id === c("usdc"))?.balance ?? "0");
+    // USDC has 12 extra decimals in lending; repay a cent more than the debt for the interest that accrues meanwhile.
+    const debt = (debtInner + 10n ** 12n - 1n) / 10n ** 12n + 10_000n;
+    const collateral = before.collateral.find((x) => x.token_id === c("wnear"))?.balance ?? "0";
+    const flow = closeFromWalletActions({ account: p.account, debtToken: c("usdc"), debtAmount: debt, collateralToken: c("wnear"), collateralAmount: collateral });
+    const t = await call(p.n, p.owner, flow.transfer.receiverId, flow.transfer.methodName, flow.transfer.args, BigInt(flow.transfer.deposit), Number(BigInt(flow.transfer.gas) / 10n ** 12n));
+    p.steps.push({ step: `the owner sends ${Number(debt) / 1e6} USDC to the protected account`, tx: explorer(t.hash) });
+    const o = await ownerCall(p, flow.actions);
+    p.steps.push({ step: "repay the whole debt and withdraw all the collateral (one owner call)", tx: explorer(o.hash) });
+    const after = await lines(p.account);
+    const ok = after.borrowed.length === 0 && after.collateral.every((x) => BigInt(x.balance) === 0n);
+    p.steps.push({ step: `lending position after: ${after.borrowed.length} debt line(s), ${after.collateral.filter((x) => BigInt(x.balance) > 0n).length} collateral line(s); the cent over the debt stays supplied`, ok });
+    save(15, title, ok, p.steps);
+  } catch (e) {
+    save(15, title, false, [...p.steps, { error: String(e).slice(0, 400) }]);
+  }
+}
+
+/** 16: unwind each closed account: mandate revoked, supplies withdrawn, tokens and spare NEAR sent home. */
+async function unwind() {
+  const title = "Unwinding a protected account (mandate revoked, lending withdrawn, tokens and NEAR sent to the owner)";
+  const steps: unknown[] = [];
+  let ok = true;
+  const tokens = [c("usdc"), c("wnear")];
+  const check = (label: string, o: Outcome) => {
+    const unwound = eventData(o.o, "unwound")[0];
+    const partial = eventData(o.o, "unwind_partial");
+    const good = !o.failure && !!unwound && partial.length === 0;
+    ok &&= good;
+    steps.push({ step: `${label}: unwind`, tx: explorer(o.hash), unwound, unwind_partial: partial, ok: good });
+  };
+  const owners = [closers.wallet, closers.fromWallet].filter((p): p is Person => !!p);
+  if (owners.length === 0 && !closers.passkey) owners.push(await person("unwind", 1.5));
+  for (const p of owners) {
+    try {
+      await upgraded(p);
+      // The owner registers with each token so the transfers land.
+      for (const t of tokens) {
+        const reg = await view<unknown>(t, "storage_balance_of", { account_id: p.owner }).catch(() => null);
+        if (!reg) await call(p.n, p.owner, t, "storage_deposit", { account_id: p.owner, registration_only: true }, near(0.0125), 30);
+      }
+      check(`${p.owner} (NEAR-wallet owner, owner_call)`, await ownerCall(p, [ownerActions.unwind(tokens)]));
+    } catch (e) {
+      ok = false;
+      steps.push({ step: p.owner, error: String(e).slice(0, 400) });
+    }
+  }
+  if (closers.passkey) {
+    // A passkey owner names where everything goes: here the root, which is registered with both tokens.
+    try {
+      check("passkey owner (relayed owner_execute)", await relayOwner(closers.passkey, [ownerActions.unwind(tokens, rootId)]));
+    } catch (e) {
+      ok = false;
+      steps.push({ step: "passkey owner", error: String(e).slice(0, 400) });
+    }
+  }
+  save(16, title, ok, steps);
+}
+
+/** 17: an enclave-signed health certificate for a reader, anchored on the risk board, verified by the SDK and the API. */
+async function certificate(p: Person) {
+  const title = "A health certificate: issued by the enclave, anchored on the risk board, verified";
+  const steps: unknown[] = [];
+  try {
+    const token = await parry.signIn(p.account, p.key);
+    const reader = rootId;
+    const cert = await parry.issueCertificate(token, { account: p.account, reader, threshold: 1.2, ttlSecs: 86_400, venue: "rhea", anchor: true });
+    const body = JSON.parse(cert.certificate) as Record<string, unknown>;
+    steps.push({ step: `the enclave certifies "${String(body.statement)}" for ${reader} until ${new Date(Number(body.expires_at) * 1000).toISOString()}`, hash: cert.hash, block_height: body.block_height });
+    steps.push({ step: "the anchor on the risk board (enclave-signed certificate report)", tx: cert.anchorTx ? explorer(cert.anchorTx) : null });
+    // The anchor is read at final finality: give the anchoring transaction's block a few seconds to be final.
+    const sdk = await until("the anchor at final finality", 60_000, async () => {
+      const v = await parry.verifyCertificate(cert.hash, { reader });
+      return v.ok ? v : null;
+    }).catch(() => parry.verifyCertificate(cert.hash, { reader }));
+    steps.push({ step: "the SDK verifies it against the chain", checks: sdk.checks.map((x) => `${x.status} ${x.name}`) });
+    const apiCheck = await api<{ ok: boolean; checks: { name: string; ok: boolean }[] }>(`/v1/verify/${cert.hash}`);
+    steps.push({ step: "the API's verification", checks: apiCheck.checks.map((x) => `${x.ok ? "ok" : "FAIL"} ${x.name}`) });
+    // Above the position's health, the enclave refuses and signs nothing.
+    const refused = await parry.issueCertificate(token, { account: p.account, reader, threshold: 5, ttlSecs: 3600, venue: "rhea", anchor: false }).then(
+      () => "signed (unexpected)",
+      (e) => String((e as Error).message ?? e).slice(0, 160),
+    );
+    steps.push({ step: "a threshold above the position's health is refused", answer: refused });
+    const ok = sdk.ok && apiCheck.ok && !!cert.anchorTx && /below the threshold/.test(refused);
+    save(17, title, ok, steps);
+  } catch (e) {
+    save(17, title, false, [...steps, { error: String(e).slice(0, 400) }]);
+  }
+}
+
+/**
+ * 18: 10 % of the staking yield moves into the insurance fund. LiNEAR folds a validator's staking
+ * rewards into its price when `epoch_update_rewards` runs for it (anyone may call it); the vault
+ * skims when it reads a rate above the highest it has seen (a deposit reads it), and the next
+ * vault report announces the inflow.
+ */
+async function insuranceInflow() {
+  const title = "An insurance inflow: 10% of the vault's staking yield moves into its fund";
+  const steps: unknown[] = [];
+  const since = new Date().toISOString();
+  try {
+    const linear = dep.external?.linear ?? "linear-protocol.testnet";
+    const before = await view<{ linear: string; value_usd_e6: string }>(c("vault"), "insurance");
+    const state = await view<{ linear_rate_e24: string }>(c("vault"), "vault_state");
+    const updateRewards = async () => {
+      const validators = await view<{ account_id: string; staked_amount: string }[]>(linear, "get_validators", { offset: 0, limit: 20 });
+      for (const v of validators.filter((x) => BigInt(x.staked_amount) > 0n)) {
+        const o = await send(root, rootId, linear, "epoch_update_rewards", { validator_id: v.account_id }, 0n, 200);
+        if (!o.failure) steps.push({ step: `LiNEAR epoch_update_rewards for ${v.account_id}`, tx: explorer(o.hash) });
+      }
+    };
+    let rate = await view<string>(linear, "ft_price");
+    if (BigInt(rate) <= BigInt(state.linear_rate_e24)) {
+      await updateRewards();
+      rate = await view<string>(linear, "ft_price");
+    }
+    // LiNEAR's rate rises once per epoch: wait for the next one when this epoch's rewards are already in.
+    if (BigInt(rate) <= BigInt(state.linear_rate_e24)) {
+      rate = await until("LiNEAR's rate to rise (the next epoch)", Number(process.env.SCENARIO_EPOCH_MS ?? 0), async () => {
+        await updateRewards();
+        const r = await view<string>(linear, "ft_price");
+        return BigInt(r) > BigInt(state.linear_rate_e24) ? r : null;
+      }).catch(() => rate);
+    }
+    steps.push({ step: `LiNEAR rate ${state.linear_rate_e24} last seen by the vault, now ${rate}` });
+    if (BigInt(rate) <= BigInt(state.linear_rate_e24)) return save(18, title, false, [...steps, { step: "waits for LiNEAR's next epoch: the rate has not risen since the vault last read it" }]);
+    // A deposit makes the vault read the rate (and skim); the root deposits the minimum.
+    const d = await call(root, rootId, c("vault"), "deposit", {}, near(0.5), 150);
+    steps.push({ step: "a 0.5 NEAR deposit makes the vault read the higher rate and skim the fund's share", tx: explorer(d.hash) });
+    const inflow = await until("an insurance_inflow event", Number(process.env.SCENARIO_INSURANCE_MS ?? 15 * 60_000), async () => {
+      const ins = await api<{ events: { kind: string; at: string | null; tx: string; linear?: string }[] }>("/v1/vault/insurance");
+      return ins.events.find((e) => e.kind === "inflow" && (e.at ?? "") > since);
+    });
+    const after = await view<{ linear: string; value_usd_e6: string }>(c("vault"), "insurance");
+    steps.push({ step: `the vault report announces insurance_inflow of ${inflow.linear} LiNEAR`, tx: explorer(inflow.tx), fundBefore: before, fundAfter: after });
+    save(18, title, BigInt(after.linear) > BigInt(before.linear), steps);
+  } catch (e) {
+    save(18, title, false, [...steps, { error: String(e).slice(0, 400) }]);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
 if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
@@ -623,4 +1015,8 @@ if (runs(10)) await vault();
 if (runs(11)) await vaultPause();
 if (runs(12)) await paid().catch((e) => save(12, "A paid risk check over x402 on NEAR", false, [{ error: String(e) }]));
 if (runs(13)) await agents().catch((e) => save(13, "Core flows through the SDK and the MCP server", false, [{ error: String(e) }]));
+if (runs(14) || runs(17)) await closeBySelling();
+if (runs(15)) await closeFromWallet();
+if (runs(16)) await unwind();
+if (runs(18)) await insuranceInflow();
 console.log(`proofs in ${proofFile.replace(`${ROOT_DIR}/`, "")}`);
