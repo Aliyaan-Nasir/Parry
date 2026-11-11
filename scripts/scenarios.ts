@@ -463,7 +463,8 @@ async function evmRescue() {
   let p: Person;
   if (!existsSync(credFile)) {
     const k = generateKey();
-    await root.transaction(rootId).createAccount(ownerId).transfer(ownerId, `${near(2)} yocto` as never).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
+    // The owner signs a few 300 Tgas calls (checked against the pessimistic gas price) and pays their gas.
+    await root.transaction(rootId).createAccount(ownerId).transfer(ownerId, `${near(Number(process.env.SCENARIO_EVM_NEAR ?? 1.2))} yocto` as never).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
     mkdirSync(credDir, { recursive: true });
     writeFileSync(credFile, JSON.stringify({ account_id: ownerId, public_key: k.publicKey.toString(), private_key: k.secretKey }), { mode: 0o600 });
     const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: ownerId } });

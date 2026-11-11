@@ -91,7 +91,10 @@ pub fn review(io: &dyn Io, facts: &Value) -> Result<Review> {
             { "role": "user", "content": facts.to_string() },
         ],
         "temperature": 0,
-        "max_tokens": 400,
+        // The review model reasons before it answers: low effort answers in seconds, inside the
+        // run's time limit, with room in max_tokens for the verdict after the reasoning.
+        "reasoning_effort": "low",
+        "max_tokens": 1500,
         "stream": false,
     })
     .to_string();

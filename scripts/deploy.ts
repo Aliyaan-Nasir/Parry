@@ -444,6 +444,12 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
   dep.enclave = { ...(dep.enclave ?? {}), publicKey: enclaveKey, wasmSha256: enclaveHash };
   save();
   await deploy("risk", ids.risk!, { method: "new", args: { owner_id: ROOT, enclave_key: enclaveKey, wasm_sha256: enclaveHash, vault: ids.vault } });
+  // Another enclave build has other keys (OutLayer derives them from the build): rotate the board to them.
+  const trusted = await viewCall<{ public_key: string; wasm_sha256: string } | null>(ids.risk!, "get_enclave").catch(() => null);
+  if (trusted && (trusted.public_key !== enclaveKey || trusted.wasm_sha256 !== enclaveHash)) {
+    const o = await call(ROOT, ids.risk!, "set_enclave", { public_key: enclaveKey, wasm_sha256: enclaveHash, note: `build ${enclaveHash.slice(0, 16)}` }, 1n, 30);
+    console.log(`enclave key rotated to ${enclaveKey} (${hashOf(o)})`);
+  }
   // The enclave's signed sealing-key report (scripts/enclave.ts keys): owners seal policies to it.
   const sealing = await viewCall<{ public_key: string } | null>(ids.risk!, "sealing_key").catch(() => null);
   if (dep.enclave.sealingReport && sealing?.public_key !== dep.enclave.sealingPublicKey) {

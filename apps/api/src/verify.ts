@@ -35,7 +35,8 @@ export async function modelAttestation(model: string, signingAddress: string, ap
   const name = "Model key attested in TEE hardware";
   let check: Check;
   try {
-    const client = new InferenceClient({ apiKey });
+    // The enclave asks for ecdsa review signatures, so verify the ecdsa keys (the SDK defaults to ed25519).
+    const client = new InferenceClient({ apiKey, signingAlgo: "ecdsa" });
     const result = await client.verify(model);
     const matches = findModelAttestationsForSignature({ attestations: result.models, signature: { kind: "provider_tee", signer: { signingAlgo: "ecdsa", signingAddress } } });
     const gpu = [...new Set(matches.map((m) => String(m.gpuEvidence)))].join(", ");
