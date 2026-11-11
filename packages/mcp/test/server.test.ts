@@ -233,6 +233,21 @@ describe("write tools", () => {
     expect(DEFAULT_CAPS.setMandatePerDay).toBe(10);
   });
 
+  test("set_mandate seals the step order the agent chose", async () => {
+    const f = fakeParry();
+    const { call } = await connect({ parry: f.parry, agent: AGENT });
+    const r = await call("set_mandate", {
+      powers: ["repay", "deleverage"],
+      limits: [{ token: "usdc.parry.testnet", reserve: "200000000", daily: "100000000" }],
+      expires_in_days: 7,
+      policy: { trigger_score: 55, trigger_health: 1.2, target_health: 1.5, strategy: "repay-first", steps: ["deleverage", "repay"] },
+    });
+    expect(r.error).toBe(false);
+    const mandate = (f.sent[0]!.args["actions"] as { set_mandate: { mandate: { sealed: string } } }[])[0]!.set_mandate.mandate;
+    expect(openPolicy(mandate["sealed"], { account: "0uagent.testnet", secret: sealingSecret })).toMatchObject({ strategy: "repay-first", steps: ["deleverage", "repay"] });
+    expect((await call("set_mandate", { powers: ["repay"], limits: [], expires_in_days: 7, policy: { trigger_score: 55, trigger_health: 1.2, target_health: 1.5, strategy: "repay-first", steps: ["repay", "repay"] } })).error).toBe(true);
+  });
+
   test("close_position closes the agent's position in rounds through the API's pool, retrying a stuck round", async () => {
     const f = fakeParry("testnet", [
       { closing: null, debt: 100n, collateral: 300n },

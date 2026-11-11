@@ -483,8 +483,14 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       trigger_health: z.number().positive().describe("Act at or below this health factor, whatever the score."),
       target_health: z.number().positive().describe("Health factor a rescue aims for."),
       strategy: z.enum(["repay-first", "keep-exposure", "deleverage-only"]),
+      steps: z
+        .array(z.enum(["repay", "add_collateral", "deleverage", "hl_reduce", "evm_repay"]))
+        .min(1)
+        .max(5)
+        .optional()
+        .describe("The order the guardian tries protective steps in, each at most once (default: the strategy's order). It takes the first one the mandate allows that moves health toward the target."),
     })
-    .describe("Private trigger thresholds and strategy, encrypted to the enclave's sealing key so only the guardian can read them.");
+    .describe("Private trigger thresholds, strategy and step order, encrypted to the enclave's sealing key so only the guardian can read them.");
 
   server.registerTool(
     "set_mandate",
@@ -540,6 +546,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
                   triggerHealth: args.policy.trigger_health,
                   targetHealth: args.policy.target_health,
                   strategy: args.policy.strategy,
+                  ...(args.policy.steps ? { steps: args.policy.steps } : {}),
                 },
                 sealingPublicKey: enclave.sealingKey!.public_key,
               }
