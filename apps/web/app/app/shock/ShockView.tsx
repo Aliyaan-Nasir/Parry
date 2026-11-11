@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Slider } from "@/components/ui/Slider";
+import { PriceDial } from "@/components/instrument/PriceDial";
 import { TierBadge } from "@/components/ui/TierBadge";
 import { useToast } from "@/components/ui/Toast";
 import type { ShockState } from "@/lib/api-types";
@@ -90,6 +90,13 @@ function ClearShock() {
   );
 }
 
+/** The market price a shock is measured from: the fed price while a shock is on, else the oracle's own. */
+function marketPrice(state: ShockState | undefined): number | null {
+  if (!state?.price) return null;
+  const expo = state.price.expo;
+  return state.shock ? priceOf(state.shock.fed_price, expo) : priceOf(state.price.price, expo);
+}
+
 function Price({ state }: { state: ShockState }) {
   const { format } = useMoney();
   const now = useNow();
@@ -131,7 +138,7 @@ function Price({ state }: { state: ShockState }) {
   );
 }
 
-function Apply({ maxBps, active }: { maxBps: number | null; active: boolean }) {
+function Apply({ maxBps, active, price }: { maxBps: number | null; active: boolean; price: number | null }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const now = useNow();
@@ -167,16 +174,8 @@ function Apply({ maxBps, active }: { maxBps: number | null; active: boolean }) {
     <Card as="section" aria-labelledby="apply-title" className="grid content-start gap-5">
       <CardHeader titleAs="h2" title={<span id="apply-title">Move the price</span>} description="Relative to the market price, never compounding: a new shock replaces the active one." />
       <form onSubmit={onSubmit} className="grid gap-5">
-        <Slider
-          label="Move"
-          min={-limit}
-          max={limit}
-          step={1}
-          value={value}
-          formatValue={(v) => `${v > 0 ? "+" : ""}${v}%`}
-          onValueChange={setPct}
-          description={`From −${limit}% to +${limit}%.`}
-        />
+        <PriceDial value={value} min={-limit} max={limit} onChange={setPct} price={price} />
+        <p className="-mt-2 text-center text-[13px] text-muted">Turn the dial, or focus it and use the arrow keys (Shift for 5% steps). From -{limit}% to +{limit}%.</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" loading={busy} loadingLabel="Applying the shock" disabled={value === 0}>
             {active ? "Replace the shock" : "Apply the shock"}
@@ -264,7 +263,7 @@ export function ShockView() {
   if (q.isError && !q.data) return <QueryError title="The test oracle could not be read" error={q.error} onRetry={() => void q.refetch()} />;
   return (
     <div className="grid gap-6" data-stagger>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         {q.data ? (
           <Price state={q.data} />
         ) : (
@@ -272,7 +271,7 @@ export function ShockView() {
             <Skeleton height="12rem" shape="block" />
           </Card>
         )}
-        <Apply maxBps={oracle.data?.max_shock_bps ?? null} active={!!q.data?.shock} />
+        <Apply maxBps={oracle.data?.max_shock_bps ?? null} active={!!q.data?.shock} price={marketPrice(q.data)} />
       </div>
       {account ? (
         <Watch account={account} />
