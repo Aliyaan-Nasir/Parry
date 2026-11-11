@@ -88,3 +88,5 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 - Vault withdrawals pay out in LiNEAR, and protected accounts are not registered with it at creation: send `linearStorageAction` before `request_withdraw` or `claim` (the app does), or the payout waits as a claim.
 - `rpc.testnet.near.org` and `rpc.mainnet.near.org` refuse calls; the default RPC list is FastNEAR, Intea and dRPC, and dRPC lacks the `EXPERIMENTAL_*` methods (the RPC helper falls through to the next provider).
 - A 300 Tgas call is checked against the pessimistic gas price: an account needs about 0.35 NEAR up front to send one, even though most of it is refunded.
+- The review model reasons before it answers: the enclave asks with `reasoning_effort: "low"` (at the default effort it runs past the 90 s run limit and returns no verdict, which the guardian treats as a rejection), and the API verifies its ecdsa attestation, the key it signs reviews with.
+- A new enclave build gets new keys: publish it, run `keys`, rotate the risk board (`set_enclave`, which `scripts/deploy.ts` does), submit the sealing report, and set mandates again, since each names the guardian key.

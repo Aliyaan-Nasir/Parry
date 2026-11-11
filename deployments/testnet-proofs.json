@@ -4,55 +4,83 @@
     "2": {
       "title": "A protected account without gas",
       "ok": true,
-      "at": "2026-11-11T00:35:47.401Z",
+      "at": "2026-11-11T03:21:04.495Z",
       "steps": [
         {
-          "step": "relayer creates 0ucgjz0wsmc9wyjzpdxnw835eb8tqy546bhppnhhmvf3j1xs1gj9a0 for repay323638.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/Gw8ZTrqUpmY7zbtb25hhvmojApRrmcVSqkHHHsTffNKY"
+          "step": "relayer creates 0uhqrw8v0rsjje8afpcehr05gasvj4ytjmae3n5etdeh0yy0p2d4p0 for repay240133.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/Bh14DgFZQoT1uJPj16rSLxvZ1UHDMXKuHeA1mgvZxemA"
         }
       ]
     },
     "3": {
       "title": "A leveraged Rhea position",
       "ok": true,
-      "at": "2026-11-11T00:35:47.402Z",
+      "at": "2026-11-11T03:21:04.496Z",
       "steps": [
         {
           "step": "owner funds the protected account",
-          "tx": "https://testnet.nearblocks.io/txns/FFn16RRK3Fykmnt8TiTpWHTew9wEXnTQMfq6vUbwJra7"
+          "tx": "https://testnet.nearblocks.io/txns/9mGZTdi5dXVtYp5Ee8mr8YSCujXYeouEKahEJenxBMed"
         },
         {
-          "step": "wrap and supply 1.5 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/3XjNb5s41sGwXjNYwL9VNayJr4ygmwXfC4j8oKrMwSPt"
+          "step": "wrap and supply 1.2 NEAR on Rhea",
+          "tx": "https://testnet.nearblocks.io/txns/14gNW6irm4NX3k5DXfn5bk58mPkzQEKc7AijXwt6KtWU"
         },
         {
-          "step": "borrow 2.98 USDC (health about 1.30 at $3.635)",
-          "tx": "https://testnet.nearblocks.io/txns/DfVtq8hz4cid4AH2CjiaAg9BPjPXKDsvAzStcfTYZwx6"
+          "step": "borrow 2.44 USDC (health about 1.30 at $3.712)",
+          "tx": "https://testnet.nearblocks.io/txns/ABPyym2uRx6KWXugUvyKYsjfZ4tL3xmtakaHUvkJMFSb"
         }
       ]
     },
     "4": {
       "title": "A mandate with a sealed policy",
       "ok": true,
-      "at": "2026-11-11T00:35:47.402Z",
+      "at": "2026-11-11T03:33:32.633Z",
       "steps": [
         {
           "step": "mandate: repay, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/7A3QiDCEYtuSwUfTmKkmo1ZrFd6Kz5YkStmF1GFxt4qm"
+          "tx": "https://testnet.nearblocks.io/txns/B4jrMpasGAq2ocfPfdrpDxjTf8AmWia5tXpQZ59yPvRj"
         }
       ]
     },
     "5": {
       "title": "The market shock moves the price",
       "ok": true,
-      "at": "2026-11-11T00:36:10.222Z",
+      "at": "2026-11-11T03:33:54.997Z",
       "steps": [
         {
           "step": "NEAR -20% on the testnet oracle for 30 minutes",
-          "tx": "https://testnet.nearblocks.io/txns/EFSsqwrvoZvnhiH7npbdt77wKaQpr1JzEgcr97HiSxDm",
+          "tx": "https://testnet.nearblocks.io/txns/CwGhNtp2XUfj111AiZNEFTfQkMNAuM7vJKfNuRUpN7wE",
           "healthBefore": {
-            "repay": 1.3036537974412752
+            "repay": 1.0401312227459016
           }
+        }
+      ]
+    },
+    "6": {
+      "title": "Alert, AI review, rescue and recovery",
+      "ok": true,
+      "at": "2026-11-11T03:34:25.521Z",
+      "steps": [
+        {
+          "step": "repay: Repay 0.63 USDC from the reserve: health 1.040 to 1.400 (target 1.40).",
+          "outcome": "executed",
+          "review": "approve",
+          "alerts": [
+            "Guardian executed: repay",
+            "Guardian rejected by_review: repay",
+            "Guardian rejected by_review: repay"
+          ],
+          "verify": [
+            "ok Review hash",
+            "ok Signature covers this exchange",
+            "ok Model TEE signature",
+            "ok Model key attested in TEE hardware",
+            "ok Enclave signature on the envelope",
+            "ok Review hash on chain"
+          ],
+          "healthAfter": 1.3926603639121802,
+          "action": "https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A",
+          "record": "https://testnet.nearblocks.io/txns/69EmR2LKQB6zYo88vJz34tJLbWzhH7op8jo1PVxQXcpY"
         }
       ]
     },
@@ -217,5 +245,8 @@
         }
       ]
     }
+  },
+  "rescue": {
+    "decision": "a950259353731a7812386ada39e2074528d63193e8e54d48ea82f51564a92690"
   }
 }

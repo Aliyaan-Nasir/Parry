@@ -268,13 +268,24 @@ const people: Record<string, Person> = {};
 const decisions: Record<string, Decision> = {};
 
 async function protect() {
+  // Decisions made before this run's mandates (an earlier run's, on a reused owner) do not count.
+  const since = new Date().toISOString();
   // 2, 3 and 4 for three people, one per rescue kind.
   if (PEOPLE.has("repay")) {
-  const repayer = (people.repay = await person("repay", COLLATERAL + OVERHEAD));
-  await position(repayer);
-  const faucet = await ownerCall(repayer, [{ call: { receiver_id: c("usdc"), method_name: "faucet", args: Buffer.from("{}").toString("base64"), deposit: "0", gas: "30000000000000" } }]);
-  repayer.steps.push({ step: "the account takes test USDC from the faucet as its rescue reserve", tx: explorer(faucet.hash) });
-  await mandate(repayer, ["repay"], [{ token: c("usdc"), reserve: "100000000", daily: "60000000" }], policy("repay-first"));
+    // SCENARIO_REPAY_OWNER reuses an earlier run's owner (its key is in the keychain) and its open
+    // position, and only sets the mandate again: after an enclave build changes the guardian key.
+    const reuse = process.env.SCENARIO_REPAY_OWNER;
+    if (reuse) {
+      const key = (JSON.parse(readFileSync(join(homedir(), ".near-credentials", "testnet", `${reuse}.json`), "utf8")) as { private_key: string }).private_key;
+      const account = await view<string>(c("factory"), "account_id_of", { near_account: reuse });
+      people.repay = { owner: reuse, key, n: client(reuse, key), account, steps: [{ step: `relayer creates ${account} for ${reuse}, gasless for the owner (an earlier run)` }] };
+    } else {
+      const repayer = (people.repay = await person("repay", COLLATERAL + OVERHEAD));
+      await position(repayer);
+      const faucet = await ownerCall(repayer, [{ call: { receiver_id: c("usdc"), method_name: "faucet", args: Buffer.from("{}").toString("base64"), deposit: "0", gas: "30000000000000" } }]);
+      repayer.steps.push({ step: "the account takes test USDC from the faucet as its rescue reserve", tx: explorer(faucet.hash) });
+    }
+    await mandate(people.repay, ["repay"], [{ token: c("usdc"), reserve: "100000000", daily: "60000000" }], policy("repay-first"));
   }
 
   if (PEOPLE.has("add")) {
@@ -289,8 +300,11 @@ async function protect() {
     await mandate(delev, ["deleverage"], [{ token: c("wnear"), reserve: near(COLLATERAL).toString(), daily: near(COLLATERAL / 2).toString() }], policy("deleverage-only"));
   }
 
-  save(2, "A protected account without gas", true, Object.values(people).map((p) => p.steps[0]));
-  save(3, "A leveraged Rhea position", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /supply|borrow|funds/.test(JSON.stringify(s)))));
+  // A reused owner adds no new account or position: the earlier records stand.
+  if (!process.env.SCENARIO_REPAY_OWNER) {
+    save(2, "A protected account without gas", true, Object.values(people).map((p) => p.steps[0]));
+    save(3, "A leveraged Rhea position", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /supply|borrow|funds/.test(JSON.stringify(s)))));
+  }
   save(4, "A mandate with a sealed policy", true, Object.values(people).flatMap((p) => p.steps.filter((s) => /mandate/.test(JSON.stringify(s)))));
 
   // 5: the market shock (rate limited by the oracle: 60 s per caller).
@@ -307,13 +321,19 @@ async function protect() {
     try {
       const d = await until(`a ${kind} decision for ${p.account}`, Number(process.env.SCENARIO_DECISION_MS ?? 8 * 60_000), async () => {
         const log = await api<{ items: Decision[] }>(`/v1/guardian/decisions?account=${p.account}&limit=5`);
-        return log.items.find((x) => x.outcome === "executed" || x.outcome === "rejected_by_review" || x.outcome === "refused" || x.outcome === "rolled_back");
+        return log.items.find((x) => x.createdAt > since && (x.outcome === "executed" || x.outcome === "rejected_by_review" || x.outcome === "refused" || x.outcome === "rolled_back"));
       });
       decisions[kind] = d;
       if (d.outcome === "executed" && !proofs.rescue) proofs.rescue = { decision: d.id };
       const alerts = await api<{ title: string }[]>(`/v1/alerts?account=${p.account}`);
       const v = await api<{ ok: boolean; checks: { name: string; ok: boolean }[] }>(`/v1/guardian/decisions/${d.id}/verify`);
-      const after = await health(p.account);
+      // The monitor reads the position again within seconds of the rescue: wait for that reading.
+      const after = d.outcome === "executed"
+        ? await until("the position's health after the rescue", 3 * 60_000, async () => {
+            const h = await health(p.account);
+            return h !== null && h > (before[kind] ?? 0) + 0.05 ? h : null;
+          }).catch(() => health(p.account))
+        : await health(p.account);
       const passed = d.outcome === "executed" && v.ok && after !== null && after > (before[kind] ?? 0) * 0.8;
       ok6 &&= passed;
       steps6.push({

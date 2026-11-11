@@ -20,11 +20,11 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 | # | Scenario | On testnet | Transactions |
 | --- | --- | --- | --- |
 | 1 | Sign in with a passkey or a NEAR wallet | runs in a browser: the app's Playwright suite signs in with a virtual passkey authenticator |  |
-| 2 | A protected account without gas | passes | [tx 1](https://testnet.nearblocks.io/txns/Gw8ZTrqUpmY7zbtb25hhvmojApRrmcVSqkHHHsTffNKY) |
-| 3 | A leveraged Rhea position | passes | [tx 1](https://testnet.nearblocks.io/txns/FFn16RRK3Fykmnt8TiTpWHTew9wEXnTQMfq6vUbwJra7), [tx 2](https://testnet.nearblocks.io/txns/3XjNb5s41sGwXjNYwL9VNayJr4ygmwXfC4j8oKrMwSPt), [tx 3](https://testnet.nearblocks.io/txns/DfVtq8hz4cid4AH2CjiaAg9BPjPXKDsvAzStcfTYZwx6) |
-| 4 | A mandate with a sealed policy | passes | [tx 1](https://testnet.nearblocks.io/txns/7A3QiDCEYtuSwUfTmKkmo1ZrFd6Kz5YkStmF1GFxt4qm) |
-| 5 | The market shock moves the price | passes | [tx 1](https://testnet.nearblocks.io/txns/EFSsqwrvoZvnhiH7npbdt77wKaQpr1JzEgcr97HiSxDm) |
-| 6 | Alert, AI review, rescue and recovery | waits for the NEAR AI Cloud key |  |
+| 2 | A protected account without gas | passes | [tx 1](https://testnet.nearblocks.io/txns/Bh14DgFZQoT1uJPj16rSLxvZ1UHDMXKuHeA1mgvZxemA) |
+| 3 | A leveraged Rhea position | passes | [tx 1](https://testnet.nearblocks.io/txns/9mGZTdi5dXVtYp5Ee8mr8YSCujXYeouEKahEJenxBMed), [tx 2](https://testnet.nearblocks.io/txns/14gNW6irm4NX3k5DXfn5bk58mPkzQEKc7AijXwt6KtWU), [tx 3](https://testnet.nearblocks.io/txns/ABPyym2uRx6KWXugUvyKYsjfZ4tL3xmtakaHUvkJMFSb) |
+| 4 | A mandate with a sealed policy | passes | [tx 1](https://testnet.nearblocks.io/txns/B4jrMpasGAq2ocfPfdrpDxjTf8AmWia5tXpQZ59yPvRj) |
+| 5 | The market shock moves the price | passes | [tx 1](https://testnet.nearblocks.io/txns/CwGhNtp2XUfj111AiZNEFTfQkMNAuM7vJKfNuRUpN7wE) |
+| 6 | Alert, AI review, rescue and recovery | passes | [tx 1](https://testnet.nearblocks.io/txns/5dcSdzDaYjSWHERG9RK5Tt29bve7cXMGw8Ap9CTPwn5A) |
 | 7 | Limits: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/9CzERLrWh1v8in6vZy2uvfQJLfQeZDuUEU7TPtVDeica), [tx 2](https://testnet.nearblocks.io/txns/JAMYHxcEzNyyxDHMZgLvBeXZwwz5EKg8QRqoMqBLTYeL), [tx 3](https://testnet.nearblocks.io/txns/J9ZahDCsajk7gyspFx34dbfmF9ZMwyEJbzfET3oARADT) |
 | 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/HGRN5UQNq3UTTH6dUNvVQASK5adm7cRK6yJnkpZW34p2), [tx 2](https://testnet.nearblocks.io/txns/87oNvABbyosG7ySydrkNsA3d5ndHonLRUhxpDNAGb2FL) |
 | 9 | An Aave loan on Base Sepolia rescued through Chain Signatures and verified by the MPC network | waits for Base Sepolia ETH at the account's derived address |  |
@@ -60,7 +60,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
   Aave on Base Sepolia: the account builds the EIP-1559 transaction with capped fees ([`assert_guardian_fees`](contracts/common/src/evm.rs#L80), [`evm_sign`](contracts/account/src/guardian.rs#L408)); the relay checks the MPC signature recovers to the person's own address, broadcasts it, and has the MPC network verify the result on NEAR ([`verifyEvm`](services/src/guardian.ts#L151), [`verifyOnNear`](services/src/lib/evm.ts#L191)).
 - **Verifiable AI in a TEE.**
   The enclave asks a NEAR AI Cloud verifiable model to review every plan and checks the model's TEE signature over the exact request and response bytes before it signs anything: [`review`](enclave/src/ai.rs#L78).
-  The review's hash goes on chain with the action, and anyone can re-check a decision: [`verifyDecisionRecord`](apps/api/src/verify.ts#L91), `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server.
+  The review's hash goes on chain with the action, and anyone can re-check a decision: [`verifyDecisionRecord`](apps/api/src/verify.ts#L92), `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server.
 - **Keys bound to the build.**
   OutLayer derives the enclave's signing and sealing keys from the wasm: [`enclave/manifest.json`](enclave/manifest.json); the risk board accepts reports only from that key: [`submit`](contracts/risk/src/lib.rs#L273).
 - **Tests.**
