@@ -1,0 +1,147 @@
+{
+  "network": "testnet",
+  "scenarios": {
+    "2": {
+      "title": "A protected account without gas",
+      "ok": true,
+      "at": "2026-11-11T00:35:47.401Z",
+      "steps": [
+        {
+          "step": "relayer creates 0ucgjz0wsmc9wyjzpdxnw835eb8tqy546bhppnhhmvf3j1xs1gj9a0 for repay323638.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/Gw8ZTrqUpmY7zbtb25hhvmojApRrmcVSqkHHHsTffNKY"
+        }
+      ]
+    },
+    "3": {
+      "title": "A leveraged Rhea position",
+      "ok": true,
+      "at": "2026-11-11T00:35:47.402Z",
+      "steps": [
+        {
+          "step": "owner funds the protected account",
+          "tx": "https://testnet.nearblocks.io/txns/FFn16RRK3Fykmnt8TiTpWHTew9wEXnTQMfq6vUbwJra7"
+        },
+        {
+          "step": "wrap and supply 1.5 NEAR on Rhea",
+          "tx": "https://testnet.nearblocks.io/txns/3XjNb5s41sGwXjNYwL9VNayJr4ygmwXfC4j8oKrMwSPt"
+        },
+        {
+          "step": "borrow 2.98 USDC (health about 1.30 at $3.635)",
+          "tx": "https://testnet.nearblocks.io/txns/DfVtq8hz4cid4AH2CjiaAg9BPjPXKDsvAzStcfTYZwx6"
+        }
+      ]
+    },
+    "4": {
+      "title": "A mandate with a sealed policy",
+      "ok": true,
+      "at": "2026-11-11T00:35:47.402Z",
+      "steps": [
+        {
+          "step": "mandate: repay, policy sealed to the enclave",
+          "tx": "https://testnet.nearblocks.io/txns/7A3QiDCEYtuSwUfTmKkmo1ZrFd6Kz5YkStmF1GFxt4qm"
+        }
+      ]
+    },
+    "5": {
+      "title": "The market shock moves the price",
+      "ok": true,
+      "at": "2026-11-11T00:36:10.222Z",
+      "steps": [
+        {
+          "step": "NEAR -20% on the testnet oracle for 30 minutes",
+          "tx": "https://testnet.nearblocks.io/txns/EFSsqwrvoZvnhiH7npbdt77wKaQpr1JzEgcr97HiSxDm",
+          "healthBefore": {
+            "repay": 1.3036537974412752
+          }
+        }
+      ]
+    },
+    "7": {
+      "title": "Limits: replays, forged envelopes, withdrawals and expiry are refused",
+      "ok": true,
+      "at": "2026-11-11T00:37:54.940Z",
+      "steps": [
+        {
+          "step": "an envelope signed by another key",
+          "refused": true,
+          "reason": "Smart contract panicked: guardian signature does not verify",
+          "tx": "https://testnet.nearblocks.io/txns/9CzERLrWh1v8in6vZy2uvfQJLfQeZDuUEU7TPtVDeica"
+        },
+        {
+          "step": "a withdrawal by someone who is not the owner",
+          "refused": true,
+          "reason": "Smart contract panicked: owner only",
+          "tx": "https://testnet.nearblocks.io/txns/JAMYHxcEzNyyxDHMZgLvBeXZwwz5EKg8QRqoMqBLTYeL"
+        },
+        {
+          "step": "a guardian envelope asking to withdraw",
+          "refused": true,
+          "reason": "Smart contract panicked: guardian signature does not verify",
+          "tx": "https://testnet.nearblocks.io/txns/J9ZahDCsajk7gyspFx34dbfmF9ZMwyEJbzfET3oARADT"
+        },
+        {
+          "step": "a mandate set to expire in 75 s reads expired after 90 s",
+          "expired": true,
+          "tx": {
+            "step": "mandate: repay, policy sealed to the enclave",
+            "tx": "https://testnet.nearblocks.io/txns/Dvmxq25hy2YCWi3ULjZa7qVhxhzbt9LijBez9qFjSyZf"
+          }
+        }
+      ]
+    },
+    "12": {
+      "title": "A paid risk check over x402 on NEAR",
+      "ok": true,
+      "at": "2026-11-11T00:41:45.792Z",
+      "steps": [
+        {
+          "step": "the payer takes test USDC from the faucet",
+          "tx": "https://testnet.nearblocks.io/txns/7HiVRqxDKGfywuh2maTLjFHteRMU3euseNiF5L9mbofR"
+        },
+        {
+          "step": "pays per call with a signed delegate ft_transfer, settled before the answer",
+          "payment": {
+            "success": true,
+            "transaction": "EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf",
+            "network": "near:testnet"
+          },
+          "tx": "https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf"
+        }
+      ]
+    },
+    "13": {
+      "title": "Core flows through the SDK and the MCP server",
+      "ok": true,
+      "at": "2026-11-11T00:38:01.690Z",
+      "steps": [
+        {
+          "step": "SDK: market()",
+          "price": 2.91242647
+        },
+        {
+          "step": "SDK: account()",
+          "positions": 1
+        },
+        {
+          "step": "MCP: tools/list",
+          "tools": [
+            "get_position_risk",
+            "risk_check",
+            "get_market",
+            "get_vault",
+            "get_reserves",
+            "get_guardian_log",
+            "verify_guardian_decision",
+            "simulate_rescue",
+            "get_rescue_route",
+            "get_status"
+          ]
+        },
+        {
+          "step": "MCP: get_position_risk",
+          "isError": false
+        }
+      ]
+    }
+  }
+}

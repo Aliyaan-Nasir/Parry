@@ -238,7 +238,7 @@ async function main() {
 
   await check("The vault's hedge matches its collateral and its latest proof of reserves", async () => {
     const s = await view<{ hedge: Record<string, string>; reserves: { root: string; ratio_bps: number } | null; report_at: number }>(dep.contracts.vault!.account, "vault_state");
-    const board = await view<{ reserves: { root: string } } | null>(dep.contracts.risk!.account, "latest_vault_report");
+    const board = (await view<{ report: { reserves: { root: string } } } | null>(dep.contracts.risk!.account, "latest_vault_report"))?.report;
     if (!s.reserves || !board) throw new Error("no vault report yet");
     if (s.reserves.root !== board.reserves.root) throw new Error(`vault root ${s.reserves.root}, board root ${board.reserves.root}`);
     const target = Number(s.hedge.target_e8 ?? 0);

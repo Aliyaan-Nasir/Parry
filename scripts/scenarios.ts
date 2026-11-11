@@ -379,7 +379,12 @@ async function paid() {
   const r = await parry.paidRiskCheck(p.account, { payer: { accountId: p.owner, privateKey: p.key }, maxAmount: "100000" });
   save(12, "A paid risk check over x402 on NEAR", !!r.result && !!r.payment, [
     { step: "the payer takes test USDC from the faucet", tx: explorer(fau.hash) },
-    { step: "pays per call with a signed delegate ft_transfer, settled before the answer", payment: r.payment, score: (r.result as { score?: number } | undefined)?.score },
+    {
+      step: "pays per call with a signed delegate ft_transfer, settled before the answer",
+      payment: r.payment,
+      tx: r.payment?.transaction ? explorer(r.payment.transaction) : null,
+      score: (r.result as { position?: { score?: number } | null } | undefined)?.position?.score,
+    },
   ]);
 }
 
