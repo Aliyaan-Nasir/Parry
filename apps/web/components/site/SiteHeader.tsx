@@ -64,7 +64,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <Magnetic>
-            <ButtonLink href="/app" size="sm" className="!rounded-full px-4">
+            <ButtonLink prefetch={false} href="/app" size="sm" className="!rounded-full px-4">
               Open the app
             </ButtonLink>
           </Magnetic>
@@ -95,7 +95,7 @@ export function SiteHeader() {
             ))}
           </ul>
         </nav>
-        <ButtonLink href="/app" size="lg" className="mt-4 w-full" onClick={() => setOpen(false)}>
+        <ButtonLink prefetch={false} href="/app" size="lg" className="mt-4 w-full" onClick={() => setOpen(false)}>
           Open the app
         </ButtonLink>
       </Sheet>

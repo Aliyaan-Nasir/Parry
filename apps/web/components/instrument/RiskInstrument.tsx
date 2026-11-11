@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { m, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -42,7 +41,6 @@ const MIN = 0.9;
 const MAX = 3;
 const TICKS = [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5, 1.6, 1.75, 2, 2.25, 2.5, 3];
 const MAJOR = new Set([1, 1.2, 1.5, 2, 3]);
-const SPRING = { type: "spring", stiffness: 260, damping: 26, mass: 0.9 } as const;
 
 export function healthTier(h: number | null): string {
   if (h === null || !Number.isFinite(h)) return "no debt";
@@ -114,6 +112,8 @@ export function RiskInstrument({
   const height = compact ? 26 : 96;
   const proj = finite && annualVol && !compact ? projection(health, annualVol, trendHourly) : null;
   const needleX = finite ? x(health) : x(MAX);
+  // The needle springs to each new reading (stiffness 260, damping 26); it sits still under reduced motion.
+  const springX = useSpringNumber(needleX, !!reduced);
   // Major ticks get a label only where it clears the one before it, so a narrow scale stays legible.
   const labelled = new Set<number>();
   let lastLabel = -Infinity;
@@ -195,10 +195,10 @@ export function RiskInstrument({
               {!compact && target ? <Handle kind="target" value={target} x={x} fromX={(px) => fromFrac((px - pad) / Math.max(1, w))} y={scaleY} onChange={onTargetChange} min={trigger ? trigger + 0.05 : 1.1} max={3} /> : null}
 
               {/* The needle. */}
-              <m.g initial={false} animate={{ x: needleX }} transition={reduced ? { duration: 0 } : SPRING}>
+              <g transform={`translate(${r(springX)} 0)`}>
                 <line x1={0} x2={0} y1={scaleY - bandH - (compact ? 2 : 4)} y2={scaleY + (compact ? 4 : 7)} style={{ stroke: "var(--parry-text)" }} strokeWidth={2} strokeLinecap="round" />
                 {!compact ? <circle cx={0} cy={scaleY - bandH - 6} r={3.5} style={{ fill: "var(--parry-text)" }} /> : null}
-              </m.g>
+              </g>
             </svg>
           ) : null}
         </div>
@@ -354,6 +354,18 @@ function Arc({ health, reduced }: { health: number | null; reduced: boolean }) {
  * A number that follows its target on a damped spring (stiffness 260, damping 26), one frame at a
  * time. It starts at the target, so the server render and the first client render agree.
  */
+const REDUCED = "(prefers-reduced-motion: reduce)";
+const subscribeReduced = (cb: () => void) => {
+  const q = matchMedia(REDUCED);
+  q.addEventListener("change", cb);
+  return () => q.removeEventListener("change", cb);
+};
+
+/** Whether the viewer asked for reduced motion (false on the server). */
+function useReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReduced, () => matchMedia(REDUCED).matches, () => false);
+}
+
 function useSpringNumber(target: number, reduced: boolean): number {
   const [value, setValue] = useState(target);
   const state = useRef({ x: target, v: 0 });

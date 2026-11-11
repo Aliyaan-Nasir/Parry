@@ -43,7 +43,7 @@ export function SiteFooter() {
             <ul className="mt-3 grid gap-2.5">
               {PRODUCT.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={linkClass}>
+                  <Link prefetch={false} href={l.href} className={linkClass}>
                     {l.label}
                   </Link>
                 </li>
@@ -55,7 +55,7 @@ export function SiteFooter() {
             <ul className="mt-3 grid gap-2.5">
               {LEGAL.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={linkClass}>
+                  <Link prefetch={false} href={l.href} className={linkClass}>
                     {l.label}
                   </Link>
                 </li>

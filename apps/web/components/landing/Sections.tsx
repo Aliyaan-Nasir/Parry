@@ -2,13 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import proofs from "@/lib/proofs.generated.json";
-import { Rise, useRevealed } from "@/components/fx/Reveal";
-import { Spotlight } from "@/components/fx/Spotlight";
-import { Terminal } from "@/components/fx/Terminal";
+import { useRevealed } from "@/components/fx/Reveal";
 import { Heatmap } from "@/components/instrument/Heatmap";
 import { Sparkline } from "@/components/ui/Sparkline";
-import { SectionHead } from "./Story";
+import { SectionHead } from "./SectionHead";
 import { getJson, useDecisionsLive, useHeatmap, useVaultHistoryLive, useVaultLive, useInsurance, useRatesLive, useReplaySummary, type Check } from "@/lib/live";
 import { formatUsdCompact } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -41,7 +38,7 @@ export function CascadeSlice() {
           )}
         </div>
         <div className="mt-4 flex justify-end">
-          <Link href="/app/cascade" className="text-sm text-brass underline-offset-4 hover:underline">
+          <Link prefetch={false} href="/app/cascade" className="text-sm text-brass underline-offset-4 hover:underline">
             Open the full cascade map
           </Link>
         </div>
@@ -273,56 +270,10 @@ export function ReviewProof() {
                 </div>
               ))}
             </dl>
-            <Link href="/verify" className="mt-5 inline-block text-sm text-brass underline-offset-4 hover:underline">
+            <Link prefetch={false} href="/verify" className="mt-5 inline-block text-sm text-brass underline-offset-4 hover:underline">
               Verify a decision or certificate
             </Link>
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/** Line art per primitive, drawn with one stroke so it can draw itself in. */
-const ART: Record<string, string> = {
-  "NEP-655 universal accounts and global contracts": "M10 50 h60 M40 20 v60 M20 30 l40 40 M60 30 l-40 40",
-  "Chain Signatures": "M15 60 q25 -50 50 0 t50 0 M15 60 h100",
-  "MPC foreign-transaction verification": "M20 40 l20 20 l40 -40 M20 70 h80",
-  "OutLayer TEE": "M30 20 h60 v60 h-60 z M45 35 h30 v30 h-30 z",
-  "NEAR AI Cloud verifiable models": "M20 70 q40 -70 80 0 M60 20 v60",
-  "Rhea lending and exchange": "M20 70 v-30 M45 70 v-45 M70 70 v-20 M95 70 v-50",
-  "x402 on NEAR": "M20 50 h70 l-15 -15 M90 50 l-15 15",
-  "Gas keys (NEP-611)": "M25 50 a15 15 0 1 1 30 0 a15 15 0 1 1 -30 0 M55 50 h50 M90 50 v15 M100 50 v10",
-  "Post-quantum keys (ML-DSA-65)": "M20 20 h20 v20 h-20 z M50 20 h20 v20 h-20 z M80 20 h20 v20 h-20 z M20 50 h20 v20 h-20 z M50 50 h20 v20 h-20 z M80 50 h20 v20 h-20 z",
-};
-
-export function NearBento() {
-  const items = proofs.items;
-  return (
-    <section id="near" className="scroll-mt-24 py-24 sm:py-32">
-      <div className="mx-auto max-w-[1180px] px-4 sm:px-6">
-        <SectionHead title={["Built from parts", "only NEAR has."]} lead="Each guarantee comes from a NEAR primitive, and each links to a transaction on testnet that shows it working." />
-        <div className="ruled mt-14 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it, i) => (
-            <Spotlight key={it.name} fill className="p-6 sm:p-7">
-              <Rise delay={(i % 3) * 80}>
-                <svg viewBox="0 0 120 90" className="draw-in h-16 w-24" aria-hidden="true">
-                  <path d={ART[it.name] ?? "M20 45 h80"} pathLength={1} style={{ stroke: "var(--parry-brass-fill)" }} fill="none" strokeWidth={1.5} />
-                </svg>
-                <h3 className="mt-5 text-lg text-fg">{it.name}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted">{it.what}</p>
-                {it.links.length ? (
-                  <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-                    {it.links.slice(0, 3).map((l) => (
-                      <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-brass underline-offset-4 hover:underline">
-                        {l.label}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-              </Rise>
-            </Spotlight>
-          ))}
         </div>
       </div>
     </section>
@@ -349,34 +300,9 @@ export function ReplayHeadline() {
             </div>
           </div>
         </div>
-        <Link href="/replay" className="mt-10 inline-block text-sm text-brass underline-offset-4 hover:underline">
+        <Link prefetch={false} href="/replay" className="mt-10 inline-block text-sm text-brass underline-offset-4 hover:underline">
           See each crash, hour by hour
         </Link>
-      </div>
-    </section>
-  );
-}
-
-export function Agents() {
-  return (
-    <section id="agents" className="scroll-mt-24 py-24 sm:py-32">
-      <div className="mx-auto grid max-w-[1180px] gap-12 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-        <SectionHead
-          title={["Agents can", "use it too."]}
-          lead="Everything a person sees, an agent can read through the MCP server: positions, risk, the guardian's log and its proofs, the vault. Write tools are capped and testnet only, and risk checks can be paid per call over x402 on NEAR."
-        />
-        <Terminal
-          title="claude"
-          lines={[
-            { kind: "cmd", text: "claude mcp add parry -- npx -y @parry/mcp" },
-            { kind: "out", text: "Added stdio MCP server parry" },
-            { kind: "comment", text: "# ask the agent: is alice.near at risk?" },
-            { kind: "cmd", text: "parry.risk_check({ account: \"alice.near\" })" },
-            { kind: "out", text: "health 1.32 (caution), liquidation at $2.79" },
-            { kind: "out", text: "liquidation in 24 h: 0.4 %, median time beyond 30 days" },
-            { kind: "out", text: "score 11 of 100, Tremor index 98 % a year (stressed)" },
-          ]}
-        />
       </div>
     </section>
   );

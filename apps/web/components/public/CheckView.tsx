@@ -7,8 +7,8 @@ import { useState, type FormEvent } from "react";
 import { Heatmap } from "@/components/instrument/Heatmap";
 import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { Button } from "@/components/ui/Button";
-import { useHeatmap } from "@/lib/live";
-import { parry } from "@/lib/parry";
+import type { RiskCheck } from "@parry/sdk";
+import { getJson, useHeatmap } from "@/lib/live";
 import { formatDuration, formatProbability } from "@/lib/units";
 import { formatUsdCompact } from "@/lib/format";
 
@@ -21,7 +21,11 @@ export function CheckView() {
   const account = params.get("account");
   const [draft, setDraft] = useState(account ?? "");
   const [error, setError] = useState<string | null>(null);
-  const check = useQuery({ queryKey: ["check", account], queryFn: () => parry().riskCheck(account!), enabled: !!account && ACCOUNT.test(account), retry: 0 });
+  const check = useQuery({ queryKey: ["check", account], queryFn: async () => {
+      const r = await getJson<RiskCheck>(`/v1/risk/${encodeURIComponent(account!)}`);
+      if (!r) throw new Error("The Parry API is not answering right now.");
+      return r;
+    }, enabled: !!account && ACCOUNT.test(account), retry: 0 });
   const map = useHeatmap("testnet");
   const submit = (e: FormEvent) => {
     e.preventDefault();

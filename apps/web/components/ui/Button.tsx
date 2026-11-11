@@ -108,6 +108,8 @@ export type ButtonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   size?: ButtonSize;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
+  /** Next's route prefetch; off for heavy routes linked from light pages. */
+  prefetch?: boolean;
 };
 
 /** A link to another Parry page, styled as a button. */

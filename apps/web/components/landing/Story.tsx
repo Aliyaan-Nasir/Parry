@@ -1,22 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { RevealText, Rise } from "@/components/fx/Reveal";
-import { Marquee } from "@/components/fx/Marquee";
+import { SectionHead } from "./SectionHead";
 import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { useStatsLive } from "@/lib/live";
 import { formatUsdCompact } from "@/lib/format";
 import { cn } from "@/lib/cn";
-
-export function SectionHead({ id, title, lead, className, center = false }: { id?: string; title: readonly ReactNode[]; lead?: ReactNode; className?: string; center?: boolean }) {
-  return (
-    <div id={id} className={cn("scroll-mt-28", center && "text-center", className)}>
-      <RevealText lines={title} className={cn("display-sm text-gradient text-[2.4rem] sm:text-[3.4rem] lg:text-[4rem]", center && "mx-auto")} />
-      {lead ? <p className={cn("mt-5 max-w-[38rem] text-lg leading-relaxed text-muted", center && "mx-auto")}>{lead}</p> : null}
-    </div>
-  );
-}
 
 /** Staleness is shown only when the data really is stale. */
 function stale(iso: string | undefined): string | null {
@@ -55,33 +45,6 @@ export function LiveProof() {
           {figure("Insurance fund", data ? formatUsdCompact(data.insuranceUsd ?? 0) : "")}
         </dl>
       </div>
-    </section>
-  );
-}
-
-const ASSETS = ["NEAR", "wNEAR", "LiNEAR", "USDC", "Rhea Lending", "Rhea Exchange", "Hyperliquid", "Aave", "Base", "NEAR Intents", "OutLayer", "NEAR AI Cloud"];
-const PRIMITIVES = [
-  "Chain Signatures",
-  "Universal accounts",
-  "Global contracts",
-  "Passkeys on chain",
-  "Gas keys",
-  "ML-DSA-65 keys",
-  "Meta transactions",
-  "MPC transaction checks",
-  "x402 on NEAR",
-  "Agent Market",
-  "NEP-413 sign-in",
-  "Verifiable AI",
-];
-
-export function Primitives() {
-  const word = (w: string) => <span className="display-sm whitespace-nowrap text-2xl text-fg/70 sm:text-3xl">{w}</span>;
-  return (
-    <section className="py-16 sm:py-20" aria-label="What Parry runs on">
-      <p className="label mb-8 text-center">Built from the assets, venues and primitives it runs on</p>
-      <Marquee label="Assets and venues" items={ASSETS.map(word)} seconds={70} />
-      <Marquee label="NEAR primitives" items={PRIMITIVES.map(word)} seconds={80} reverse className="mt-5" />
     </section>
   );
 }
@@ -213,40 +176,5 @@ function StoryMock({ step }: { step: number }) {
         )}
       </div>
     </div>
-  );
-}
-
-/** What the guardian can and cannot do, as a two-column ledger. */
-export function Ledger() {
-  const can = ["Repay your loan from your reserve", "Add collateral from your reserve", "Deleverage atomically, all or nothing", "Reduce or hedge a Hyperliquid position", "Repay your Aave loan on Base"];
-  const cannot = ["Move money out of your account", "Act outside your mandate", "Swap its own signing key", "Stop you from revoking or overriding it", "Act without a reviewed, signed plan"];
-  return (
-    <section className="py-24 sm:py-32">
-      <div className="mx-auto max-w-[1180px] px-4 sm:px-6">
-        <SectionHead title={["It can only protect.", "It can never take."]} lead="The guardian's powers are written into your own account contract. It acts under your mandate, and you can revoke or override it at any moment." />
-        <div className="mt-14 grid border-t border-line sm:grid-cols-2">
-          <Rise className="border-b border-line py-8 sm:border-r sm:pr-10">
-            <div className="label">It can</div>
-            <ul className="mt-5 space-y-4">
-              {can.map((c) => (
-                <li key={c} className="text-xl text-fg">
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </Rise>
-          <Rise className="border-b border-line py-8 sm:pl-10" delay={120}>
-            <div className="label">It never can</div>
-            <ul className="mt-5 space-y-4">
-              {cannot.map((c) => (
-                <li key={c} className="struck text-xl text-fg/60">
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </Rise>
-        </div>
-      </div>
-    </section>
   );
 }

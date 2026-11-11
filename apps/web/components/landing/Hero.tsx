@@ -82,11 +82,11 @@ export function Hero() {
         </p>
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Magnetic>
-            <ButtonLink href="/app" size="lg" className="!rounded-full px-7">
+            <ButtonLink prefetch={false} href="/app" size="lg" className="!rounded-full px-7">
               Open the app
             </ButtonLink>
           </Magnetic>
-          <ButtonLink href="/check" size="lg" variant="secondary" className="!rounded-full px-7">
+          <ButtonLink prefetch={false} href="/check" size="lg" variant="secondary" className="!rounded-full px-7">
             Check any account
           </ButtonLink>
         </div>

@@ -7,9 +7,11 @@ import { siteUrl } from "@/lib/env";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site";
 import { themeScript } from "@/lib/theme";
 
-const display = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap", axes: ["opsz"] });
+// Fraunces without its optical-size axis (nothing sets it): a third of the bytes. Display and mono
+// type swap in after the first paint; only the text face is preloaded, so it never waits.
+const display = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap", preload: false });
 const text = Instrument_Sans({ subsets: ["latin"], variable: "--font-instrument", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

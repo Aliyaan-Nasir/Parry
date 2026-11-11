@@ -1,8 +1,8 @@
 import { Suspense, type ReactNode } from "react";
-import { Faq, FinalCall } from "@/components/landing/Closing";
 import { Hero } from "@/components/landing/Hero";
-import { Agents, CascadeSlice, Earn, NearBento, ReplayHeadline, ReviewProof } from "@/components/landing/Sections";
-import { Ledger, LiveProof, Primitives, ProtectStory } from "@/components/landing/Story";
+import { CascadeSlice, Earn, ReplayHeadline, ReviewProof } from "@/components/landing/Sections";
+import { Agents, Faq, FinalCall, Ledger, NearBento, Primitives } from "@/components/landing/Static";
+import { LiveProof, ProtectStory } from "@/components/landing/Story";
 
 /** Each section hydrates on its own, so the page never blocks on one long hydration task. */
 const Part = ({ children }: { children: ReactNode }) => <Suspense>{children}</Suspense>;
