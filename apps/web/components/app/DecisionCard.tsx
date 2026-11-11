@@ -164,7 +164,8 @@ export function DecisionCard({ decision }: { decision: Decision }) {
         </Block>
         <Block title="Health">
           <p className="num text-sm text-fg">
-            {formatHealth(decision.healthBefore)}
+            {/* Unmeasured is not "no debt": a decision may predate the reading. The trigger's health stands in. */}
+            {decision.healthBefore !== null ? formatHealth(decision.healthBefore) : formatHealth(decision.trigger.healthBps / 10_000)}
             <span aria-hidden="true" className="text-muted">
               {" "}
               →{" "}

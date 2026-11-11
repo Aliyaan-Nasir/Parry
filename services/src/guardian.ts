@@ -13,8 +13,8 @@ import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
 import { submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
-import { eventsOf, returnValue, senderFromEnv, TxError, txHash } from "./lib/near";
-import { derivedAddress, oraclePrices, PATH_EVM, readRhea } from "./lib/positions";
+import { eventsOf, returnValue, senderFromEnv, TxError, txHash, view } from "./lib/near";
+import { derivedAddress, oraclePrices, PATH_EVM, readAave, readRhea } from "./lib/positions";
 import { quoteRescue } from "./lib/routes";
 
 const wallet = senderFromEnv("GUARDIAN");
@@ -41,7 +41,14 @@ interface GuardianOutput {
   public_key: string;
 }
 
-async function health(account: string): Promise<number | null> {
+/** The health of the position a decision acts on, read live: the Aave loan for an EVM step, else Rhea. */
+async function health(account: string, venue: string): Promise<number | null> {
+  if (venue === "evm") {
+    const m = await view<{ mandate: { evm?: { pool: string; address: string } | null } } | null>(account, "mandate").catch(() => null);
+    const g = m?.mandate.evm;
+    const r = g ? await readAave(g.pool, g.address).catch(() => null) : null;
+    return r && r.debtUsd > 0 ? r.health : null;
+  }
   const { near } = await oraclePrices();
   if (near === null) return null;
   const r = await readRhea(account, near).catch(() => null);
@@ -88,7 +95,7 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
   const id = JSON.parse(d.decision_json ?? "{}").id ?? d.review_hash;
   const actionName = Object.keys(d.action)[0] ?? "unknown";
   const trigger = d.decision_json ? JSON.parse(d.decision_json).trigger : {};
-  const before = await health(d.account);
+  const before = await health(d.account, d.venue);
   const txs: Record<string, string | null> = { action: null, record: null, hyperliquid: null, evm: null };
   let outcome = "rejected_by_review";
   let detail = "";
@@ -133,7 +140,7 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
       log.warn("decision record failed", { error: errorText(e) });
     }
   }
-  const after = await health(d.account);
+  const after = await health(d.account, d.venue);
   await sql`INSERT INTO decisions (id, account, venue, action, plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail)
     VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${sql.json(trigger)}, ${outcome}, ${sql.json(d.review as never)}, ${d.envelope ?? null},
       ${d.envelope_signature ?? null}, ${sql.json(txs as never)}, ${before}, ${after}, ${routes ? sql.json(routes as never) : null}, ${detail})
