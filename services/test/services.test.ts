@@ -82,6 +82,7 @@ describe("Agent Market worker", () => {
     const { accountsIn } = await import("../src/market");
     expect(accountsIn("Check alice.near and Bob.Testnet please, also alice.near")).toEqual(["alice.near", "bob.testnet"]);
     expect(accountsIn(`implicit ${"ab".repeat(32)}`)).toEqual(["ab".repeat(32)]);
+    expect(accountsIn("risk of 0ucgjz0wsmc9wyjzpdxnw835eb8tqy546bhppnhhmvf3j1xs1gj9a0?")).toEqual(["0ucgjz0wsmc9wyjzpdxnw835eb8tqy546bhppnhhmvf3j1xs1gj9a0"]);
     expect(accountsIn("a.near b.near c.near d.near e.near f.near")).toHaveLength(5);
   });
 
@@ -93,7 +94,7 @@ describe("Agent Market worker", () => {
         {
           account: "alice.near",
           position: { label: "Rhea wNEAR/USDC", health: 1.04, liqPrice: 2.31, probability24h: 0.18, ttlHours: 30.5, score: 81, tier: "critical" },
-          market: { near: { priceUsd: 2.4 }, tremor: { annual: 0.72, level: "elevated" }, cascade: { pressure: 0.12 } },
+          market: { price: 2.4, tremor: { annual: 0.72, level: "elevated" }, cascade: { pressure: 0.12 } },
         },
       ],
       ["gone.near"],

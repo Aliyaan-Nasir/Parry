@@ -25,14 +25,16 @@ interface Assignment {
 interface RiskCheck {
   account: string;
   position: { label: string; health: number | null; liqPrice: number | null; probability24h: number; ttlHours: number | null; score: number; tier: string } | null;
-  market: { near: { priceUsd: number }; tremor: { annual: number; level: string }; cascade: { pressure: number } };
+  market: { price: number; tremor: { annual: number; level: string }; cascade: { pressure: number } } | null;
 }
 
 /** NEAR account ids named in a job: named accounts and 64-hex implicit accounts, at most five. */
 export function accountsIn(text: string): string[] {
   const named = text.match(/\b[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*\.(?:near|testnet)\b/gi) ?? [];
   const implicit = text.match(/\b[0-9a-f]{64}\b/g) ?? [];
-  return [...new Set([...named, ...implicit].map((a) => a.toLowerCase()))].slice(0, MAX_ACCOUNTS);
+  // Deterministic accounts (NEP-616 `0s…`, and the universal `0u…` ids Parry's protected accounts have).
+  const deterministic = text.match(/\b0[su][0-9a-z]{40,62}\b/g) ?? [];
+  return [...new Set([...named, ...implicit, ...deterministic].map((a) => a.toLowerCase()))].slice(0, MAX_ACCOUNTS);
 }
 
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)} %`;
@@ -44,7 +46,7 @@ export function report(checks: RiskCheck[], missing: string[]): string {
     return [...lines, "The job names no NEAR account. Name one or more accounts, for example `alice.near`, and hire again."].join("\n");
   }
   const m = checks[0]?.market;
-  if (m) lines.push(`Scored against NEAR at $${m.near.priceUsd.toFixed(3)}, Tremor volatility ${pct(m.tremor.annual)} a year (${m.tremor.level}), cascade pressure ${m.cascade.pressure.toFixed(2)}.`, "");
+  if (m) lines.push(`Scored against NEAR at $${m.price.toFixed(3)}, Tremor volatility ${pct(m.tremor.annual)} a year (${m.tremor.level}), cascade pressure ${m.cascade.pressure.toFixed(2)}.`, "");
   lines.push("| Account | Health | Liquidation price | 24 h liquidation odds | Median time to liquidation | Score |", "| --- | ---: | ---: | ---: | ---: | ---: |");
   for (const c of checks) {
     const p = c.position;

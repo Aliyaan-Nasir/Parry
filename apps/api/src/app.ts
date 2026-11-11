@@ -9,28 +9,52 @@ import { balanceOf, gasKeyNonces, rpc, toNear, view } from "@parry/services/lib/
 import { oraclePrices, readRhea } from "@parry/services/lib/positions";
 import { quoteRescue } from "@parry/services/lib/routes";
 import { scoreAll } from "@parry/services/risk";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { challenge, session, verify, type Proof } from "./auth";
 import { cached, decision, position, vaultState, type DecisionRow, type PositionRow } from "./views";
-import { copilot, fx } from "./extras";
+import { copilot, CURRENCIES, fx } from "./extras";
 import { paidRisk } from "./x402";
 
 const ACCOUNT = /^[a-z0-9._-]{2,64}$/;
+
+/**
+ * The client address per-address limits key on: the right-most X-Forwarded-For entry, which the
+ * reverse proxy in front of the API appends (entries before it come from the client).
+ */
+export const clientIp = (forwarded: string | undefined): string =>
+  forwarded?.split(",").map((x) => x.trim()).filter(Boolean).pop() ?? "local";
 const RELAYER = process.env.RELAYER_URL ?? "http://localhost:4500";
 
 export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Response> } = {}) {
   const app = new Hono();
   app.use("*", cors({ origin: (o) => o ?? "*", allowHeaders: ["content-type", "authorization", "x-payment"], exposeHeaders: ["x-payment-response"] }));
-  // A request error (a malformed account id, say) carries its 4xx status; anything else is a 500.
+  // A request error carries its status (4xx, or 503 while a dependency has no data); anything else is a 500.
   app.onError((e, c) => {
     const status = (e as { status?: number }).status;
-    return c.json({ error: errorText(e) }, status !== undefined && status >= 400 && status < 500 ? (status as 400) : 500);
+    return c.json({ error: errorText(e) }, status !== undefined && ((status >= 400 && status < 500) || status === 503) ? (status as 400) : 500);
   });
 
-  const account = (id: string) => {
-    if (!ACCOUNT.test(id)) throw Object.assign(new Error("not a NEAR account id"), { status: 400 });
+  const bad = (message: string, status = 400) => Object.assign(new Error(message), { status });
+  const account = (id: unknown) => {
+    if (typeof id !== "string" || !ACCOUNT.test(id)) throw bad("not a NEAR account id");
     return id;
+  };
+  /** A numeric query parameter, clamped to [min, max]; one that is not a number is a 400. */
+  const numQuery = (c: Context, name: string, fallback: number, min: number, max: number) => {
+    const raw = c.req.query(name);
+    if (raw === undefined || raw === "") return fallback;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) throw bad(`${name} must be a number`);
+    return Math.min(max, Math.max(min, n));
+  };
+  /** The request's JSON body; one that is not JSON is a 400. */
+  const body = async <T>(c: Context): Promise<T> => {
+    try {
+      return await c.req.json<T>();
+    } catch {
+      throw bad("the request body must be JSON");
+    }
   };
 
   app.get("/", (c) => c.json({ name: "Parry API", network, docs: "docs/api.md" }));
@@ -117,7 +141,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   });
 
   app.get("/v1/positions/:id/history", async (c) => {
-    const hours = Math.min(168, Math.max(1, Number(c.req.query("hours") ?? 24)));
+    const hours = numQuery(c, "hours", 24, 1, 168);
     const rows = await sql<{ t: Date; health: number | null; score: number; price: number }[]>`
       SELECT t, health, score, price FROM position_history WHERE position_id = ${c.req.param("id")} AND t > now() - make_interval(hours => ${hours}) ORDER BY t`;
     return c.json(rows.map((r) => ({ t: r.t.toISOString(), health: r.health, score: r.score, price: r.price })));
@@ -126,7 +150,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   /** Any NEAR account's lending risk, read live (the free, rate-limited version). */
   async function riskCheck(id: string) {
     const { near } = await oraclePrices();
-    if (near === null) throw new Error("no fresh NEAR price");
+    if (near === null) throw bad("no fresh NEAR price", 503);
     const r = await readRhea(id, near);
     // The same inputs the risk engine scores with: market volatility and the latest cascade pressure.
     const { history } = await nearHistory(sql);
@@ -146,13 +170,18 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   }
 
   app.get("/v1/risk/:id", async (c) => {
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0] ?? "local";
+    const ip = clientIp(c.req.header("x-forwarded-for"));
     const { useQuota } = await import("@parry/services/lib/db");
     if (!(await useQuota(sql, "risk-check", ip, Number(process.env.FREE_RISK_CHECKS_PER_DAY ?? 200)))) return c.json({ error: "daily free checks used; use /v1/paid/risk over x402" }, 429);
     return c.json(await riskCheck(account(c.req.param("id"))));
   });
 
-  app.get("/v1/paid/risk/:id", async (c) => paidRisk(c, sql, () => riskCheck(account(c.req.param("id")))));
+  // Everything that can refuse the request is checked before the payment is taken.
+  app.get("/v1/paid/risk/:id", async (c) => {
+    const id = account(c.req.param("id"));
+    if ((await oraclePrices()).near === null) throw bad("no fresh NEAR price", 503);
+    return paidRisk(c, sql, () => riskCheck(id));
+  });
 
   app.post("/v1/simulate/:id", async (c) => {
     const id = account(c.req.param("id"));
@@ -166,7 +195,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const lu = limit(contract("usdc"));
     const lw = limit(contract("wnear"));
     const strategy = STRATEGIES.find((s) => s.id === (c.req.query("strategy") ?? "repay-first")) ?? STRATEGIES[0]!;
-    const target = Number(c.req.query("target") ?? 1.45);
+    const target = numQuery(c, "target", 1.45, 1.01, 10);
     const pos = { collateral: r.collateralNear, debt: r.debtUsd, price: near, collateralRatio: r.position.collateral[0]!.volatilityRatio, debtRatio: r.position.debt[0]!.volatilityRatio };
     const p = planSteps(strategy, pos, target, {
       repayBudget: Math.min(Number(usdc) / 1e6, lu ? Number(lu.daily) / 1e6 : 0),
@@ -189,9 +218,10 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   });
 
   app.get("/v1/guardian/decisions", async (c) => {
-    const limit = Math.min(100, Number(c.req.query("limit") ?? 25));
+    const limit = Math.floor(numQuery(c, "limit", 25, 1, 100));
     const acct = c.req.query("account");
     const cursor = c.req.query("cursor");
+    if (cursor && Number.isNaN(Date.parse(cursor))) throw bad("cursor must be a time (a page's `next`)");
     const rows = await sql<DecisionRow[]>`SELECT * FROM decisions WHERE (${acct ?? null}::text IS NULL OR account = ${acct ?? null})
       AND (${cursor ?? null}::timestamptz IS NULL OR created_at < ${cursor ?? null}::timestamptz) ORDER BY created_at DESC LIMIT ${limit}`;
     return c.json({ items: rows.map(decision), next: rows.length === limit ? rows[rows.length - 1]!.created_at.toISOString() : null });
@@ -222,6 +252,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     app.post(`/v1/alerts/:id/${action}`, async (c) => {
       const who = await session(sql, c.req.header("authorization"));
       if (!who) return c.json({ error: "sign in first" }, 401);
+      if (!/^\d+$/.test(c.req.param("id"))) throw bad("an alert id is a number");
       const status = action === "ack" ? "acknowledged" : "resolved";
       const [a] = await sql`UPDATE alerts SET status = ${status}, updated_at = now() WHERE id = ${c.req.param("id")} AND account = ${who} RETURNING id, status`;
       return a ? c.json({ id: String(a.id), status: a.status }) : c.json({ error: "no such alert for this account" }, 404);
@@ -229,7 +260,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   }
 
   app.post("/v1/auth/challenge", async (c) => {
-    const { accountId } = await c.req.json<{ accountId: string }>();
+    const { accountId } = await body<{ accountId?: string }>(c);
     return c.json(await challenge(sql, account(accountId)));
   });
   app.post("/v1/auth/verify", async (c) => {
@@ -259,7 +290,15 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   app.put("/v1/settings/:id", async (c) => {
     const id = account(c.req.param("id"));
     if ((await session(sql, c.req.header("authorization"))) !== id) return c.json({ error: "sign in as this account first" }, 401);
-    const b = await c.req.json<{ thresholds?: typeof DEFAULT_THRESHOLDS; displayCurrency?: string; email?: string | null; digest?: string; linkTelegram?: boolean }>();
+    const b = await body<{ thresholds?: typeof DEFAULT_THRESHOLDS; displayCurrency?: string; email?: string | null; digest?: string; linkTelegram?: boolean }>(c);
+    if (b.displayCurrency !== undefined && !(CURRENCIES as readonly string[]).includes(b.displayCurrency)) throw bad(`displayCurrency is one of ${CURRENCIES.join(", ")}`);
+    if (b.digest !== undefined && b.digest !== "off" && b.digest !== "daily") throw bad("digest is off or daily");
+    if (b.email !== undefined && b.email !== null && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(b.email)) throw bad("email is not an address");
+    if (b.thresholds !== undefined) {
+      const t = b.thresholds;
+      const ok = !!t && typeof t === "object" && Number.isFinite(t.score) && t.score >= 0 && t.score <= 100 && Number.isFinite(t.health) && t.health > 1 && t.health <= 5 && Number.isFinite(t.cascade) && t.cascade >= 0 && t.cascade <= 1;
+      if (!ok) throw bad("thresholds are { score 0 to 100, health above 1 up to 5, cascade 0 to 1 }");
+    }
     const code = b.linkTelegram ? crypto.randomUUID().replace(/-/g, "").slice(0, 16) : null;
     await sql`INSERT INTO settings (account) VALUES (${id}) ON CONFLICT DO NOTHING`;
     await sql`UPDATE settings SET
@@ -275,7 +314,8 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   app.post("/v1/push/subscribe", async (c) => {
     const who = await session(sql, c.req.header("authorization"));
     if (!who) return c.json({ error: "sign in first" }, 401);
-    const sub = await c.req.json<{ endpoint: string; keys: { p256dh: string; auth: string } }>();
+    const sub = await body<{ endpoint?: string; keys?: { p256dh: string; auth: string } }>(c);
+    if (typeof sub.endpoint !== "string" || !sub.endpoint.startsWith("https://") || !sub.keys?.p256dh || !sub.keys.auth) throw bad("a Web Push subscription is { endpoint, keys: { p256dh, auth } }");
     await sql`INSERT INTO push_subscriptions (endpoint, account, keys) VALUES (${sub.endpoint}, ${who}, ${sql.json(sub.keys)}) ON CONFLICT (endpoint) DO UPDATE SET account = excluded.account, keys = excluded.keys`;
     return c.json({ ok: true });
   });
@@ -283,7 +323,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
   app.get("/v1/vault", async (c) => c.json(await vaultState(sql)));
 
   app.get("/v1/vault/history", async (c) => {
-    const days = Math.min(90, Math.max(1, Number(c.req.query("days") ?? 7)));
+    const days = numQuery(c, "days", 7, 1, 90);
     const rows = await sql<{ t: Date; share_price: number; nav: number; score: number; hedged: number }[]>`SELECT * FROM vault_history WHERE t > now() - make_interval(days => ${days}) ORDER BY t`;
     return c.json(rows.map((r) => ({ t: r.t.toISOString(), sharePriceUsd: r.share_price, navUsd: r.nav, riskScore: r.score, hedgedFraction: r.hedged })));
   });
@@ -311,15 +351,16 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   app.get("/v1/fx", async (c) => c.json(await fx()));
   app.post("/v1/copilot", async (c) => {
-    const body = await c.req.json<{ account: string; positionId?: string; question?: string }>();
+    const q = await body<{ account?: string; positionId?: string; question?: string }>(c);
+    const id = account(q.account);
     try {
-      return c.json(await copilot(sql, { ...body, account: account(body.account) }));
+      return c.json(await copilot(sql, { ...q, account: id }));
     } catch (e) {
       return c.json({ error: errorText(e) }, ((e as { status?: number }).status ?? 500) as 500);
     }
   });
 
-  app.get("/v1/quotes/rescue", async (c) => c.json(await quoteRescue(Math.max(0.1, Number(c.req.query("amountNear") ?? 10)))));
+  app.get("/v1/quotes/rescue", async (c) => c.json(await quoteRescue(numQuery(c, "amountNear", 10, 0.1, 1_000_000))));
 
   /** Whether an account holds a post-quantum ML-DSA-65 key (the chain lists its on-trie handle). */
   const postQuantum = async (account: string): Promise<boolean> => {

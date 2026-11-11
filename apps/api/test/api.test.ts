@@ -93,6 +93,22 @@ describe.skipIf(!url)("routes on a database", () => {
     expect(bad.status).toBe(400);
     expect(((await bad.json()) as { error: string }).error).toContain("not a NEAR account id");
   });
+
+  test("a non-numeric parameter, a body that is not JSON and a missing account id are 400s", async () => {
+    expect((await app.request("/v1/guardian/decisions?limit=abc")).status).toBe(400);
+    expect((await app.request("/v1/guardian/decisions?cursor=yesterday")).status).toBe(400);
+    expect((await app.request("/v1/auth/challenge", { method: "POST", body: "not json" })).status).toBe(400);
+    expect((await app.request("/v1/auth/challenge", { method: "POST", body: "{}" })).status).toBe(400);
+  });
+});
+
+describe("client address", () => {
+  test("is the entry the reverse proxy appended, not one the client sent", async () => {
+    const { clientIp } = await import("../src/app");
+    expect(clientIp("6.6.6.6, 203.0.113.9")).toBe("203.0.113.9");
+    expect(clientIp("203.0.113.9")).toBe("203.0.113.9");
+    expect(clientIp(undefined)).toBe("local");
+  });
 });
 
 describe("model attestation", () => {

@@ -98,8 +98,17 @@ export interface RiskCheck {
   checkedAt: string;
   /** null when the account has no lending position */
   position: Position | null;
-  market: Market;
+  /** The risk engine's latest market report, null before the first one. */
+  market: MarketReport | null;
   model: "docs/risk-model.md";
+}
+
+/** The risk engine's market report: the NEAR price it scored at, its Tremor index and cascade pressure. */
+export interface MarketReport {
+  /** NEAR in USD. */
+  price: number;
+  tremor: Market["tremor"];
+  cascade: Market["cascade"];
 }
 
 export interface SimulationStep {
@@ -253,12 +262,13 @@ export interface Reserves {
 
 /** One row of `GET /v1/rates`. */
 export interface Rate {
-  /** "rhea" for lending markets, "vault" for the vault's yield. */
-  source: "rhea" | "vault";
+  /** "wNEAR", "USDC", or "Parry Earn (EARN)" for the vault's yield. */
   asset: string;
-  supplyApr: number | null;
-  borrowApr: number | null;
-  updatedAt: string;
+  supplyApr: number;
+  /** 0 for the vault. */
+  borrowApr: number;
+  /** "Rhea lending", or the vault. */
+  source: string;
 }
 
 export interface RouteComparison {
@@ -275,7 +285,8 @@ export interface Status {
   services: { name: string; ok: boolean; detail: string; checkedAt: string }[];
   oracle: { publishTime: string; ageSeconds: number; fresh: boolean } | null;
   indexer: { lastBlock: number; lagBlocks: number };
-  lanes: { service: string; account: string; key: string; nonces: number; inFlight: number }[];
+  /** Each service's gas key: its nonce lanes, 0 when unknown. */
+  lanes: { service: string; account: string | null; key: string | null; nonces: number }[];
   treasury: {
     account: string;
     balanceNear: number;
@@ -283,7 +294,7 @@ export interface Status {
     /** The treasury signs with a post-quantum ML-DSA-65 (FIPS 204) key. */
     postQuantumKey: boolean;
     wallets: { name: string; account: string; balanceNear: number; target: number }[];
-  };
+  } | null;
 }
 
 // ---------------------------------------------------------------------------------------------

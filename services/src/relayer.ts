@@ -17,6 +17,8 @@ const relayer = senderFromEnv("RELAYER");
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 const fail = (message: string, status = 400) => json({ error: message }, status);
+/** A spent budget or rate limit: answered with 429, not 400. */
+const limited = (message: string) => Object.assign(new Error(message), { status: 429 });
 
 async function isParryAccount(sql: Sql, account: string): Promise<boolean> {
   const [row] = await sql`SELECT 1 FROM accounts WHERE account = ${account}`;
@@ -27,8 +29,8 @@ export async function createAccount(sql: Sql, body: { passkey?: string; nearAcco
   if (!relayer) throw new Error("the relayer wallet is not configured");
   const owner = body.passkey ?? body.nearAccount;
   if (!owner || (body.passkey && body.nearAccount)) throw new Error("give exactly one of passkey or nearAccount");
-  if (!(await useQuota(sql, "create-account", "all", intEnv("RELAYER_DAILY_ACCOUNTS", 50)))) throw new Error("the relayer's daily account budget is spent; try again tomorrow");
-  if (!(await useQuota(sql, "create-account-ip", ip, intEnv("RELAYER_ACCOUNTS_PER_IP", 3)))) throw new Error("too many accounts from this address today");
+  if (!(await useQuota(sql, "create-account", "all", intEnv("RELAYER_DAILY_ACCOUNTS", 50)))) throw limited("the relayer's daily account budget is spent; try again tomorrow");
+  if (!(await useQuota(sql, "create-account-ip", ip, intEnv("RELAYER_ACCOUNTS_PER_IP", 3)))) throw limited("too many accounts from this address today");
   const args = body.passkey ? { passkey: body.passkey } : { near_account: body.nearAccount };
   const accountId = await view<string>(contract("factory"), "account_id_of", args);
   const o = await relayer.call({ receiverId: contract("factory"), methodName: "create_account", args, deposit: yocto(Number(process.env.RELAYER_ACCOUNT_DEPOSIT ?? 0.3)), tgas: 250 });
@@ -41,7 +43,7 @@ export async function createAccount(sql: Sql, body: { passkey?: string; nearAcco
 async function owner(sql: Sql, body: { account: string; request: string; assertion: unknown }) {
   if (!relayer) throw new Error("the relayer wallet is not configured");
   if (!(await isParryAccount(sql, body.account))) throw new Error("not a Parry protected account");
-  if (!(await useQuota(sql, "owner", body.account, intEnv("RELAYER_OWNER_PER_DAY", 60)))) throw new Error("this account's daily relay budget is spent");
+  if (!(await useQuota(sql, "owner", body.account, intEnv("RELAYER_OWNER_PER_DAY", 60)))) throw limited("this account's daily relay budget is spent");
   const o = await relayer.call({ receiverId: body.account, methodName: "owner_execute", args: { request: body.request, assertion: body.assertion }, tgas: 300 });
   return { txHash: txHash(o) };
 }
@@ -60,7 +62,7 @@ async function delegate(sql: Sql, body: { payload?: string; signedDelegateAction
   const payload = body.payload ?? body.signedDelegateAction;
   if (!payload) throw new Error("send the signed delegate action as base64 borsh");
   const { sender } = await checkDelegate(sql, payload);
-  if (!(await useQuota(sql, "delegate", sender, intEnv("RELAYER_DELEGATE_PER_DAY", 60)))) throw new Error("this account's daily relay budget is spent");
+  if (!(await useQuota(sql, "delegate", sender, intEnv("RELAYER_DELEGATE_PER_DAY", 60)))) throw limited("this account's daily relay budget is spent");
   const o = await relayer.relayDelegate(payload);
   return { txHash: txHash(o) };
 }
@@ -74,7 +76,7 @@ async function shock(sql: Sql, body: { bps: number }, ip: string) {
   if (!relayer) throw new Error("the relayer wallet is not configured");
   const bps = Math.trunc(Number(body.bps));
   if (!Number.isFinite(bps)) throw new Error("bps must be an integer (0 clears the shock)");
-  if (!(await useQuota(sql, "shock", ip, intEnv("SHOCKS_PER_IP", 20)))) throw new Error("too many shocks from this address today");
+  if (!(await useQuota(sql, "shock", ip, intEnv("SHOCKS_PER_IP", 20)))) throw limited("too many shocks from this address today");
   const o = await relayer.call({ receiverId: contract("oracle"), methodName: bps === 0 ? "reset_shock" : "shock", args: bps === 0 ? { price_id: NEAR_USD } : { price_id: NEAR_USD, bps }, tgas: 30 });
   const s = await view<unknown>(contract("oracle"), "shock_of", { price_id: NEAR_USD });
   return { txHash: txHash(o), shock: s };
@@ -87,7 +89,8 @@ export async function main() {
   const handle = async (req: Request): Promise<Response | null> => {
     const url = new URL(req.url);
     if (req.method !== "POST") return null;
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    // The right-most entry: the one the reverse proxy in front of the API appended.
+    const ip = req.headers.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).pop() ?? "local";
     const body = await req.json().catch(() => ({}));
     try {
       const routes: Record<string, () => Promise<unknown>> = {
@@ -104,7 +107,7 @@ export async function main() {
       return json(out);
     } catch (e) {
       log.warn("relay refused", { path: url.pathname, error: errorText(e) });
-      return fail(errorText(e));
+      return fail(errorText(e), (e as { status?: number }).status ?? 400);
     }
   };
   every(600_000, "gas-key", () => tendGasKey(sql, "relayer", relayer));

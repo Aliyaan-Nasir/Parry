@@ -49,6 +49,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm typecheck:scripts
       - run: pnpm lint
+      - name: The README's generated blocks and the docs' line anchors are current
+        run: bun scripts/readme.ts --check
 
   test:
     name: TypeScript tests
