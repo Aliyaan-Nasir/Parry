@@ -38,17 +38,16 @@ test.describe("live stats", () => {
   test("shows the API's figures", async ({ page }) => {
     await mockStats(page);
     await page.goto("/");
-    const strip = page.getByRole("region", { name: /Live from NEAR/ });
-    await expect(strip.getByText(String(STATS_FIXTURE.positionsProtected), { exact: true }).first()).toBeAttached();
+    const strip = page.getByRole("region", { name: /live/ });
     await expect(strip.getByText("$48.3K", { exact: true })).toBeAttached();
-    await expect(strip.getByText(/Updated/)).toBeVisible();
+    await expect(strip.getByText("Vault size")).toBeAttached();
   });
 
   test("says so quietly when the API is unreachable, and shows no numbers", async ({ page }) => {
     const problems = watchConsole(page, [/Failed to load resource/]);
     await mockStats(page, "down");
     await page.goto("/");
-    const strip = page.getByRole("region", { name: /Live from NEAR/ });
+    const strip = page.getByRole("region", { name: /live/ });
     await expect(strip.getByText("Live data unavailable right now.")).toBeVisible({ timeout: 15_000 });
     await expect(strip.locator("dl")).not.toContainText(/\d/);
     expect(problems()).toEqual([]);

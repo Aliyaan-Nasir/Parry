@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { MobileNav, Sidebar } from "@/components/app/AppNav";
 import { HashScroll } from "@/components/app/HashScroll";
 import { TopBar } from "@/components/app/TopBar";
@@ -28,7 +29,9 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
           </main>
         </div>
         <MobileNav />
-        <HashScroll />
+        <Suspense>
+          <HashScroll />
+        </Suspense>
       </div>
     </AppProviders>
   );

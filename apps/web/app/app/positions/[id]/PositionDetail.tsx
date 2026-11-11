@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import type { Position } from "@parry/sdk";
+import { riskScore } from "@parry/core";
+import type { Market, Position } from "@parry/sdk";
 import { QueryError, Segmented } from "@/components/app/bits";
 import { CloseFlow } from "@/components/app/CloseFlow";
 import { Copilot } from "@/components/app/Copilot";
@@ -26,6 +27,49 @@ const RANGES = [
   { value: 24, label: "24 h" },
   { value: 168, label: "7 days" },
 ] as const;
+
+/** The risk score taken apart: S = 100 × (0.70 √P + 0.15 V + 0.15 C), with health floors. */
+function ScoreParts({ position, market }: { position: Position; market: Market | undefined }) {
+  if (!market) return <Skeleton height="7rem" shape="block" />;
+  const s = riskScore({ health: position.health ?? Infinity, probability24h: position.probability24h, annualVol: market.tremor.annual, cascadePressure: market.cascade.pressure });
+  const parts = [
+    { name: "Liquidation probability", detail: `0.70 × √P(24 h), P = ${formatProbability(position.probability24h)}`, points: s.components.liquidation, max: 70 },
+    { name: "Market turbulence", detail: `0.15 × Tremor above 30%, now ${formatPercent(market.tremor.annual, 0)}`, points: s.components.volatility, max: 15 },
+    { name: "Cascade pressure", detail: `0.15 × pressure, now ${formatPercent(market.cascade.pressure, 1)}`, points: s.components.cascade, max: 15 },
+  ];
+  const sum = parts.reduce((t, p) => t + p.points, 0);
+  const floor = position.health !== null && position.health < 1.1 ? (position.health < 1.03 ? 75 : 50) : null;
+  return (
+    <div className="grid gap-5">
+      <ul className="grid gap-5 sm:grid-cols-3">
+        {parts.map((p) => (
+          <li key={p.name} className="grid content-start gap-1.5">
+            <div className="flex items-end justify-between gap-3">
+              <span className="text-sm text-fg">{p.name}</span>
+              <span className="num text-sm text-fg">
+                {p.points}
+                <span className="text-muted"> / {p.max}</span>
+              </span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-line" aria-hidden="true">
+              <div className="h-full rounded-full bg-fg/55" style={{ width: `${(p.points / p.max) * 100}%` }} />
+            </div>
+            <p className="text-[12.5px] text-muted">{p.detail}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[13px] leading-5 text-muted">
+        With the current market the parts add up to <span className="num text-fg">{sum}</span>
+        {floor !== null ? (
+          <>
+            ; health below {floor === 75 ? "1.03" : "1.10"} sets a floor of <span className="num text-fg">{floor}</span>
+          </>
+        ) : null}
+        . The scored figure, <span className="num text-fg">{position.score}</span>, is the risk engine&apos;s at {new Date(position.updatedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}.
+      </p>
+    </div>
+  );
+}
 
 function Detail({ position, account }: { position: Position; account: string }) {
   const [hours, setHours] = useState<number>(24);
@@ -64,7 +108,7 @@ function Detail({ position, account }: { position: Position; account: string }) 
       <dl className="ruled grid-cols-2 sm:grid-cols-4">
         {[
           ["Liquidation price", position.liqPrice ? format(position.liqPrice) : "none"],
-          ["Liquidation in 24 h", formatProbability(position.probability24h)],
+          ["Liquidation within 24 h", formatProbability(position.probability24h)],
           ["Time to liquidation", formatDuration(position.ttlHours)],
           ["Score", `${position.score} of 100`],
           ["Collateral", format(position.collateralUsd)],
@@ -133,6 +177,18 @@ function Detail({ position, account }: { position: Position; account: string }) 
         </section>
       </div>
 
+      <section className="surface p-6" aria-labelledby="score-title">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 id="score-title" className="text-[15px] text-fg">
+            Score and its parts
+          </h2>
+          <span className="text-[12.5px] text-muted">S = 100 × (0.70 √P + 0.15 V + 0.15 C), with health floors</span>
+        </div>
+        <div className="mt-5">
+          <ScoreParts position={position} market={market.data} />
+        </div>
+      </section>
+
       {map.data ? (
         <section className="surface p-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
@@ -173,7 +229,7 @@ export function PositionDetail() {
   return (
     <div className="grid gap-8">
       <PageHeader
-        title={position?.label ?? "Position"}
+        title={position?.label ?? (q.data ? "Position not found" : "Position")}
         description={
           <span className="num text-[13px]" title={account}>
             {shortId(account, 10, 6)}

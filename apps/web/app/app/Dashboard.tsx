@@ -178,7 +178,7 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
           </div>
           <p className="mt-2 text-sm text-fg/80">{status ? `${status.label}. ${status.detail}` : <Skeleton width="30ch" />}</p>
         </div>
-        <dl className="flex gap-10">
+        <dl className="grid w-full grid-cols-3 gap-5 sm:flex sm:w-auto sm:gap-10">
           <div>
             <dt className="label">Collateral</dt>
             <dd className="num mt-1 text-2xl text-fg">{s ? format(collateral) : <Skeleton width="7ch" />}</dd>

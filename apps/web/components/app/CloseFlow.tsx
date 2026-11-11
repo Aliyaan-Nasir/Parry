@@ -61,7 +61,11 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
 
   const closeRhea = () =>
     run(async () => {
-      if (how === "sell") return acct.runOwnerActions([closeRheaAction(slippage)], { title: "Position closed" });
+      if (how === "sell") {
+        const poolId = (config.data as { dexPool?: number | null } | undefined)?.dexPool;
+        if (!poolId) throw new Error("The exchange pool is still loading.");
+        return acct.runOwnerActions([closeRheaAction({ slippageBps: slippage, poolId })], { title: "Closing round sent" });
+      }
       if (!ids?.usdc || !ids.wnear || !position) throw new Error("The contract ids are still loading.");
       // The debt in USDC units (6 decimals), with a small margin for interest that accrues meanwhile.
       const debt = BigInt(Math.ceil(position.debtUsd * 1.002 * 1e6));

@@ -17,6 +17,9 @@ export const PAGES = [
   { path: "/legal/privacy", heading: "Privacy" },
   { path: "/legal/cookies", heading: "Cookies" },
   { path: "/legal/security", heading: "Security" },
+  { path: "/check", heading: "Check any account." },
+  { path: "/verify", heading: "Verify, don't trust." },
+  { path: "/replay", heading: "Replayed through real crashes." },
   { path: "/app", heading: "Dashboard" },
   { path: "/app/open", heading: "Open position" },
   { path: "/app/protect", heading: "Protect" },
@@ -27,6 +30,10 @@ export const PAGES = [
   { path: "/app/settings", heading: "Settings" },
   { path: "/app/status", heading: "Status" },
   { path: "/app/shock", heading: "Market shock" },
+  { path: "/app/watched", heading: "Watched accounts" },
+  { path: "/app/certificates", heading: "Certificates" },
+  { path: "/app/rates", heading: "Rates" },
+  { path: "/app/cascade", heading: "Cascade map" },
   { path: POSITION_PATH, heading: POSITION_LABEL },
 ] as const;
 

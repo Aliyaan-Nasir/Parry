@@ -85,6 +85,15 @@
 }
 
 @layer base {
+  /*
+   * A grid item's automatic minimum width is its content's: one long unbreakable line (a truncated
+   * sentence, an address) would push the track, and the page, wider than a phone. Every grid item
+   * may shrink instead; a utility (min-w-*) still sets its own minimum.
+   */
+  .grid > * {
+    min-width: 0;
+  }
+
   html {
     background-color: var(--parry-bg);
     color: var(--parry-text);

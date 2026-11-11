@@ -53,7 +53,10 @@ function NavList({ pathname, onNavigate, collapsed = false }: { pathname: string
                     >
                       {active ? <span aria-hidden="true" className="absolute -left-3 top-2 h-5 w-[2px] rounded-full bg-brass-fill" /> : null}
                       <span className={cn("shrink-0 transition-colors", active ? "text-brass" : "text-muted group-hover:text-fg")}>{item.icon}</span>
-                      <span className={cn("min-w-0 flex-1 truncate transition-opacity", collapsed && "opacity-0")}>{item.label}</span>
+                      <span className={cn("min-w-0 flex-1 truncate transition-opacity", collapsed && "opacity-0")}>
+                        {item.label}
+                        {item.testnetOnly ? <span className="ml-2 text-[11px] text-muted">Testnet</span> : null}
+                      </span>
                     </Link>
                   </li>
                 );

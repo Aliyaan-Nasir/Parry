@@ -27,13 +27,15 @@ function stale(iso: string | undefined): string | null {
 
 /** One giant live number, and a few smaller ones, all from the Parry API on testnet. */
 export function LiveProof() {
-  const { data } = useStatsLive();
+  const { data, isError, isPending } = useStatsLive();
   const big = data?.valueProtectedUsd ?? null;
+  // Without the API the section says so and shows no figures at all, never zeros.
+  const down = !data && (isError || !isPending);
   const note = stale(data?.updatedAt);
   const figure = (label: string, value: ReactNode) => (
-    <div className="min-w-0">
-      <div className="num text-3xl tracking-tight text-fg sm:text-4xl">{value}</div>
-      <div className="label mt-2">{label}</div>
+    <div className="flex min-w-0 flex-col-reverse">
+      <dt className="label mt-2">{label}</dt>
+      <dd className="num min-h-10 text-3xl tracking-tight text-fg sm:text-4xl">{value}</dd>
     </div>
   );
   return (
@@ -42,15 +44,16 @@ export function LiveProof() {
         <div>
           <div className="label">Value under Parry&apos;s protection on NEAR testnet{note ? `, ${note}` : ""}</div>
           <div className="display mt-4 text-[4.5rem] leading-none text-fg sm:text-[7.5rem]">
-            {big === null ? <span className="text-muted/40">$0</span> : <NumberTicker value={big} format={(v) => formatUsdCompact(v)} />}
+            {big === null ? <span className="text-muted/40">{down ? "" : "$0"}</span> : <NumberTicker value={big} format={(v) => formatUsdCompact(v)} />}
           </div>
+          {down ? <p className="mt-4 text-sm text-muted">Live data unavailable right now.</p> : null}
         </div>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-10">
-          {figure("Positions watched", data ? <NumberTicker value={data.positionsWatched ?? data.positionsProtected} format={(v) => Math.round(v).toString()} /> : "0")}
-          {figure("Rescues, each AI reviewed", data ? <NumberTicker value={data.rescues} format={(v) => Math.round(v).toString()} /> : "0")}
-          {figure("Vault size", data ? formatUsdCompact(data.vaultTvlUsd) : "$0")}
-          {figure("Insurance fund", data ? formatUsdCompact(data.insuranceUsd ?? 0) : "$0")}
-        </div>
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-10">
+          {figure("Positions watched", data ? <NumberTicker value={data.positionsWatched ?? data.positionsProtected} format={(v) => Math.round(v).toString()} /> : "")}
+          {figure("Rescues, each AI reviewed", data ? <NumberTicker value={data.rescues} format={(v) => Math.round(v).toString()} /> : "")}
+          {figure("Vault size", data ? formatUsdCompact(data.vaultTvlUsd) : "")}
+          {figure("Insurance fund", data ? formatUsdCompact(data.insuranceUsd ?? 0) : "")}
+        </dl>
       </div>
     </section>
   );

@@ -107,6 +107,8 @@ function Deflection() {
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // The still frame stays under reduced motion; otherwise the scene plays.
+    svg.dataset.anim = "play";
     let raf = 0;
     let visible = true;
     let phase: Phase = "calm";
@@ -209,7 +211,8 @@ function Deflection() {
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className="block h-auto w-full cursor-ns-resize touch-none select-none"
+          className="hero-deflection block h-auto w-full cursor-ns-resize touch-none select-none"
+          data-anim="still"
           role="img"
           aria-label="Health falls toward liquidation; at the trigger Parry steps in and health recovers to the target."
           onPointerDown={(e) => {
@@ -257,7 +260,7 @@ function Deflection() {
           <g mask="url(#hero-mask)">
             {ghost ? <path d={ghost} fill="none" style={{ stroke: "var(--parry-muted)" }} strokeWidth={1.6} strokeDasharray="4 6" opacity={0.75} /> : null}
             <path d={pathOf(series, false)} fill="none" style={{ stroke: "var(--parry-text)" }} strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" />
-            <path d={pathOf(series, true)} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
+            <path data-part="recovery" d={pathOf(series, true)} fill="none" style={{ stroke: "var(--parry-brass-fill)" }} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
           </g>
           {/* The guard turning the strike aside. */}
           {strikeX !== null ? (

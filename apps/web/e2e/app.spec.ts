@@ -29,10 +29,10 @@ test.describe("dashboard", () => {
     await page.goto("/app");
     const market = page.getByRole("region", { name: "Market" });
     await expect(market.getByText("$2.86", { exact: true })).toBeVisible();
-    const positions = page.getByRole("table", { name: "Positions of this account" });
+    const positions = page.getByRole("region", { name: "Positions" });
     await expect(positions.getByRole("link", { name: /Rhea wNEAR\/USDC/ })).toBeVisible();
-    await expect(positions.getByText("Critical")).toBeVisible();
-    await expect(page.getByRole("meter", { name: /Account risk score/ })).toHaveAttribute("aria-valuenow", "85");
+    // The tier is a plain word on the card's instrument.
+    await expect(positions.getByRole("img", { name: /Health 1\.05, critical/ })).toBeVisible();
     await expect(page.getByRole("region", { name: "Alerts" }).getByText(/health 1.05/)).toBeVisible();
     await expect(page.getByRole("region", { name: "Guardian actions" }).getByText(/Repay on Rhea/).first()).toBeVisible();
     await positions.getByRole("link", { name: /Rhea wNEAR\/USDC/ }).click();
@@ -76,12 +76,13 @@ test.describe("position", () => {
     await page.goto(POSITION_PATH);
     await expect(page.getByRole("heading", { level: 1, name: "Rhea wNEAR/USDC" })).toBeVisible();
     await expect(page.getByText("Liquidation within 24 h")).toBeVisible();
-    await page.getByRole("tab", { name: "Price" }).click();
-    await expect(page.getByRole("img", { name: /NEAR price, last 24 h/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Health over the last 24 hours" })).toBeVisible();
     await page.getByRole("radio", { name: "7 days" }).click();
-    await expect(page.getByRole("img", { name: /NEAR price, last 7 days/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Health over the last 168 hours" })).toBeVisible();
     await expect.poll(() => api.requests.some((r) => r.path.includes("/history") && r.query.hours === "168")).toBe(true);
-    await expect(page.getByText("Liquidation probability")).toBeVisible();
+    await expect(page.getByRole("img", { name: "NEAR price", exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^Collateral liquidated by NEAR price/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Score and its parts" }).getByText("Liquidation probability")).toBeVisible();
     await page.getByRole("button", { name: "Explain" }).click();
     const copilot = page.getByRole("region", { name: "Risk copilot" });
     await expect(copilot.getByText("Verified", { exact: true })).toBeVisible();
@@ -110,9 +111,9 @@ test.describe("open a position", () => {
     const slider = page.getByRole("slider", { name: "Leverage" });
     await slider.focus();
     await page.keyboard.press("End");
-    await expect(preview.getByText(/^Health 1\.1\d$/)).toBeVisible();
+    await expect(preview.getByRole("img", { name: /^Health after opening 1\.1\d,/ })).toBeVisible();
     await page.keyboard.press("Home");
-    await expect(preview.getByText(/^Health 2\.9\d|^Health 3\.00$/)).toBeVisible();
+    await expect(preview.getByRole("img", { name: /^Health after opening (2\.9\d|3\.00),/ })).toBeVisible();
     await page.getByRole("button", { name: "Open position" }).click();
     const steps = page.getByRole("list", { name: "Opening steps" });
     await expect(steps.getByText("Set the default mandate: Done")).toBeAttached({ timeout: 20_000 });
@@ -210,7 +211,7 @@ test.describe("vault", () => {
     await mockApi(page);
     await seedAccount(page, "watch");
     await page.goto("/app/vault");
-    await expect(page.getByRole("meter", { name: "Vault risk score" })).toHaveAttribute("aria-valuenow", "22");
+    await expect(page.getByRole("region", { name: "Overview" }).getByText("22 of 100, low")).toBeVisible();
     const hedge = page.getByRole("region", { name: "Hedge" });
     await expect(hedge.getByText("Sell 163.0 NEAR at $2.86")).toBeVisible();
     await expect(hedge.getByRole("link", { name: /NEAR transaction/ })).toHaveAttribute("href", /testnet\.nearblocks\.io\/txns\//);
@@ -388,7 +389,7 @@ test.describe("connecting", () => {
     await dialog.getByLabel("Protected account address").fill(fx.ACCOUNT);
     await dialog.getByRole("button", { name: "View" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("table", { name: "Positions of this account" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Positions" })).toBeVisible();
     await page.getByRole("banner").getByRole("button", { name: /0uwg/ }).click();
     const menu = page.getByRole("dialog", { name: "Your account" });
     await expect(menu.getByRole("link", { name: /NearBlocks/ })).toHaveAttribute("href", `https://testnet.nearblocks.io/address/${fx.ACCOUNT}`);
