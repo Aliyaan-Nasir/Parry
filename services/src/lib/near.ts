@@ -188,7 +188,9 @@ export class Sender {
       this.inflight.count++;
       try {
         let last: unknown = null;
-        for (const client of this.clients) {
+        // Every provider is tried in turn; when all of them rate-limit, wait and go round again.
+        for (const [round, client] of [0, 1, 2].flatMap((r) => this.clients.map((c) => [r, c] as const))) {
+          if (round > 0 && client === this.clients[0]) await new Promise((r) => setTimeout(r, 1500 * 2 ** round));
           let tx = build(client.transaction(this.accountId));
           if (lane !== null) tx = tx.useGasKey(lane);
           let hash: string | undefined;
@@ -210,6 +212,10 @@ export class Sender {
                 if (failed) throw new TxError(failed, hash, landed);
                 return landed;
               }
+            }
+            // Only a provider's fault (rate limit, network, server error) is worth another provider.
+            if (!/429|too many|timed? ?out|timeout|fetch failed|ECONN|socket|network|HTTP 5\d\d/i.test(String((e as Error)?.message ?? e))) {
+              throw new TxError(String((e as Error)?.message ?? e), hash);
             }
           }
         }

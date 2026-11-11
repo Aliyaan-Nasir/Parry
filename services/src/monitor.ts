@@ -112,7 +112,7 @@ export async function main() {
       throw e;
     }
   };
-  every(intEnv("MONITOR_RHEA_MS", 10_000), "rhea", guard("rhea", tickRhea));
+  every(intEnv("MONITOR_RHEA_MS", 15_000), "rhea", guard("rhea", tickRhea));
   every(intEnv("MONITOR_HL_MS", 15_000), "hyperliquid", guard("hyperliquid", tickHyperliquid));
   every(intEnv("MONITOR_AAVE_MS", 60_000), "aave", guard("aave", tickAave));
   every(3_600_000, "prune", async () => {

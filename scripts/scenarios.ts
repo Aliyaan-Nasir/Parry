@@ -372,6 +372,9 @@ async function vault() {
 
 async function paid() {
   const p = people.repay ?? (await person("payer", 1));
+  // NEP-145: the payer registers with the token before it can hold any.
+  const reg = await view<unknown>(c("usdc"), "storage_balance_of", { account_id: p.owner }).catch(() => null);
+  if (!reg) await call(p.n, p.owner, c("usdc"), "storage_deposit", { account_id: p.owner, registration_only: true }, near(0.0125), 30);
   const fau = await call(p.n, p.owner, c("usdc"), "faucet", {}, 0n, 30);
   const r = await parry.paidRiskCheck(p.account, { payer: { accountId: p.owner, privateKey: p.key }, maxAmount: "100000" });
   save(12, "A paid risk check over x402 on NEAR", !!r.result && !!r.payment, [

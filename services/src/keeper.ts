@@ -194,7 +194,7 @@ export async function main() {
   const sql = db();
   await migrate(sql);
   every(600_000, "gas-key", () => tendGasKey(sql, "keeper", keeper));
-  every(intEnv("FEED_MS", 20_000), "feed", track("feed", feed));
+  every(intEnv("FEED_MS", 30_000), "feed", track("feed", feed));
   every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
