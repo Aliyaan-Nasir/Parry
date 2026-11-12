@@ -117,3 +117,11 @@ test("the testnet build lists Market shock with its Testnet tag", async ({ page 
   await expect(link).toBeVisible();
   await expect(link).toContainText("Testnet");
 });
+
+test("search engines and agents find the public pages", async ({ request }) => {
+  const robots = await request.get("/robots.txt");
+  expect(robots.status()).toBe(200);
+  expect(await robots.text()).toMatch(/Sitemap: .*\/sitemap\.xml/);
+  const sitemap = await (await request.get("/sitemap.xml")).text();
+  for (const path of ["/verify", "/replay", "/app/vault", "/llms.txt"]) expect(sitemap).toContain(`${path}</loc>`);
+});
