@@ -54,11 +54,10 @@
     },
     "account": {
       "account": "global",
-      "codeHash": "J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF",
-      "tx": "FK6ErZiXHLYbcDKx7HWaiW5zngXiJjX5z2fUjjpLX6XX",
-      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
+      "codeHash": "EGTboY4QiPt1mbABFqaAvjFv1koshpv4Uh4rjesk8eWv",
+      "tx": "Hbv9rxFn2RzFoWdcSGBYm2eiBFGGWUQBc529svx5pxti",
+      "commit": "8d58ab6d825f91093b1bd022c16dcd5b563f2421",
       "source": "contracts/account",
-      "verified": "2026-11-11",
       "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a"
     },
     "accounts": {
@@ -113,7 +112,7 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-11T07:32:22.375Z",
+  "updatedAt": "2026-11-12T08:49:44.169Z",
   "dexPool": 2939,
   "enclave": {
     "wasmSha256": "dd6532eda8d971dcecb009c2af3d41a767a03f2c19b8f0c45196d1b8cfaa203c",

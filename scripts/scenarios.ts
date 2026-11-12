@@ -7,6 +7,7 @@
  *   bun scripts/scenarios.ts --sandbox           the local node from `bun scripts/sandbox.ts`
  *   bun scripts/scenarios.ts --only 2,3,4        a subset (each scenario creates what it needs)
  *   bun scripts/scenarios.ts --align-pool        only realign the testnet exchange pool with the oracle
+ *   bun scripts/scenarios.ts --upgrade-accounts  only move the accounts this machine can sign for to the published code
  *
  * Scenarios (numbers as in the test matrix): 2 a gasless protected account, 3 a leveraged Rhea
  * position, 4 a mandate with a sealed policy, 5 the market shock, 6 the AI-reviewed rescues
@@ -27,7 +28,7 @@
  * run the relayer with RELAYER_ACCOUNTS_PER_IP=20 for it.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { p256 } from "@noble/curves/nist.js";
@@ -254,8 +255,7 @@ const ownerCall = (p: Person, actions: unknown[], deposit = 1n) => call(p.n, p.o
 const ACCOUNT_CODE: string = dep.contracts.account?.codeHash ?? "";
 
 async function upgraded(p: Person, send: (actions: OwnerAction[]) => Promise<Outcome> = (a) => ownerCall(p, a)): Promise<void> {
-  // Accounts on the earlier code have no closing() view.
-  if (await view<unknown>(p.account, "closing").then(() => true, () => false)) return;
+  if ((await parry.accountCode(p.account).catch(() => null)) === ACCOUNT_CODE) return;
   const o = await send([ownerActions.upgrade(ACCOUNT_CODE)]);
   p.steps.push({ step: `the owner moves the account to the published code ${ACCOUNT_CODE} (upgrade)`, tx: explorer(o.hash) });
 }
@@ -1015,6 +1015,43 @@ async function insuranceInflow() {
 // ---------------------------------------------------------------------------------------------
 
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
+/**
+ * --upgrade-accounts: every protected account whose owner this machine can sign for (the scenario
+ * owners in the keychain, the passkey files) moves to the published account code. Accounts that
+ * are gone or already on it are left alone.
+ */
+async function upgradeAll(): Promise<void> {
+  const code = async (account: string) => parry.accountCode(account).catch(() => null);
+  const keychain = join(homedir(), ".near-credentials", "testnet");
+  let moved = 0;
+  for (const file of readdirSync(keychain).filter((f) => f.endsWith(`.${rootId}.json`))) {
+    const owner = file.slice(0, -".json".length);
+    const account = await parry.protectedAccountId({ nearAccount: owner }).catch(() => null);
+    const now = account ? await code(account) : null;
+    if (!account || !now || now === ACCOUNT_CODE) continue;
+    const key = (JSON.parse(readFileSync(join(keychain, file), "utf8")) as { private_key: string }).private_key;
+    const o = await ownerCall({ owner, key, n: client(owner, key), account, steps: [] }, [ownerActions.upgrade(ACCOUNT_CODE)]).catch((e: Error) => ({ hash: "", failure: e.message, o: null }));
+    console.log(`${o.failure ? "FAIL" : "ok  "} ${account} (${owner}) ${o.failure ?? explorer(o.hash)}`);
+    if (!o.failure) moved++;
+  }
+  const keys = join(ROOT_DIR, "internal", "keys");
+  for (const file of readdirSync(keys).filter((f) => f.startsWith("passkey-"))) {
+    const k = JSON.parse(readFileSync(join(keys, file), "utf8")) as { account: string; secret: string };
+    const now = await code(k.account);
+    if (!now || now === ACCOUNT_CODE) continue;
+    const p: PasskeyPerson = { owner: "passkey", key: "", n: root, account: k.account, secret: Uint8Array.from(Buffer.from(k.secret, "hex")), steps: [] };
+    const o = await relayOwner(p, [ownerActions.upgrade(ACCOUNT_CODE)]).catch((e: Error) => ({ hash: "", failure: e.message, o: null }));
+    console.log(`${o.failure ? "FAIL" : "ok  "} ${k.account} (passkey) ${o.failure ?? explorer(o.hash)}`);
+    if (!o.failure) moved++;
+  }
+  console.log(`${moved} accounts moved to ${ACCOUNT_CODE}`);
+}
+
+if (process.argv.includes("--upgrade-accounts")) {
+  await upgradeAll();
+  process.exit(0);
+}
+
 // --align-pool alone: bring the testnet exchange pool back to the oracle's price and stop.
 if (process.argv.includes("--align-pool")) {
   const tx = await alignPool();
