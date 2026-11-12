@@ -2,23 +2,23 @@
   "network": "testnet",
   "status": "deployed",
   "root": "parry.testnet",
-  "commit": "c167f15b23c2eb22950d4a32ffe0e36d1c79f26c",
+  "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
   "contracts": {
     "boost": {
       "account": "boost.parry.testnet",
-      "codeHash": "EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7",
-      "tx": "FenppYjVodicXz44bN2ChN7tFS49APd3ybSnwJpubvMo",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "3CKi6a2yPRd4w2pt2dGDpn3q7Nj9Nq2WN89GWkVKeCGo",
+      "tx": "32odFwVaEXmzyMz7RuaR8DWpqU72MLiRgSsFThnwTfoJ",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/token",
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "oracle": {
       "account": "oracle.parry.testnet",
-      "codeHash": "2K81bAZJvapFWyQGQ2nPYA5tGRKPyZ4qiNFfNseqz8iM",
-      "tx": "8cvn41ivD68XY9NMAh1xM7xcNXd8Fr5eHixw3BMmLgE1",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "4W9HKBe3uRu9CfxERZBrKttb5muAjTyiD9ZrQ2USwnYV",
+      "tx": "BPWKCgapuZEGeZMnBWtTX7fJPPDaSdUHk89unT4yu9dP",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/oracle",
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "lending": {
       "account": "lending.parry.testnet",
@@ -28,53 +28,52 @@
     },
     "risk": {
       "account": "risk.parry.testnet",
-      "codeHash": "CLuq6pzqb2ZcFF3KiLUpQLVm347LVeoPWjmnyQNzJsqV",
-      "tx": "G4e3nK8GLKXdtSovEGCnXJ1BiyKsk4Nroebn9znp4yxN",
-      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
+      "codeHash": "CVAPjUAokGUcXVRsGnZGxdCpLJ7ajxbevopzfugP5v3W",
+      "tx": "3uuBK1iYs1s2APsZYiPaMudtoh26JEqW369kjxcNzX1m",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/risk",
-      "migrated": true,
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "vault": {
       "account": "vault.parry.testnet",
-      "codeHash": "8RYKZV9NEwxsvJifSPsS2TYjgnL9pEoHyZHHhwiH1JGQ",
-      "tx": "EQt3ub13wusUrDZrsjep3BXihknBx8k3wLSgqPQBXvKt",
-      "commit": "03a548cb3f78b803d6e1d866a1065cd25b409aff",
+      "codeHash": "CuvJWLL1RC1mi7BHKUY3fFRBZxQrXUw9BrQvHnY63wJN",
+      "tx": "rWP3GQKchpuunYjaqLim3nxB7DYQ7wzp1P87NmfLTY1",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/vault",
-      "migrated": true,
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "usdc": {
       "account": "usdc.parry.testnet",
-      "codeHash": "EHaWDn7qvuvqEu4uUE9DPCo3qPvRUmSQrgtZGvMen9U7",
-      "tx": "EuEKFymrVmpLJBZvAm1dDBgKvxJcJyFH7eTSP4Yg8cBM",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "3CKi6a2yPRd4w2pt2dGDpn3q7Nj9Nq2WN89GWkVKeCGo",
+      "tx": "qwULaYWZ2Sg5ntajK6qLGkj6irL3FLB4gcDWm3ewg4M",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/token",
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "account": {
       "account": "global",
-      "codeHash": "EGTboY4QiPt1mbABFqaAvjFv1koshpv4Uh4rjesk8eWv",
-      "tx": "Hbv9rxFn2RzFoWdcSGBYm2eiBFGGWUQBc529svx5pxti",
-      "commit": "8d58ab6d825f91093b1bd022c16dcd5b563f2421",
+      "codeHash": "4nNBqyXjsY6nReKRkDc6joBaNuLxPvQPR5sMidTQmEMK",
+      "tx": "GGf33dgQ3GZJ66y4nCm4EuDwYBvwrJ2a7u74Db5SFT73",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/account",
-      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a"
+      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
+      "verified": "2026-11-12"
     },
     "accounts": {
       "account": "accounts.parry.testnet",
-      "codeHash": "5UTERdVdWxYY7MMD2xojiM5m8Kv25BxdXLzFvjoFcopo",
-      "tx": "wusyGMGb5NkcHH2YaHvQM7Wp9ytwYDiD466U7k3YWTq",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "AA6Q9HqLHPW2HntmojLjwtVsZM1CgSRXDQt5prVidtd3",
+      "tx": "CVgpZJCSbEzF5U4AYQoAjqR8QczUm2BUp9uapPMs7CM9",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/accounts",
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     },
     "factory": {
       "account": "accounts.parry.testnet",
-      "codeHash": "5UTERdVdWxYY7MMD2xojiM5m8Kv25BxdXLzFvjoFcopo",
-      "tx": "wusyGMGb5NkcHH2YaHvQM7Wp9ytwYDiD466U7k3YWTq",
-      "commit": "b912bb1790df914848a9249f10918c1b71952057",
+      "codeHash": "AA6Q9HqLHPW2HntmojLjwtVsZM1CgSRXDQt5prVidtd3",
+      "tx": "CVgpZJCSbEzF5U4AYQoAjqR8QczUm2BUp9uapPMs7CM9",
+      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
       "source": "contracts/accounts",
-      "verified": "2026-11-11"
+      "verified": "2026-11-12"
     }
   },
   "services": {
@@ -112,7 +111,7 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-12T08:49:44.169Z",
+  "updatedAt": "2026-11-12T20:01:27.487Z",
   "dexPool": 2939,
   "enclave": {
     "wasmSha256": "dd6532eda8d971dcecb009c2af3d41a767a03f2c19b8f0c45196d1b8cfaa203c",
