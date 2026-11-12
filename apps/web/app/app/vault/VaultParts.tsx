@@ -37,6 +37,7 @@ export function VaultBalance({ v }: { v: Vault }) {
   const W = 540;
   const cx = W / 2;
   const beamY = 62;
+  // The view box runs to 256: at full tilt the lower pan's last label line sits near 239.
   const arm = 196;
   const rad = (tilt * Math.PI) / 180;
   const lx = r1(cx - arm * Math.cos(rad));
@@ -64,7 +65,7 @@ export function VaultBalance({ v }: { v: Vault }) {
   );
   return (
     <figure className="grid gap-3">
-      <svg viewBox={`0 0 ${W} 230`} className="h-auto w-full" role="img" aria-label={`Staked ${format(longUsd)} against a short of ${format(shortUsd)}; target short ${format(targetUsd)}`}>
+      <svg viewBox={`0 0 ${W} 256`} className="h-auto w-full" role="img" aria-label={`Staked ${format(longUsd)} against a short of ${format(shortUsd)}; target short ${format(targetUsd)}`}>
         <path d={`M${cx - 26} 220 L${cx} 70 L${cx + 26} 220 Z`} style={{ fill: "var(--parry-raised)", stroke: "var(--parry-line-strong)" }} />
         <line x1={cx - 60} x2={cx + 60} y1={220} y2={220} style={{ stroke: "var(--parry-line-strong)" }} />
         <g style={{ transition: "all var(--dur-2) var(--ease-out)" }}>
