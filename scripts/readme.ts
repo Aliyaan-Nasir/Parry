@@ -137,7 +137,7 @@ function anchors(text: string, name: string): string {
 
 /** Each scenario of the test matrix, and what it says while it has no passing record. */
 const SCENARIOS: [number, string, string][] = [
-  [1, "Sign in with a passkey or a NEAR wallet", "runs in a browser: the app's Playwright suite signs in with a virtual passkey authenticator"],
+  [1, "Sign in with a NEAR wallet and with a passkey", ""],
   [2, "A protected account without gas", ""],
   [3, "A leveraged Rhea position", ""],
   [4, "A mandate with a sealed policy", ""],

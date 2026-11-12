@@ -19,7 +19,7 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 <!-- scenarios:start -->
 | # | Scenario | On testnet | Transactions |
 | --- | --- | --- | --- |
-| 1 | Sign in with a passkey or a NEAR wallet | runs in a browser: the app's Playwright suite signs in with a virtual passkey authenticator |  |
+| 1 | Sign in with a NEAR wallet (Meteor, by hand in Chrome) and with a passkey (the app's Playwright suite) | passes | [tx 1](https://testnet.nearblocks.io/txns/2fiQBnPXs4y3NqDKeyK5N9bZ9HDo2RtkSNTKQxhfMzJM) |
 | 2 | A protected account without gas | passes | [tx 1](https://testnet.nearblocks.io/txns/Nryr9CQom6gwuu9j7uSPpA5vhEfvSPkHRNN73TXmivc), [tx 2](https://testnet.nearblocks.io/txns/EtuzowjF8cGMmw2G4xp2ntBUBk29Ggxg5MWipYhyPgvW), [tx 3](https://testnet.nearblocks.io/txns/BigTdjeB9DJac7y7NYrdu5Xk9q94FGSSMH3HqPPT6rTy) |
 | 3 | A leveraged Rhea position | passes | [tx 1](https://testnet.nearblocks.io/txns/C7su12JuW3MeTWBykH21jyczJ2vuCe3MLbunNrdimX7v), [tx 2](https://testnet.nearblocks.io/txns/Gbai9LqqkYThSBAnQ7Sy5JPkQA5tJEdTvo8h5Vsjyuh), [tx 3](https://testnet.nearblocks.io/txns/3oYUQrGnEv9aMWaWfX6dZ1ccYoFweCUJo8dD9SBJmpWA) |
 | 4 | A mandate with a sealed policy | passes | [tx 1](https://testnet.nearblocks.io/txns/4i6kqDFaomCvNjoWHuu2HsHt7zB7pBxBSjYaULYa1NLq), [tx 2](https://testnet.nearblocks.io/txns/6e624GuXTbdE1QddBf43hWQV7vc6fernp1ceGXksbmQx), [tx 3](https://testnet.nearblocks.io/txns/5hc3WMJzfocCuGv9d4z5AJNqkMaz6FpHSrQGAmF79DWy) |

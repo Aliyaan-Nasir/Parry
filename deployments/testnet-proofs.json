@@ -1,6 +1,26 @@
 {
   "network": "testnet",
   "scenarios": {
+    "1": {
+      "title": "Sign in with a NEAR wallet (Meteor, by hand in Chrome) and with a passkey (the app's Playwright suite)",
+      "ok": true,
+      "at": "2026-11-12T05:39:35.500Z",
+      "steps": [
+        {
+          "step": "Meteor Wallet (Chrome extension) connects moralram1873.testnet to the hosted app through NEAR Connect"
+        },
+        {
+          "step": "the relayer creates 0un4b025j38acm2kyz4xe94km2xhr988s5c3shqjq6yjx56hbm3sa0 for moralram1873.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/2fiQBnPXs4y3NqDKeyK5N9bZ9HDo2RtkSNTKQxhfMzJM"
+        },
+        {
+          "step": "the wallet signs Parry's NEP-413 sign-in message; the API verifies it and saves the owner's alert thresholds"
+        },
+        {
+          "step": "the passkey path runs in the app's Playwright suite with a virtual authenticator"
+        }
+      ]
+    },
     "2": {
       "title": "A protected account without gas",
       "ok": true,

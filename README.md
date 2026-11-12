@@ -9,7 +9,7 @@ A guardian in an OutLayer TEE watches each protected position, plans a rescue, h
 The person's account contract accepts only protective actions within their on-chain mandate, and records the hash of the review that approved each one.
 
 <!-- links:start -->
-Run it with `docker compose up` or `pnpm dev` (below); the hosted app's address is added here when it is live.
+**Live on testnet:** [app](https://parry-guard.vercel.app/app) · [API](https://34-132-74-218.sslip.io/v1/status) · MCP at `https://34-132-74-218.sslip.io/mcp` · [llms.txt](https://parry-guard.vercel.app/llms.txt)
 <!-- links:end -->
 
 ## Try it in two minutes
