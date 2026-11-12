@@ -7,8 +7,11 @@
 #   wrap      wrap.testnet                         wNEAR
 #   dex       ref-finance-101.testnet              Rhea (Ref v2) exchange
 #   linear    linear-protocol.testnet              LiNEAR liquid staking
-#   vault-v1  vault.parry.testnet                  Parry's vault as deployed, for the migration test
-#   risk-v1   risk.parry.testnet                   Parry's risk board as deployed, for the migration test
+#   vault-v1  vault.parry.testnet                  Parry's vault before its migration, for the migration test
+#   risk-v1   risk.parry.testnet                   Parry's risk board before its migration, for the migration test
+#
+# A fixture with a block height is read at that block from an archival node, so a later upgrade
+# of the live contract never changes it.
 #
 # Output: contracts/target/fixtures/<name>.wasm. Re-running skips files whose hash already matches.
 set -euo pipefail
@@ -21,8 +24,8 @@ fixtures=(
   "wrap https://test.rpc.fastnear.com wrap.testnet DsbyUrKaSJAT91Pewfi71QExPLBooDp1z4sL9GUDhNHa"
   "dex https://test.rpc.fastnear.com ref-finance-101.testnet AEAm8sQ5KYZRgnpq2CN2NhX6d8QV76iRtiDpy5Ai6zDX"
   "linear https://test.rpc.fastnear.com linear-protocol.testnet 8Bby4ofnYGtudd3PinKZ1KyvmUKJVyxmfC99ZccRDVDv"
-  "vault-v1 https://test.rpc.fastnear.com vault.parry.testnet 9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz"
-  "risk-v1 https://test.rpc.fastnear.com risk.parry.testnet EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg"
+  "vault-v1 https://archival-rpc.testnet.fastnear.com vault.parry.testnet 9c1tfY3TDGJDMjUCnriH1cza2eJZKXfJhCNRaFYshHQz 277183562"
+  "risk-v1 https://archival-rpc.testnet.fastnear.com risk.parry.testnet EVd56RoEga1Nrqsyeb81Aibk6k2QY8tDd49UQukoLiVg 277183555"
 )
 
 b58_sha256() { # file -> base58(sha256(file))
@@ -36,14 +39,16 @@ print("1" * (len(d) - len(d.lstrip(b"\0"))) + s)' "$1"
 }
 
 for f in "${fixtures[@]}"; do
-  read -r name rpc account hash <<<"$f"
+  read -r name rpc account hash block <<<"$f"
+  at="\"finality\":\"final\""
+  [ -n "${block:-}" ] && at="\"block_id\":$block"
   file="$out/$name.wasm"
   if [ -f "$file" ] && [ "$(b58_sha256 "$file")" = "$hash" ]; then
     echo "ok      $name ($account)"
     continue
   fi
   curl -sS --fail "$rpc" -H 'content-type: application/json' \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_code\",\"finality\":\"final\",\"account_id\":\"$account\"}}" |
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_code\",$at,\"account_id\":\"$account\"}}" |
     python3 -c 'import sys, json, base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["result"]["code_base64"]))' >"$file"
   got="$(b58_sha256 "$file")"
   if [ "$got" != "$hash" ]; then
