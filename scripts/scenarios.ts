@@ -227,12 +227,19 @@ interface Person {
 async function person(tag: string, fundNear: number): Promise<Person> {
   const k = generateKey();
   const owner = `${tag}${Date.now() % 1_000_000}.${rootId}`;
+  // The RPC answers a short balance with an opaque "Server error": say what is missing instead.
+  const have = Number(await root.getBalance(rootId));
+  if (have < fundNear + 0.5) throw new Error(`${rootId} holds ${have} NEAR; ${tag} needs ${fundNear} plus gas`);
   await root.transaction(rootId).createAccount(owner).transfer(owner, `${near(fundNear)} yocto` as never).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
   // The owner's key goes to the keychain, so what is left on the account can be recovered later.
   if (!sandbox) writeFileSync(join(homedir(), ".near-credentials", "testnet", `${owner}.json`), JSON.stringify({ account_id: owner, public_key: k.publicKey.toString(), private_key: k.secretKey }), { mode: 0o600 });
   const steps: unknown[] = [];
   // Scenario 2: the relayer creates the protected account and pays for it.
-  const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: owner } });
+  const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { nearAccount: owner } }).catch(async (e: unknown) => {
+    // No protected account came of it: hand the owner's NEAR back to the root rather than strand it.
+    await client(owner, k.secretKey).transaction(owner).deleteAccount({ beneficiary: rootId } as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" }).catch(() => null);
+    throw e;
+  });
   steps.push({ step: `relayer creates ${created.accountId} for ${owner}, gasless for the owner`, tx: explorer(created.txHash) });
   const p: Person = { owner, key: k.secretKey, n: client(owner, k.secretKey), account: created.accountId, steps };
   if (!sandbox) await upgraded(p);
