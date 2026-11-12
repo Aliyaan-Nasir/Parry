@@ -135,6 +135,6 @@
     "setEnclaveTx": "5VbokFFC4TJjXaZ9eq5ATkLnqVFbjrBShYfKzZrg93ao",
     "sealingTx": "8rdhz3BL5Rcw1WekSHLaRTmr6sznXpFiJTPiExTmxDDE"
   },
-  "site": "https://parry-guard.vercel.app",
-  "api": "https://34-132-74-218.sslip.io"
+  "site": "https://parry.market",
+  "api": "https://api.parry.market"
 }

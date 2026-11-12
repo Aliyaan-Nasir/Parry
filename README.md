@@ -9,7 +9,7 @@ A guardian in an OutLayer TEE watches each protected position, plans a rescue, h
 The person's account contract accepts only protective actions within their on-chain mandate, and records the hash of the review that approved each one.
 
 <!-- links:start -->
-**Live on testnet:** [app](https://parry-guard.vercel.app/app) · [API](https://34-132-74-218.sslip.io/v1/status) · MCP at `https://34-132-74-218.sslip.io/mcp` · [llms.txt](https://parry-guard.vercel.app/llms.txt)
+**Live on testnet:** [app](https://parry.market/app) · [API](https://api.parry.market/v1/status) · MCP at `https://api.parry.market/mcp` · [llms.txt](https://parry.market/llms.txt)
 <!-- links:end -->
 
 ## Try it in two minutes
@@ -187,7 +187,7 @@ pnpm verify                       # this README's claims, against testnet
 ```ts
 import { createParry } from "@parry/sdk";
 
-const parry = createParry({ network: "testnet", apiUrl: "http://localhost:4000" }); // or the hosted API
+const parry = createParry({ network: "testnet", apiUrl: "https://api.parry.market" }); // or http://localhost:4000 from pnpm dev
 const { position } = await parry.riskCheck("alice.testnet");
 console.log(position?.score, position?.tier, position?.liqPrice, position?.ttlHours);
 ```
@@ -196,13 +196,13 @@ The SDK builds every contract call as plain data for a wallet to sign, seals pol
 
 ## Use it from an agent
 
-The MCP server reads the Parry API at `PARRY_API_URL`: the hosted API (top of this page) or a local one from `pnpm dev`.
+The MCP server reads the Parry API at `PARRY_API_URL`: the hosted one at `https://api.parry.market`, or `http://localhost:4000` from `pnpm dev`.
 With `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_KEY` (a testnet account's own key) it also gets capped write tools.
 
 Claude Code:
 
 ```bash
-claude mcp add parry -e PARRY_API_URL=http://localhost:4000 -- npx -y @parry/mcp
+claude mcp add parry -e PARRY_API_URL=https://api.parry.market -- npx -y @parry/mcp
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -211,13 +211,13 @@ Codex (`~/.codex/config.toml`):
 [mcp_servers.parry]
 command = "npx"
 args = ["-y", "@parry/mcp"]
-env = { PARRY_API_URL = "http://localhost:4000" }
+env = { PARRY_API_URL = "https://api.parry.market" }
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
 
 ```json
-{ "mcpServers": { "parry": { "command": "npx", "args": ["-y", "@parry/mcp"], "env": { "PARRY_API_URL": "http://localhost:4000" } } } }
+{ "mcpServers": { "parry": { "command": "npx", "args": ["-y", "@parry/mcp"], "env": { "PARRY_API_URL": "https://api.parry.market" } } } }
 ```
 
 From a clone, the same server runs with `pnpm -F @parry/mcp build && node packages/mcp/dist/bin.js`, and the API serves it over Streamable HTTP at `/mcp`.

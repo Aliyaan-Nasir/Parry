@@ -20,7 +20,7 @@ The person's account contract accepts only protective actions within their on-ch
 Claude Code:
 
 ```bash
-claude mcp add parry -e PARRY_NETWORK=testnet -e PARRY_API_URL=http://localhost:4000 -- npx -y @parry/mcp
+claude mcp add parry -e PARRY_NETWORK=testnet -e PARRY_API_URL=https://api.parry.market -- npx -y @parry/mcp
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -29,7 +29,7 @@ Codex (`~/.codex/config.toml`):
 [mcp_servers.parry]
 command = "npx"
 args = ["-y", "@parry/mcp"]
-env = { PARRY_NETWORK = "testnet", PARRY_API_URL = "http://localhost:4000" }
+env = { PARRY_NETWORK = "testnet", PARRY_API_URL = "https://api.parry.market" }
 ```
 
 From a clone (to run local changes, or before the package is on npm): `pnpm install && pnpm -F @parry/mcp build`, then use `node packages/mcp/dist/bin.js` as the command.

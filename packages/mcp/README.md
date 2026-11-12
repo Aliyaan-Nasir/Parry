@@ -7,7 +7,7 @@ Write tools exist only when an agent account is configured, work only on testnet
 ## Install and run
 
 ```bash
-PARRY_NETWORK=testnet PARRY_API_URL=http://localhost:4000 npx @parry/mcp
+PARRY_NETWORK=testnet PARRY_API_URL=https://api.parry.market npx @parry/mcp
 ```
 
 As an MCP client entry:
@@ -18,7 +18,7 @@ As an MCP client entry:
     "parry": {
       "command": "npx",
       "args": ["-y", "@parry/mcp"],
-      "env": { "PARRY_NETWORK": "testnet", "PARRY_API_URL": "http://localhost:4000" }
+      "env": { "PARRY_NETWORK": "testnet", "PARRY_API_URL": "https://api.parry.market" }
     }
   }
 }
@@ -34,7 +34,7 @@ PARRY_NETWORK=testnet PARRY_API_URL=http://localhost:4000 node packages/mcp/dist
 ## Configuration
 
 - `PARRY_NETWORK`: `testnet` (default) or `mainnet`.
-- `PARRY_API_URL`: the Parry API the read tools use (`http://localhost:4000` when the API runs locally).
+- `PARRY_API_URL`: the Parry API the read tools use: `https://api.parry.market` for the hosted testnet API, or `http://localhost:4000` when the API runs locally.
 - `PARRY_RPC_URL`: a NEAR RPC endpoint (optional).
 - `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_KEY`: the agent's own testnet account and its `ed25519:` full-access key, which turn on the write tools.
 

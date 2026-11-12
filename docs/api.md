@@ -1,7 +1,7 @@
 # Parry API
 
 The API (`apps/api`) serves the app, the SDK (`@parry/sdk`) and the MCP server (`@parry/mcp`).
-Base path `/v1`.
+The hosted testnet API is at `https://api.parry.market`; base path `/v1`.
 JSON everywhere.
 Amounts are decimal strings in the token's smallest unit (yoctoNEAR for `depositCapNear` and `minDepositNear`); numbers ending in `Usd` are dollars, numbers ending in `Near` are NEAR, and the other numbers are ratios, prices or counts.
 Every response carries `network` (`testnet` or `mainnet`) where it matters.
