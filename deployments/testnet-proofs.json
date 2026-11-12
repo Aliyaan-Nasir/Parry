@@ -24,96 +24,96 @@
     "2": {
       "title": "A protected account without gas",
       "ok": true,
-      "at": "2026-11-12T08:00:02.417Z",
+      "at": "2026-11-12T08:56:36.161Z",
       "steps": [
         {
-          "step": "relayer creates 0ujp4erspwweyp4y967cd847whh56zjhzqjwxsjet88bpv7dbndpbg for repay330842.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/BYAKfAycW2VhzBvYenswZrVJDdeJcB5HSgPB4cGXysKH"
+          "step": "relayer creates 0u1r9tnt73dqb4cegwb5sare1dba024aem4xyjdwxkkw4wxzr0qw1g for repay720844.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/2vtsYQPjTEzRHa8zgEZqZyv71KoNMTQfdRToqXuuErGU"
         },
         {
-          "step": "relayer creates 0ugcrgp6xtymq4sjr0tvmh1qthnh4nmgrqz07ymt8wv0acyt5z2wbg for adder356308.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/HK4Ah9tqWJxUwGbhdUn2ThcHXV3nHagPyRVpj7sbL6Tx"
+          "step": "relayer creates 0u51s483216qjj8bh13b3qwm288h6dk7e3akf5ha3te6sqev5m46p0 for adder746911.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/BpetTip744oYddAyqMq3BRDTUfmBqSM5bEv71AuMgA3s"
         },
         {
-          "step": "relayer creates 0uq04am1t37br9bs9z4reydxskfpgrzetp5mzvk26qp2cg2j236xt0 for delev378648.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/9Qwd43wd7hYpDVHgqZBa5tenkZQuYXSqjMrvrbGw2z6e"
+          "step": "relayer creates 0u1thwvxvgjdq069wvygb0qyjqvew7rv96fejn4qj94t0fjep9m240 for delev770113.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/9RYj1M7rUPwh884q1YWuQHVhuZadxiNesFdrPyVS7jxn"
         }
       ]
     },
     "3": {
       "title": "A leveraged Rhea position",
       "ok": true,
-      "at": "2026-11-12T08:00:02.418Z",
+      "at": "2026-11-12T08:56:36.169Z",
       "steps": [
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/6xb18KFbBRSRtAo4Bx5WGgKZC1Krmutks8abL8V7jWp4"
+          "tx": "https://testnet.nearblocks.io/txns/69XprtCr38nAjsSr7d9mGYBYvbBqTx23EBZsDpyN4qPQ"
         },
         {
-          "step": "wrap and supply 12 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/7ige3k4pdYG8wTLnw6YtTno4LNBa7jprdKnSEjpagfS"
+          "step": "wrap and supply 3 NEAR on Rhea",
+          "tx": "https://testnet.nearblocks.io/txns/ZBaGn8w3DWEyNwKWenrRtMZ922ouNNQzPsthYGtcGtq"
         },
         {
-          "step": "borrow 23.04 USDC (health about 1.300 at $3.504)",
-          "tx": "https://testnet.nearblocks.io/txns/8aVPMSC2cSRfGeCmoCT694PVtjiy32YHXsuyQpGvJPa5"
-        },
-        {
-          "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/Xm68SMXJShXuLkFKVBHoL1CbeExJMkvFiRH5LARaYGZ"
-        },
-        {
-          "step": "wrap and supply 12 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/DgcQMTpDGSs7QmayTdNqiep6aevvESDUvnmcRbMkz2Gv"
-        },
-        {
-          "step": "borrow 23.04 USDC (health about 1.300 at $3.504)",
-          "tx": "https://testnet.nearblocks.io/txns/FUhDtNgDYJn67upcTWkxzcuRk7gq56nkUkVMH81oX3dP"
+          "step": "borrow 5.69 USDC (health about 1.300 at $3.466)",
+          "tx": "https://testnet.nearblocks.io/txns/BHNvAPRkwLTZFWdGgoQ9LXBPuoYzmUYWdP56S4pMwsZR"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/3bFXCw3g2HDbjnoLtBGFMGYsYB8mwfSKp7YJSVwcAGc5"
+          "tx": "https://testnet.nearblocks.io/txns/21bfYt194b9bQwDpf4A5gZ9x6hV7VWWnuSA3AAXD82Mr"
         },
         {
-          "step": "wrap and supply 12 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/H17UyChfnFyKQvLKUNtW51J2Fibxj5i1cWaYvworLsL6"
+          "step": "wrap and supply 3 NEAR on Rhea",
+          "tx": "https://testnet.nearblocks.io/txns/FrZq2HWkHybNhwPixhZsYsRxLsBbMabCTPCytyJ7Dgid"
         },
         {
-          "step": "borrow 23.04 USDC (health about 1.300 at $3.504)",
-          "tx": "https://testnet.nearblocks.io/txns/C2XpPmh2p8nEupar4rRzG3gyG5GbZQomcrSd8syJ79Mh"
+          "step": "borrow 5.69 USDC (health about 1.300 at $3.466)",
+          "tx": "https://testnet.nearblocks.io/txns/2XBXnJYtKoTpoULxVaUBHNyNZGzbFugx6mXqvdLiz9qU"
+        },
+        {
+          "step": "the protected account is funded",
+          "tx": "https://testnet.nearblocks.io/txns/8H6VTApjxpiCvEPYqQXH7a2Lu4hFVmLFxJELAqYuyaq1"
+        },
+        {
+          "step": "wrap and supply 3 NEAR on Rhea",
+          "tx": "https://testnet.nearblocks.io/txns/CCZjVmsyqYtrUrjfwA4Uk8pdsuG388XPFXBp4ZfB5TxY"
+        },
+        {
+          "step": "borrow 5.69 USDC (health about 1.300 at $3.465)",
+          "tx": "https://testnet.nearblocks.io/txns/7mfr7bPes4H6NwsQ8NaFducQSsUxAy8UaXgTiVskW9vg"
         }
       ]
     },
     "4": {
       "title": "A mandate with a sealed policy",
       "ok": true,
-      "at": "2026-11-12T08:00:02.419Z",
+      "at": "2026-11-12T08:56:36.170Z",
       "steps": [
         {
           "step": "mandate: repay, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/GeocDEhJqrPpXSksuK7HQMsKkSAbhnxx2Dg4iigPhgSC"
+          "tx": "https://testnet.nearblocks.io/txns/HtDMqqKTxMrkgnq6pBWqLBvvzZx3MGxiSQwbC5FRuQdA"
         },
         {
           "step": "mandate: add_collateral, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/HgNLNW9Rw4QsjLoQ8mfvABJPLGwDmJ1rZYcdpkyXagy6"
+          "tx": "https://testnet.nearblocks.io/txns/HnXkHDb1rP4BXE89TRiZbBEr7AF4QdWLSBH57k5djxbA"
         },
         {
           "step": "mandate: deleverage, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/8gwRWDV18mk19MAHCmZ61YyruuHLe1w37wBTJvGgKThb"
+          "tx": "https://testnet.nearblocks.io/txns/5i9SrGJXSWRabnp74j85ceZftG6RsmdhSW9ofJ2De2oG"
         }
       ]
     },
     "5": {
       "title": "The market shock moves the price",
       "ok": true,
-      "at": "2026-11-12T08:00:25.519Z",
+      "at": "2026-11-12T08:57:00.177Z",
       "steps": [
         {
           "step": "NEAR -20% on the testnet oracle for 30 minutes",
-          "tx": "https://testnet.nearblocks.io/txns/7amXM4ipn2kUFiJjwF5WeC9zuSidsNtdzUHoq1ViSAky",
+          "tx": "https://testnet.nearblocks.io/txns/GpKMSb98yEbDeVj7eJn3k7D8oj1VA6UoD3HCzFRGeL52",
           "healthBefore": {
-            "repay": 1.3003576880859375,
-            "add": 1.3003576880859375,
-            "delev": 1.3003576880859375
+            "repay": 1.3015547080623902,
+            "add": 1.3015547080623902,
+            "delev": 1.3015547080623902
           }
         }
       ]
@@ -121,16 +121,16 @@
     "6": {
       "title": "Alert, AI review, rescue and recovery",
       "ok": true,
-      "at": "2026-11-12T08:09:37.394Z",
+      "at": "2026-11-12T09:03:25.955Z",
       "steps": [
         {
-          "step": "repay: Repay 5.92 USDC from the reserve: health 1.040 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "repay: Repay 1.46 USDC from the reserve: health 1.041 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: repay",
             "Rhea wNEAR/USDC: health 1.04",
-            "Rhea wNEAR/USDC: risk 63 (danger)"
+            "Rhea wNEAR/USDC: risk 69 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -140,18 +140,18 @@
             "ok Enclave signature on the envelope",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.400059937348647,
-          "action": "https://testnet.nearblocks.io/txns/5NbxF6qbMuaNz22UW9DeTbEBMXj9gY74PpfSY2u9ZsEZ",
-          "record": "https://testnet.nearblocks.io/txns/CN3kceZ9MEthWJQoz6gVWhvcDncMaFeNWnJdfuweYdJv"
+          "healthAfter": 1.400122867740906,
+          "action": "https://testnet.nearblocks.io/txns/2NguU3SnRDAMKPPh5ouMMQhjbV58v6HZDabQmx2Veoz5",
+          "record": "https://testnet.nearblocks.io/txns/Bp9kWbMGCFsuN6QvLA83KwtEQFYrzNQf54xXbBAF6oek"
         },
         {
-          "step": "add: Add 1.0000 wNEAR collateral from the reserve: health 1.040 to 1.127 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "add: Add 1.0000 wNEAR collateral from the reserve: health 1.041 to 1.388 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: add collateral",
             "Rhea wNEAR/USDC: health 1.04",
-            "Rhea wNEAR/USDC: risk 62 (danger)"
+            "Rhea wNEAR/USDC: risk 69 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -161,18 +161,18 @@
             "ok Enclave signature on the envelope",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.1268918669108072,
-          "action": "https://testnet.nearblocks.io/txns/93UbMX2hCBfLaSX3kFZEkL5hhazPZYWZDGagY4jLTKrf",
-          "record": "https://testnet.nearblocks.io/txns/B25teLA9yPa9Lnc4t9ZXiCGjRca48RdgRR15JR5F1Kcs"
+          "healthAfter": 1.387272696748682,
+          "action": "https://testnet.nearblocks.io/txns/4ngnbLWwjLmEB2eD74moGNTbuz9RJnBEKgZ8tQFQtuZK",
+          "record": "https://testnet.nearblocks.io/txns/2hW11Lej2G4nEBxxdiFyBnd8MUt9s5MZSastieyTHhHK"
         },
         {
-          "step": "delev: Sell 0.3607 NEAR of collateral for at least 0.98 USDC and repay: health 1.041 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "delev: Sell 0.0895 NEAR of collateral for at least 0.24 USDC and repay: health 1.041 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: deleverage",
-            "Guardian rolled back: deleverage",
-            "Rhea wNEAR/USDC: health 1.07"
+            "Rhea wNEAR/USDC: health 1.07",
+            "Rhea wNEAR/USDC: risk 59 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -182,47 +182,47 @@
             "ok Enclave signature on the envelope",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.1070028740012232,
-          "action": "https://testnet.nearblocks.io/txns/7zV8xLpHBJetSpuUN9CAU6UavndjAf4Gry35jL453vAC",
-          "record": "https://testnet.nearblocks.io/txns/D2gMg9ZbThwCV6uGSxg1ALM7QtK6pvxT9gu6jtgQoF8m"
+          "healthAfter": 1.1182842633693588,
+          "action": "https://testnet.nearblocks.io/txns/ESthDF8jpH9iHkjLMd8guQpQRT7ex6i7Mhb8ffdJi8Kg",
+          "record": "https://testnet.nearblocks.io/txns/BrR5aG9TmjMu2q4nJQFFvPFwvx1uzZ9pLm18d6gvWh35"
         }
       ]
     },
     "7": {
       "title": "Limits: replays, forged envelopes, withdrawals and expiry are refused",
       "ok": true,
-      "at": "2026-11-11T08:03:36.484Z",
+      "at": "2026-11-12T09:05:17.955Z",
       "steps": [
         {
           "step": "replaying an executed envelope",
           "refused": true,
           "reason": "Smart contract panicked: envelope nonce already used",
-          "tx": "https://testnet.nearblocks.io/txns/DmjzXopz8T7xvRYgSyzziuekvtFbyd2iWXek1kdUqqje"
+          "tx": "https://testnet.nearblocks.io/txns/HgtLPYxuBKij8pgT3bzen9aEvrsUAycKKSiwApRpZJj9"
         },
         {
           "step": "an envelope signed by another key",
           "refused": true,
           "reason": "Smart contract panicked: guardian signature does not verify",
-          "tx": "https://testnet.nearblocks.io/txns/G1hnYDPPeRXDMR6B6KTCirSZiArBtt282rYiuTGyYMaM"
+          "tx": "https://testnet.nearblocks.io/txns/JDDgC76kZZeu6gG4WRrg3XV8awU6WZ34ooj5Cyksvrzb"
         },
         {
           "step": "a withdrawal by someone who is not the owner",
           "refused": true,
           "reason": "Smart contract panicked: owner only",
-          "tx": "https://testnet.nearblocks.io/txns/7pfSey9KTfSNTs3uKiEWCLyqgtFmjqBz9uhQxNpFrmZt"
+          "tx": "https://testnet.nearblocks.io/txns/AxuDmGWjtDg7qBFNppEXSwc3Dsnv2tj8Wg34gxCY2cQb"
         },
         {
           "step": "a forged guardian envelope asking to withdraw (with the enclave's signature it would not parse either: no guardian action withdraws)",
           "refused": true,
           "reason": "Smart contract panicked: guardian signature does not verify",
-          "tx": "https://testnet.nearblocks.io/txns/DuC1nbMFqm17TMWVSiUagGoQjRCC3qmU4LhZmkzVyaCf"
+          "tx": "https://testnet.nearblocks.io/txns/AXLo56dFDcFbEV4yxdr8MnidybfTFjgsdyS6P4bKWpg4"
         },
         {
           "step": "a mandate set to expire in 75 s reads expired after 90 s",
           "expired": true,
           "tx": {
             "step": "mandate: repay, policy sealed to the enclave",
-            "tx": "https://testnet.nearblocks.io/txns/GKdibe7uYFthPRnXVjanjuJYWY259jrHB1EshzSf4v2D"
+            "tx": "https://testnet.nearblocks.io/txns/5bKULHdZ1JzyUo6GuybTtKPgKQj74RBXpsditmphhS8e"
           }
         }
       ]
