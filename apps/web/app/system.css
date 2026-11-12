@@ -104,11 +104,20 @@
     letter-spacing: -0.02em;
     line-height: 1.08;
   }
+  /*
+   * The gradient paints only inside the element's box, and display type is set tighter than the
+   * glyphs: descenders (g, y, commas) would hang outside it unpainted. Room above and below, given
+   * back by negative margins, keeps every glyph inside without moving the layout.
+   */
   .text-gradient {
     background: linear-gradient(180deg, var(--parry-text) 30%, var(--headline-to));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    padding-block: 0.06em 0.24em;
+    margin-block: -0.06em -0.24em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
   /* A quiet label above a value: sentence case, muted, never an uppercase eyebrow. */
   .label {
@@ -187,11 +196,12 @@
   }
 
   /* Masked line reveal: each line slides up from behind its own mask. */
+  /* The mask leaves room for descenders, given back by the negative margin. */
   .reveal-line {
     display: block;
     overflow: hidden;
-    padding-bottom: 0.08em;
-    margin-bottom: -0.08em;
+    padding-bottom: 0.24em;
+    margin-bottom: -0.24em;
   }
   .reveal-line > span {
     display: block;

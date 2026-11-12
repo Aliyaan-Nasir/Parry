@@ -3,7 +3,8 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { QueryError, Segmented } from "@/components/app/bits";
-import { DecisionRow } from "@/components/app/DecisionCard";
+import { DECISION_GRID, DecisionRow } from "@/components/app/DecisionCard";
+import { cn } from "@/lib/cn";
 import { useMoney } from "@/components/providers/MoneyProvider";
 import { useSavings } from "@/lib/live";
 import { useParryAccount } from "@/components/providers/AccountProvider";
@@ -94,12 +95,13 @@ export function GuardianLog() {
             .
           </p>
           <div className="surface overflow-hidden p-0">
-            <div className="hidden grid-cols-[5.5rem_minmax(0,1fr)_7rem_8rem_7rem] gap-x-4 border-b border-line px-4 py-2 text-[12.5px] text-muted sm:grid">
+            <div className={cn("hidden gap-x-4 border-b border-line px-5 py-2.5 text-[12.5px] text-muted sm:grid", DECISION_GRID)}>
               <span>When</span>
               <span>Action</span>
               <span>Health</span>
               <span className="text-right">Route</span>
               <span className="text-right">Outcome</span>
+              <span aria-hidden="true" />
             </div>
             {items.map((d, i) => (
               <DecisionRow key={d.id} decision={d} open={isOpen(d.id, i)} onToggle={() => setOpened((o) => ({ ...o, [d.id]: !isOpen(d.id, i) }))} />
