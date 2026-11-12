@@ -7,7 +7,7 @@
       "links": [
         {
           "label": "transaction",
-          "url": "https://testnet.nearblocks.io/txns/Nryr9CQom6gwuu9j7uSPpA5vhEfvSPkHRNN73TXmivc"
+          "url": "https://testnet.nearblocks.io/txns/BYAKfAycW2VhzBvYenswZrVJDdeJcB5HSgPB4cGXysKH"
         }
       ]
     },
@@ -51,7 +51,7 @@
       "links": [
         {
           "label": "AI-reviewed rescue",
-          "url": "https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU"
+          "url": "https://testnet.nearblocks.io/txns/5NbxF6qbMuaNz22UW9DeTbEBMXj9gY74PpfSY2u9ZsEZ"
         }
       ]
     },
@@ -61,19 +61,19 @@
       "links": [
         {
           "label": "supply",
-          "url": "https://testnet.nearblocks.io/txns/Gbai9LqqkYThSBAnQ7Sy5JPkQA5tJEdTvo8h5Vsjyuh"
+          "url": "https://testnet.nearblocks.io/txns/7ige3k4pdYG8wTLnw6YtTno4LNBa7jprdKnSEjpagfS"
         },
         {
           "label": "borrow",
-          "url": "https://testnet.nearblocks.io/txns/3oYUQrGnEv9aMWaWfX6dZ1ccYoFweCUJo8dD9SBJmpWA"
+          "url": "https://testnet.nearblocks.io/txns/8aVPMSC2cSRfGeCmoCT694PVtjiy32YHXsuyQpGvJPa5"
         },
         {
           "label": "guardian repay",
-          "url": "https://testnet.nearblocks.io/txns/GW8hG61KrSEUFdknFhWXRHWq7bq7z1nGhToEpiLbCaiU"
+          "url": "https://testnet.nearblocks.io/txns/5NbxF6qbMuaNz22UW9DeTbEBMXj9gY74PpfSY2u9ZsEZ"
         },
         {
           "label": "deleverage",
-          "url": "https://testnet.nearblocks.io/txns/G55opn8WcdRfVS5d2kxwYzxcDjkAF6jF26kkmEdtAdym"
+          "url": "https://testnet.nearblocks.io/txns/7zV8xLpHBJetSpuUN9CAU6UavndjAf4Gry35jL453vAC"
         }
       ]
     },
