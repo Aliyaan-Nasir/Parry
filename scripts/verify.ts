@@ -7,8 +7,8 @@
  *   pnpm verify --quick         skip the test suites
  *   pnpm verify --build         also rebuild the contracts reproducibly and compare the bytes
  *
- * PARRY_API_URL and PARRY_SITE_URL (defaults http://localhost:4000 and http://localhost:3000)
- * point at the stack to check, so it runs against a local stack before hosting.
+ * PARRY_API_URL and PARRY_SITE_URL point at the stack to check: by default the hosted API and site
+ * the deployment record names, else http://localhost:4000 and http://localhost:3000 (a local stack).
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -25,8 +25,6 @@ const ROOT = join(import.meta.dir, "..");
 const NETWORK = process.env.PARRY_NETWORK === "mainnet" ? "mainnet" : "testnet";
 const RPC = process.env.NEAR_RPC_URL ?? (NETWORK === "testnet" ? "https://archival-rpc.testnet.fastnear.com" : "https://archival-rpc.mainnet.fastnear.com");
 const MAINNET_RPC = "https://free.rpc.fastnear.com";
-const API = process.env.PARRY_API_URL ?? "http://localhost:4000";
-const SITE = process.env.PARRY_SITE_URL ?? "http://localhost:3000";
 const quick = process.argv.includes("--quick");
 /** The build each deployment entry runs, where its name differs: both test tokens run the token code. */
 const WASM: Record<string, string> = { usdc: "token", boost: "token", factory: "accounts" };
@@ -38,10 +36,14 @@ type Dep = {
   services?: Record<string, string>;
   keys?: { gasKeys?: Record<string, { account: string; lanes: number; tx?: string }>; postQuantum?: { account: string; tx?: string; signedTx?: string } };
   dexPool?: number;
+  api?: string;
+  site?: string;
 };
 type Step = { step?: string; tx?: string; digest?: string; payment?: { transaction?: string } };
 const depFile = join(ROOT, "deployments", `${NETWORK}.json`);
 const dep: Dep | null = existsSync(depFile) ? JSON.parse(readFileSync(depFile, "utf8")) : null;
+const API = process.env.PARRY_API_URL ?? dep?.api ?? "http://localhost:4000";
+const SITE = process.env.PARRY_SITE_URL ?? dep?.site ?? "http://localhost:3000";
 const proofsFile = join(ROOT, "deployments", `${NETWORK}-proofs.json`);
 const proofs: Record<string, Record<string, string>> & { scenarios?: Record<string, { ok: boolean; steps: Step[] }> } = existsSync(proofsFile) ? JSON.parse(readFileSync(proofsFile, "utf8")) : {};
 /** The transaction hash of the first step of scenario `n` whose text matches `pattern`. */
@@ -70,10 +72,27 @@ async function check(claim: string, f: () => Promise<string>) {
   }
 }
 
+/** A second provider for each default endpoint, tried when the first rate-limits (free tiers do). */
+const FALLBACK: Record<string, string> = {
+  "https://archival-rpc.testnet.fastnear.com": "https://archival-rpc.testnet.near.org",
+  "https://archival-rpc.mainnet.fastnear.com": "https://archival-rpc.mainnet.near.org",
+  [MAINNET_RPC]: "https://near.drpc.org",
+};
+const rateLimited = (status: number, error: unknown) => status === 429 || /-429|rate limit/i.test(JSON.stringify(error ?? ""));
+
 async function rpc<T>(method: string, params: unknown, url = RPC): Promise<T> {
-  const r = (await (await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) })).json()) as { result?: T; error?: unknown };
-  if (r.error) throw new Error(`${method}: ${JSON.stringify(r.error).slice(0, 200)}`);
-  return r.result as T;
+  const urls = [url, FALLBACK[url]].filter((u): u is string => !!u);
+  for (let attempt = 0; ; attempt++) {
+    const u = urls[attempt % urls.length]!;
+    const res = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+    const r = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as { result?: T; error?: unknown };
+    if (rateLimited(res.status, r.error) && attempt < 5) {
+      await new Promise((ok) => setTimeout(ok, 500 * (attempt + 1)));
+      continue;
+    }
+    if (r.error) throw new Error(`${method}: ${JSON.stringify(r.error).slice(0, 200)}`);
+    return r.result as T;
+  }
 }
 const account = (id: string, url = RPC) => rpc<{ code_hash: string; amount: string }>("query", { request_type: "view_account", finality: "final", account_id: id }, url);
 async function view<T>(id: string, method: string, args: object = {}, url = RPC): Promise<T> {
