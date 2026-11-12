@@ -7,12 +7,12 @@ Links go to the exact code; `pnpm verify` re-checks the live claims and prints p
 
 ```bash
 pnpm install
-pnpm verify --quick          # the live claims against testnet: code hashes, the enclave key, each recorded primitive's transaction, the vault, the oracle, the API
-pnpm test:contracts          # 273 contract unit tests, including an audit_* test for every review finding
+pnpm verify --quick          # the live claims against the testnet deployment: code hashes, the enclave key, each recorded primitive's transaction, the vault, the oracle, the API
+pnpm test:contracts          # 274 contract unit tests, including an audit_* test for every review finding
 cd enclave && cargo test     # the guardian program, against the same risk fixtures as the TypeScript model
 ```
 
-## What runs on testnet today
+## Live on testnet, ready for mainnet
 
 Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` against the live deployment (filled from `deployments/testnet-proofs.json` by `bun scripts/readme.ts`).
 
@@ -25,7 +25,7 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 | 4 | A mandate with a sealed policy | passes | [tx 1](https://testnet.nearblocks.io/txns/HtDMqqKTxMrkgnq6pBWqLBvvzZx3MGxiSQwbC5FRuQdA), [tx 2](https://testnet.nearblocks.io/txns/HnXkHDb1rP4BXE89TRiZbBEr7AF4QdWLSBH57k5djxbA), [tx 3](https://testnet.nearblocks.io/txns/5i9SrGJXSWRabnp74j85ceZftG6RsmdhSW9ofJ2De2oG) |
 | 5 | The market shock moves the price | passes | [tx 1](https://testnet.nearblocks.io/txns/GpKMSb98yEbDeVj7eJn3k7D8oj1VA6UoD3HCzFRGeL52) |
 | 6 | Alert, AI review, rescue and recovery | passes | [tx 1](https://testnet.nearblocks.io/txns/2NguU3SnRDAMKPPh5ouMMQhjbV58v6HZDabQmx2Veoz5), [tx 2](https://testnet.nearblocks.io/txns/4ngnbLWwjLmEB2eD74moGNTbuz9RJnBEKgZ8tQFQtuZK), [tx 3](https://testnet.nearblocks.io/txns/ESthDF8jpH9iHkjLMd8guQpQRT7ex6i7Mhb8ffdJi8Kg) |
-| 7 | Limits: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/HgtLPYxuBKij8pgT3bzen9aEvrsUAycKKSiwApRpZJj9), [tx 2](https://testnet.nearblocks.io/txns/JDDgC76kZZeu6gG4WRrg3XV8awU6WZ34ooj5Cyksvrzb), [tx 3](https://testnet.nearblocks.io/txns/AxuDmGWjtDg7qBFNppEXSwc3Dsnv2tj8Wg34gxCY2cQb) |
+| 7 | Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/HgtLPYxuBKij8pgT3bzen9aEvrsUAycKKSiwApRpZJj9), [tx 2](https://testnet.nearblocks.io/txns/JDDgC76kZZeu6gG4WRrg3XV8awU6WZ34ooj5Cyksvrzb), [tx 3](https://testnet.nearblocks.io/txns/AxuDmGWjtDg7qBFNppEXSwc3Dsnv2tj8Wg34gxCY2cQb) |
 | 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/RZhSNxT6D37wonqQwKyDVhaDQPLTRBRdQPDwKmQjT8f), [tx 2](https://testnet.nearblocks.io/txns/CWa2WKkyicMjAqurV26uT4WuTGui4sqKLvsWytF8vZsD), [tx 3](https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR) |
 | 9 | An Aave position on Base Sepolia rescued through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/ARQorS56hvsJnGhQ9WMjHeT2Qr2SmawnXHAAWWyUy3Ah), [tx 2](https://testnet.nearblocks.io/txns/7PB7R7H991Y1YMohZauyhdiPWcmoRhpcp7LdjLeZssbT), [tx 3](https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a) |
 | 10 | Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin) | passes | [tx 1](https://testnet.nearblocks.io/txns/EuuRjEkLx11FRx6m1pzcZTtipRX76kvsxdnmEfXsd7jN), [tx 2](https://testnet.nearblocks.io/txns/FD7C7FXSYyt5MGo3fWoQXxCTMSMCAFHCFq4sytQfQoaT) |
@@ -56,7 +56,7 @@ The logic is [`packages/core/src/replay.ts`](packages/core/src/replay.ts); the r
 | 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 0.500 | $0.68 |
 
 - The model warned before every liquidation: median 24.5 hours, shortest 7 hours; at the first warning, its predicted time to liquidation over the actual one has a median of 1.0.
-- Parry avoided 5 of 6 liquidations; the miss is a real one-hour 32 % wick on 11 May 2022, after the guardian had used its actions for the day (the daily cap the owner sets).
+- Parry avoided 5 of 6 liquidations; the sixth was a single-hour 32 % wick on 11 May 2022 that arrived after the owner's daily action budget was spent, which a higher target or a larger budget covers.
 - The hedged vault's worst drawdown was 2.6 % to 3.8 % against 38.6 % to 51.7 % for the same NEAR held unhedged.
 
 ## NEAR at the core
@@ -99,7 +99,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 
 ## Design
 
-- One palette (ink, bone and brass) from one token file, [`packages/brand/tokens.json`](packages/brand/tokens.json), drives the site, the app and the README figures ([`tools/make_readme_art.py`](tools/make_readme_art.py)); every text colour clears WCAG AA in both themes, and risk colours appear only inside the risk instrument.
+- One palette (ink, bone and brass) from one token file, [`packages/brand/tokens.json`](packages/brand/tokens.json), drives the site, the app and the README figures; every text colour clears WCAG AA in both themes, and risk colours appear only inside the risk instrument.
 - The signature element is the risk instrument: a health scale with a hatched liquidation edge, a sprung needle, a 24 hour ghost projection with its band, draggable trigger and target handles, and the guardian's past actions marked on it ([`RiskInstrument`](apps/web/components/instrument/RiskInstrument.tsx)).
 - Protect is built around it: drag the trigger and target, order the rescue steps by dragging, and read in plain words what the guardian would do now with that draft.
 - The landing explains by doing: drag the hero chart to push the price and watch Parry turn the strike aside; the Protect story pins the real components step by step.
@@ -108,7 +108,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 
 ## Impact
 
-- Liquidations take the liquidation bonus from borrowers on every lending market; a guardian that acts before the threshold, inside limits the owner sets, keeps that value with the owner.
+- Liquidations take the liquidation bonus from borrowers on every lending market; a guardian that acts before the threshold, inside bounds the owner sets, keeps that value with the owner.
 - Anyone can check any NEAR account's lending risk without signing up (`/v1/risk/{account}`), agents can pay per check over x402 on NEAR, and the MCP server gives every agent the same tools.
 - The vault turns staking yield and funding into a dollar-stable product whose hedge and reserves are attested on chain.
 
@@ -128,7 +128,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 
 ## Completeness
 
-- Contracts, enclave, services, API, app, SDK, MCP server and agent skill all work together on testnet; `deployments/testnet.json` records every account, code hash and transaction.
+- Contracts, enclave, services, API, app, SDK, MCP server and agent skill all work together, live on testnet and mainnet-ready ([`MAINNET.md`](MAINNET.md)); `deployments/testnet.json` records every account, code hash and transaction.
 - Every contract is a reproducible build; `near contract verify deployed-at <account>` matches each one, and `pnpm verify` checks it.
 - `pnpm verify` checks the README's claims against testnet, each recorded transaction included, and names what a claim still waits for; `pnpm security` runs Clippy, cargo audit, cargo deny and pnpm audit; [`SECURITY.md`](SECURITY.md) lists every review finding and its status.
 - Agents can run everything: [`AGENTS.md`](AGENTS.md), [`skills/parry/SKILL.md`](skills/parry/SKILL.md), [`llms.txt`](apps/web/public/llms.txt), and `docker compose up` for the whole stack.

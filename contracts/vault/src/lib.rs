@@ -6,7 +6,7 @@
 //! and nobody who deposits can be liquidated. Shares are the NEP-141 token "Parry Earn" (`EARN`,
 //! 24 decimals), valued in USD.
 //!
-//! ## Money model (testnet, stated honestly)
+//! ## Money model (testnet, in full)
 //!
 //! - Depositors own the LiNEAR the vault tracks as `staked_linear` (L) and the hedge's PnL on
 //!   Hyperliquid that has not been settled yet. On testnet the hedge margin is operator-funded

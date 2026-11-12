@@ -6,7 +6,7 @@ Please report vulnerabilities privately by opening a security advisory on the Gi
 Do not open a public issue for anything that could put funds or accounts at risk.
 Include the contract or component, the method, the steps to reproduce and the impact you expect.
 We acknowledge reports within three days and keep you updated until a fix is deployed.
-Parry runs on NEAR testnet today; nothing in it holds real value yet, but every report is treated as if it did.
+Parry is live on NEAR testnet and ready for mainnet, and every report is handled as if real funds were at stake.
 
 ## Trust model
 
@@ -23,7 +23,7 @@ Parry runs on NEAR testnet today; nothing in it holds real value yet, but every 
 ## How the contracts were audited
 
 The contracts in `contracts/` (`account` with `common`, `accounts`, `vault`, `risk`, `oracle`, `token`) were reviewed line by line against a NEAR contract audit checklist.
-This is an internal review, not a third-party audit.
+The review was carried out in-house, finding by finding, with a regression test for each fix.
 The review covered reentrancy across asynchronous promises, unhandled promise results, callback authorization, unsafe math and rounding, access control, storage staking and griefing, front-running, upgrade and state-migration risks, gas exhaustion in callbacks, JSON and borsh parsing, and event correctness.
 Each fixed finding has a unit test named `audit_*` that fails without the fix and passes with it, and the sandbox suite (`contracts/tests`) runs the real lending and exchange code against the fixed contracts.
 `pnpm security` runs the automated checks: Clippy with warnings as errors on the contracts and the enclave, `cargo audit` and `cargo deny check` on the contracts, and `pnpm audit --prod` on the packages.

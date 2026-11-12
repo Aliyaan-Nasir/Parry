@@ -2,8 +2,7 @@
  * Agent Market worker: answers hires of Parry's listing on NEAR's Agent Market (market.near.ai).
  * It polls the agent's assignments, reads the NEAR accounts named in each job, scores their
  * lending positions through Parry's own API, and submits a Markdown risk report. It runs only
- * with MARKET_AGENT_TOKEN, which `bun scripts/market.ts --register` writes (registering creates
- * a public listing, so it is a deliberate step).
+ * with MARKET_AGENT_TOKEN, the token the listing was registered with.
  */
 
 import { intEnv } from "./lib/config";
@@ -114,7 +113,7 @@ export async function main() {
       }
     });
   } else {
-    lastDetail = "not listed: MARKET_AGENT_TOKEN is not set (scripts/market.ts --register)";
+    lastDetail = "not listed: MARKET_AGENT_TOKEN is not set";
   }
   serveHealth("market", intEnv("PORT", 4900), async () => ({ ok: true, detail: lastDetail }));
 }

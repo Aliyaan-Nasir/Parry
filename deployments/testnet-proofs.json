@@ -189,7 +189,7 @@
       ]
     },
     "7": {
-      "title": "Limits: replays, forged envelopes, withdrawals and expiry are refused",
+      "title": "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused",
       "ok": true,
       "at": "2026-11-12T09:05:17.955Z",
       "steps": [

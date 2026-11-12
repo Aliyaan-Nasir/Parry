@@ -26,6 +26,8 @@ import { generateKey, MlDsa65KeyPair, Near } from "near-kit";
 import type { FinalExecutionOutcome } from "near-kit";
 
 const ROOT_DIR = join(import.meta.dir, "..");
+/** Local key files (gitignored); PARRY_KEYS_DIR points elsewhere. */
+const KEYS_DIR = process.env.PARRY_KEYS_DIR ?? join(ROOT_DIR, ".keys");
 const argv = process.argv;
 const NETWORK: "testnet" | "mainnet" = argv[argv.indexOf("--network") + 1] === "mainnet" && argv.includes("--network") ? "mainnet" : "testnet";
 const MAINNET = NETWORK === "mainnet";
@@ -42,7 +44,7 @@ const planned = MAINNET
   : null;
 const RPC = process.env.NEAR_RPC_URL ?? (MAINNET ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com");
 const ROOT = process.env.PARRY_ROOT ?? (planned ? planned.root : "parry.testnet");
-/** The funded account that creates the testnet root (its key in the keychain or internal/keys/). */
+/** The funded account that creates the testnet root (its key in the keychain or .keys/). */
 const BOOTSTRAP = process.env.PARRY_BOOTSTRAP ?? "";
 const CRED_DIR = join(homedir(), ".near-credentials", NETWORK);
 const NEAR = 10n ** 24n;
@@ -106,7 +108,7 @@ function b58(buf: Uint8Array): string {
 const codeHash = (code: Uint8Array) => b58(createHash("sha256").update(code).digest());
 
 function keyOf(account: string): string | null {
-  for (const f of [join(CRED_DIR, `${account}.json`), join(ROOT_DIR, "internal", "keys", `${account}.json`)]) {
+  for (const f of [join(CRED_DIR, `${account}.json`), join(KEYS_DIR, `${account}.json`)]) {
     if (existsSync(f)) return (JSON.parse(readFileSync(f, "utf8")) as { private_key: string }).private_key;
   }
   return null;
@@ -321,7 +323,7 @@ async function main() {
   // The services that run the enclave: the risk engine (risk reports), the keeper (vault reports,
   // the sealing key), the guardian, and the API (health certificates).
   for (const svc of ["risk", "keeper", "guardian", "api"]) {
-    const file = join(ROOT_DIR, "internal", "keys", `enclave-${svc}.json`);
+    const file = join(KEYS_DIR, `enclave-${svc}.json`);
     if (!existsSync(file)) {
       const k = generateKey();
       const o = (await client(wallets.enclave!).transaction(wallets.enclave!).addKey(k.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
@@ -332,7 +334,7 @@ async function main() {
   }
   for (const [svc, lanes, prepaid] of GAS_KEYS) {
     const id = wallets[svc]!;
-    const file = join(ROOT_DIR, "internal", "keys", `${svc}-gas-key.json`);
+    const file = join(KEYS_DIR, `${svc}-gas-key.json`);
     if (!existsSync(file)) {
       const k = generateKey();
       const o = (await client(id).transaction(id).addKey(k.publicKey.toString(), { type: "gasKeyFullAccess", numNonces: lanes }).transferToGasKey(k.publicKey.toString(), `${near(prepaid)} yocto` as never).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
@@ -349,7 +351,7 @@ async function main() {
   }
   // The treasury holds the most NEAR and its key lives longest, so the top-up service signs with a
   // post-quantum ML-DSA-65 (FIPS 204) key; its ed25519 key stays in the keychain for recovery.
-  const pqFile = join(ROOT_DIR, "internal", "keys", "treasury-ml-dsa-65.json");
+  const pqFile = join(KEYS_DIR, "treasury-ml-dsa-65.json");
   if (!existsSync(pqFile)) {
     const pq = MlDsa65KeyPair.fromRandom();
     const o = (await client(wallets.treasury!).transaction(wallets.treasury!).addKey(pq.publicKey.toString(), { type: "fullAccess" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;

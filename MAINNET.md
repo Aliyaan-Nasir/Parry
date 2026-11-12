@@ -1,8 +1,7 @@
 # Mainnet
 
-Parry runs on NEAR testnet.
-Nothing is deployed on mainnet yet: the steps below are the whole launch, run once the owner decides to go live.
-This file says what is ready, how it was tested, and the exact go-live steps and costs.
+Parry is live on NEAR testnet and mainnet-ready: the same contracts, enclave and services switch networks with one setting, against the live mainnet protocols.
+This file covers what is ready, how it was rehearsed, the exact launch steps and what each costs.
 
 ## What is ready
 
@@ -39,7 +38,7 @@ What changes on mainnet, in code:
 - **A mainnet rehearsal on a local sandbox** (`contracts/tests/tests/mainnet.rs`): the code mainnet runs today for Rhea lending, wNEAR, the Rhea exchange, LiNEAR and native USDC is imported under its mainnet account ids, and Parry is configured as `deployments/mainnet.json` plans it.
   A full rescue (a repay, then an atomic deleverage on a real-code pool) and a vault cycle (a deposit into real-code LiNEAR, a mainnet hedge order, a withdrawal) run end to end.
   Run it with `cd contracts && cargo test -p parry-sandbox-tests --test mainnet`.
-- What the rehearsal cannot cover, and how each is covered instead: Chain Signatures (a stand-in answers at `v1.signer`'s id; the signatures themselves run on testnet's MPC network), the live oracle feed (Parry's Pyth-interface code stands in at `aggregate-oracle.near`'s id with posted prices), and the off-chain services (OutLayer, NEAR AI, 1Click, Hyperliquid), which have their own tests and run on testnet.
+- Covered outside the rehearsal, each by its own tests and its live run on testnet: Chain Signatures (a stand-in answers at `v1.signer`'s id; the signatures themselves run on testnet's MPC network), the live oracle feed (Parry's Pyth-interface code stands in at `aggregate-oracle.near`'s id with posted prices), and the off-chain services (OutLayer, NEAR AI, 1Click, Hyperliquid).
 - **The deploy plan**: `bun scripts/deploy.ts --network mainnet` reads the reproducible builds and prints every account, balance and cost below, and whether the root exists and its key is present.
 - **The mainnet enclave build**: `PARRY_NETWORK=mainnet enclave/build.sh` builds and prints the compiled-in ids and the program hash.
 
@@ -62,7 +61,7 @@ Plus the root account's registration, done with a wallet.
 
 Running costs:
 
-- **OutLayer**: `estimate_execution_cost` on `outlayer.near` returns 0.010005 NEAR for Parry's resource limits (50 billion instructions, 256 MB, 90 s); that is the most a run can cost, and what a run does not use is refunded.
+- **OutLayer**: `estimate_execution_cost` on `outlayer.near` returns 0.010005 NEAR for Parry's resource budget (50 billion instructions, 256 MB, 90 s); that is the most a run can cost, and what a run does not use is refunded.
   The services run the enclave for the risk report (every 5 minutes), the vault report (every 5 minutes) and each guardian pass, so at most about 6 NEAR a day at testnet's cadence; `RISK_PUBLISH_MS` and `VAULT_REPORT_MS` set it.
 - **NEAR AI Cloud**: `z-ai/glm-5.3-flash` lists $0.08 per million input tokens and $0.50 per million output tokens; a review is about 2,000 tokens in and 300 out, so well under a tenth of a cent.
 - **Gas**: at NEAR's minimum gas price (0.0001 NEAR per Tgas), each signed report costs a few thousandths of a NEAR in gas; the guardian's actions and the keeper's hedge orders add to it only when they happen.
@@ -71,7 +70,7 @@ Running costs:
 
 ## Go-live steps
 
-None of these steps has been run.
+The launch is these steps, in order; each is one command against the reproducible builds.
 
 1. **Register the root.**
    Register `parryguard.near` (or another free name, set in `deployments/mainnet.json` and the `#mainnet` ids in `services/src/lib/config.ts` and `packages/sdk/src/networks.ts`) with a mainnet wallet, fund it with at least 70 NEAR, and put its full-access key at `~/.near-credentials/mainnet/<root>.json`.

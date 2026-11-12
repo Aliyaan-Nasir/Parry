@@ -33,7 +33,7 @@ interface EnclaveDecision {
   envelope_signature?: string;
   decision_json?: string;
   decision_signature?: string;
-  /** Why the planner chose this step and skipped the earlier ones in the policy's order (internal/INTERFACES.md, section 4). */
+  /** Why the planner chose this step and skipped the earlier ones in the policy's order. */
   explanation?: { step: string; why: string; skipped: { step: string; reason: string }[] } | null;
 }
 

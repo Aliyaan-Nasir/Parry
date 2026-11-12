@@ -449,10 +449,10 @@ interface Status {
 }
 ```
 
-## Errors and limits
+## Errors and quotas
 
-Every error is `{ error: string }` with its status: `400` for a malformed account id, a missing or non-numeric parameter, an invalid setting or a body that is not JSON, `401` without a valid sign-in, `402` for an unpaid call, `404` for something that does not exist, `422` when the enclave refuses a certificate, `429` past a daily limit, `503` while a dependency has no data, and `500` for anything else.
-A limit per address keys on the right-most `X-Forwarded-For` entry, the one the reverse proxy in front of the API appends.
+Every error is `{ error: string }` with its status: `400` for a malformed account id, a missing or non-numeric parameter, an invalid setting or a body that is not JSON, `401` without a valid sign-in, `402` for an unpaid call, `404` for something that does not exist, `422` when the enclave refuses a certificate, `429` past a daily quota, `503` while a dependency has no data, and `500` for anything else.
+A quota per address keys on the right-most `X-Forwarded-For` entry, the one the reverse proxy in front of the API appends.
 `/v1/risk` allows 200 free checks per address per day (`FREE_RISK_CHECKS_PER_DAY`), then answers `429` pointing to the paid route.
 `/v1/copilot` allows 30 questions per account per day (`COPILOT_PER_DAY`) and answers `503` when the API has no NEAR AI key.
 The relayed routes answer a spent budget with `429` and any other refusal with `400`.

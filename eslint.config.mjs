@@ -11,5 +11,5 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
-  globalIgnores(["**/dist/**", "**/node_modules/**", "apps/web/**", "contracts/**", "enclave/**", "internal/**", "tools/**"]),
+  globalIgnores(["**/dist/**", "**/node_modules/**", "apps/web/**", "contracts/**", "enclave/**", "internal/**"]),
 ]);

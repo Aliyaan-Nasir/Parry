@@ -601,7 +601,7 @@ export interface WatchRow {
   alert: { kind: "risk" | "health"; severity: "info" | "warning" | "critical"; title: string; body: string }[];
 }
 
-/** The certificate JSON the enclave signs (internal/INTERFACES.md, section 4). */
+/** The certificate JSON the enclave signs (the enclave signs it). */
 export interface CertificateBody {
   kind: "parry-health-certificate";
   version: 1;

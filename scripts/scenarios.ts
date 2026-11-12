@@ -7,7 +7,7 @@
  *   bun scripts/scenarios.ts --sandbox           the local node from `bun scripts/sandbox.ts`
  *   bun scripts/scenarios.ts --only 2,3,4        a subset (each scenario creates what it needs)
  *   bun scripts/scenarios.ts --align-pool        only realign the testnet exchange pool with the oracle
- *   bun scripts/scenarios.ts --upgrade-accounts  only move the accounts this machine can sign for to the published code
+ *   bun scripts/scenarios.ts --upgrade-accounts  only move the accounts whose owner keys are on hand to the published code
  *
  * Scenarios (numbers as in the test matrix): 2 a gasless protected account, 3 a leveraged Rhea
  * position, 4 a mandate with a sealed policy, 5 the market shock, 6 the AI-reviewed rescues
@@ -55,6 +55,8 @@ import { recoverAddress } from "../services/src/lib/evm";
 import { submitOrder } from "../services/src/lib/hyperliquid";
 
 const ROOT_DIR = join(import.meta.dir, "..");
+/** Local key files (gitignored); PARRY_KEYS_DIR points elsewhere. */
+const KEYS_DIR = process.env.PARRY_KEYS_DIR ?? join(ROOT_DIR, ".keys");
 const sandbox = process.argv.includes("--sandbox");
 const onlyArg = process.argv[process.argv.indexOf("--only") + 1];
 const only = process.argv.includes("--only") && onlyArg ? new Set(onlyArg.split(",").map(Number)) : null;
@@ -444,7 +446,7 @@ async function limits() {
   const m = await view<{ expired: boolean } | null>(e.account, "mandate");
   ok &&= m?.expired === true;
   steps.push({ step: "a mandate set to expire in 75 s reads expired after 90 s", expired: m?.expired, tx: e.steps.at(-1) });
-  save(7, "Limits: replays, forged envelopes, withdrawals and expiry are refused", ok, steps);
+  save(7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused", ok, steps);
 }
 
 async function vault() {
@@ -727,7 +729,7 @@ async function passkeyPerson(tag: string): Promise<PasskeyPerson> {
   const passkey = compressedPasskey(p256.getPublicKey(secret, true));
   const created = await api<{ accountId: string; txHash: string }>("/v1/relay/create-account", { method: "POST", body: { passkey } });
   // The key stays in the private keys folder, so what is left in the account can be recovered later.
-  if (!sandbox) writeFileSync(join(ROOT_DIR, "internal", "keys", `passkey-${tag}-${created.accountId.slice(0, 12)}.json`), JSON.stringify({ account: created.accountId, passkey, secret: Buffer.from(secret).toString("hex") }), { mode: 0o600 });
+  if (!sandbox) writeFileSync(join(KEYS_DIR, `passkey-${tag}-${created.accountId.slice(0, 12)}.json`), JSON.stringify({ account: created.accountId, passkey, secret: Buffer.from(secret).toString("hex") }), { mode: 0o600 });
   return { owner: `passkey ${passkey.slice(0, 10)}...`, key: "", n: root, account: created.accountId, secret, steps: [{ step: `relayer creates ${created.accountId} for a passkey, gasless for the owner`, tx: explorer(created.txHash) }] };
 }
 
@@ -832,7 +834,7 @@ async function closeBySelling() {
   }
   try {
     // A passkey owner: every request goes through the relayer, which attaches the 900 Tgas.
-    // SCENARIO_PASSKEY_REUSE names an earlier run's passkey file (internal/keys/passkey-*.json) and
+    // SCENARIO_PASSKEY_REUSE names an earlier run's passkey file (.keys/passkey-*.json) and
     // closes the position that account already holds.
     const reuse = process.env.SCENARIO_PASSKEY_REUSE;
     const b = (closers.passkey = reuse
@@ -1016,7 +1018,7 @@ async function insuranceInflow() {
 
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
 /**
- * --upgrade-accounts: every protected account whose owner this machine can sign for (the scenario
+ * --upgrade-accounts: every protected account whose owner key is on hand (the scenario
  * owners in the keychain, the passkey files) moves to the published account code. Accounts that
  * are gone or already on it are left alone.
  */
@@ -1034,7 +1036,7 @@ async function upgradeAll(): Promise<void> {
     console.log(`${o.failure ? "FAIL" : "ok  "} ${account} (${owner}) ${o.failure ?? explorer(o.hash)}`);
     if (!o.failure) moved++;
   }
-  const keys = join(ROOT_DIR, "internal", "keys");
+  const keys = KEYS_DIR;
   for (const file of readdirSync(keys).filter((f) => f.startsWith("passkey-"))) {
     const k = JSON.parse(readFileSync(join(keys, file), "utf8")) as { account: string; secret: string };
     const now = await code(k.account);

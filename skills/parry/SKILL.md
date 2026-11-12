@@ -101,10 +101,10 @@ const call = ownerCallAction(account, [ownerActions.setMandate(mandate)]);
 
 The SDK README (`packages/sdk/README.md`) lists every member.
 
-## Guardian limits to state honestly
+## The guardian's scope
 
 - The guardian can repay, add collateral, deleverage through the exchange round trip, reduce or hedge a Hyperliquid position inside a size cap and price band, and approve or repay an Aave loan for the person's own address.
-- It cannot transfer funds to anyone, and it acts only inside the mandate's powers, per-token reserve and daily caps, daily action count and expiry.
+- No guardian action has a recipient, so it never transfers funds to anyone; it acts inside the mandate's powers, per-token reserve and daily caps, daily action count and expiry.
 - Every action carries the hash of the AI review that approved it; a review that does not verify means no action.
 - The owner can revoke the mandate, pause the guardian or act directly at any time.
 

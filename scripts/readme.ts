@@ -7,7 +7,7 @@
  *                                                          transaction and verification
  *   <!-- proofs:start --> ... <!-- proofs:end -->         deployments/testnet-proofs.json: one testnet
  *                                                          transaction per NEAR primitive
- *   <!-- links:start --> ... <!-- links:end -->           the hosted app, API and MCP endpoint
+ *   <!-- links:start --> ... <!-- links:end -->           the hosted app, API, MCP endpoint and verifier
  *                                                          (deployments/testnet.json `site` and `api`)
  *
  * JUDGES.md's <!-- scenarios:start --> block lists each scenario of the test matrix with its
@@ -97,7 +97,11 @@ function proofsTable(): string {
 
 function links(): string {
   if (!dep.site || !dep.api) return "Run it with `docker compose up` or `pnpm dev` (below); the hosted app's address is added here when it is live.";
-  return `**Live on testnet:** [app](${dep.site}/app) · [API](${dep.api}/v1/status) · MCP at \`${dep.api}/mcp\` · [llms.txt](${dep.site}/llms.txt)`;
+  return [
+    `<p align="center">`,
+    `  <a href="${dep.site}/app"><b>Open the app</b></a> · <a href="${dep.api}/v1/status">API status</a> · <a href="#use-it-from-an-agent">MCP server</a> · <a href="${dep.site}/llms.txt">llms.txt</a> · <a href="${dep.site}/verify">Verify a decision</a>`,
+    `</p>`,
+  ].join("\n");
 }
 
 function fill(text: string, name: string, body: string): string {
@@ -143,7 +147,7 @@ const SCENARIOS: [number, string, string][] = [
   [4, "A mandate with a sealed policy", ""],
   [5, "The market shock moves the price", ""],
   [6, "Alert, AI review, rescue and recovery", "waits for the NEAR AI Cloud key"],
-  [7, "Limits: replays, forged envelopes, withdrawals and expiry are refused", ""],
+  [7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused", ""],
   [8, "A Hyperliquid order signed by the protected account through Chain Signatures", ""],
   [9, "An Aave loan on Base Sepolia rescued through Chain Signatures and verified by the MPC network", "waits for Base Sepolia ETH at the account's derived address"],
   [10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", ""],

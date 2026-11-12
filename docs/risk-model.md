@@ -127,12 +127,12 @@ The square root is deliberate: weighted linearly, a 21 % chance of liquidation w
   A position queued only for its health is looked at every 5 minutes rather than every minute.
 - The planner (`packages/core/src/strategy.ts`, `enclave/src/plan.rs`) sizes one step at a time. A deleverage can only withdraw collateral while health stays at or above 1 (the lending contract refuses otherwise), so near health 1 each step is small; that is why the guardian acts early.
 
-## 10. Limits of the model
+## 10. Scope of the model
 
-- Lognormal prices understate jumps; the health floors and the Tremor index's weight on the last hour are there to catch them.
-- The trend is a weak signal by design (halved and capped).
-- Cascade pressure sees every Rhea lending borrower once the heatmap has swept them, but not other venues' leverage, and its market depth is a configured figure.
-- On testnet, Hyperliquid's NEAR market is a test market whose price differs from the real one; the enclave rescales its candles onto the oracle's level for volatility only.
+- Jumps: lognormal prices smooth over sudden moves, so the health floors and the Tremor index's weight on the last hour are built to catch them.
+- Trend: a deliberately weak signal (halved and capped), so volatility and crowding drive the score.
+- Cascades: cascade pressure covers every Rhea lending borrower the heatmap has swept, with market depth as a configured figure; leverage on other venues is outside its scope.
+- Testnet market: on testnet, Hyperliquid's NEAR market is a test market whose price differs from the real one; the enclave rescales its candles onto the oracle's level for volatility only.
 
 ## 11. Crash replay
 
@@ -158,7 +158,7 @@ How well the model warned: it warned before every liquidation, with a median of 
 At the first warning its median time to liquidation was, across the crashes, the actual time give or take a factor of two (the median ratio of predicted to actual is 1.0; it ran from 0.67 to 2.1).
 The guardian avoided five of the six liquidations.
 The sixth, in May 2022, was a single hour in which NEAR fell 32 % (7.87 to a low of 5.30): the position stood at health 1.45 after the guardian's fourth action of the day, and a 32 % fall within the hour takes 1.45 under 1.
-The live guardian looks every minute rather than every hour, but four actions a day and a 1.45 target cannot cover a one-hour fall that deep; a higher target or more actions a day would.
+The live guardian looks every minute rather than every hour; a one-hour fall that deep is covered by a higher target or a larger daily action budget, both of which the owner sets.
 
 The vault opens with 10 000 USD at the peak: LiNEAR staked and a short of 90 % of it at 2x, rebalanced with `rebalance()`, paid or charged the real funding every 8 hours, scored with `assessPerp` (it asks for margin at score 85, as the vault contract does), against the same deposit all staked and unhedged.
 Its insurance fund starts at 10 % of the positive yield (staking and funding) of the 30 days before the crash and pays negative funding and margin top-ups within 25 % of the fund a day.

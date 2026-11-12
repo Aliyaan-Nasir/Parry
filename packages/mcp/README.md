@@ -2,7 +2,7 @@
 
 An MCP server for Parry: liquidation risk, the delta-neutral NEAR vault, proof of reserves and the guardian's verifiable log.
 Read tools change nothing.
-Write tools exist only when an agent account is configured, work only on testnet, act only for that agent's own account, and are capped per call and per UTC day.
+Write tools are scoped to the agent's own account: they appear once an agent account is configured, run on testnet, and carry per-call and per-UTC-day caps.
 
 ## Install and run
 

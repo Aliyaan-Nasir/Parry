@@ -1,4 +1,4 @@
-# TLS for the API on the VM. The site itself is on Vercel; DNS points API_DOMAIN here.
+# TLS for the API on its public host. The site itself is on Vercel; DNS points API_DOMAIN here.
 {
 	servers {
 		# The API sits behind Cloudflare's proxy: trust its edges (https://www.cloudflare.com/ips)
