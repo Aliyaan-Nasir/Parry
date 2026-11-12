@@ -419,11 +419,13 @@ impl Account {
     // -----------------------------------------------------------------------------------------
 
     /// Prices the swap with the protocol's price oracle (times the token's rate, for a staked
-    /// token): `min_out` must be within the mandate's slippage of that value, so a signed envelope
-    /// cannot sell collateral cheaply.
+    /// token): the swap's minimum output is at least that value less the mandate's slippage, so a
+    /// signed envelope cannot sell collateral cheaply. The guardian planned at the price of a
+    /// minute earlier; when the fresh floor is higher, the swap demands the floor rather than
+    /// refusing a rescue the owner's bound allows.
     #[private]
     pub fn on_delev_prices(&mut self, id: u64) -> PromiseOrValue<bool> {
-        let (mut rt, pd) = match self.pending_for(id) {
+        let (mut rt, mut pd) = match self.pending_for(id) {
             Some(x) => x,
             None => return PromiseOrValue::Value(false),
         };
@@ -449,7 +451,9 @@ impl Account {
             if dd >= dc { value * pow10((dd - dc) as u32) } else { value / pow10((dc - dd) as u32) };
         let floor = apply_bps(expected, BPS - m.max_slippage_bps as u128, Rounding::Up);
         if pd.min_out.0 < floor {
-            return self.abort_delev(&mut rt, pd, "pricing", Some("minimum output below the slippage bound"));
+            Event::DeleverageFloorRaised { id, planned: pd.min_out, floor: U128(floor) }.emit();
+            pd.min_out = U128(floor);
+            rt.pending = Some(pd.clone());
         }
         let inner = pd.amount.0 * pow10(p.token(&pd.collateral).unwrap().extra_decimals as u32);
         self.set_stage(&mut rt, "withdraw");

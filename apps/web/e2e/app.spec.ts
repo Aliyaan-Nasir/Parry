@@ -294,6 +294,34 @@ test.describe("guardian log", () => {
   });
 });
 
+test.describe("account update", () => {
+  test("an account on earlier code offers the owner the published code, signed with the passkey", async ({ page }) => {
+    const published = "J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF";
+    const api = await mockApi(page, { ownerKind: "passkey", overrides: { "GET /v1/config": { body: { ...fx.config(), accountCode: published } } } });
+    api.state.accountCodes.set(fx.ACCOUNT, "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a");
+    await seedAccount(page, "passkey");
+    await addVirtualAuthenticator(page, { withFixturePasskey: true });
+    await page.goto("/app");
+    const banner = page.getByRole("region", { name: "Account update" });
+    await expect(banner).toContainText("An update for your protected account is ready.");
+    api.state.accountCodes.set(fx.ACCOUNT, published);
+    await banner.getByRole("button", { name: "Update account" }).click();
+    await expect.poll(() => relayedActions(api)).toContainEqual([{ upgrade: { code_hash: published } }]);
+    await expect(banner).toBeHidden();
+  });
+
+  test("an account on the published code shows nothing", async ({ page }) => {
+    const published = "J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF";
+    const api = await mockApi(page, { overrides: { "GET /v1/config": { body: { ...fx.config(), accountCode: published } } } });
+    api.state.accountCodes.set(fx.ACCOUNT, published);
+    await seedAccount(page, "watch");
+    await page.goto("/app");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect.poll(() => api.rpcCalls.some((c) => c.method === "view_account" && c.accountId === fx.ACCOUNT)).toBe(true);
+    await expect(page.getByRole("region", { name: "Account update" })).toHaveCount(0);
+  });
+});
+
 test.describe("alerts", () => {
   test("the owner signs in with the passkey to acknowledge", async ({ page }) => {
     const api = await asPasskeyOwner(page);

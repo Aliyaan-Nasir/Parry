@@ -736,18 +736,51 @@ fn deleverage_happy_path() {
     assert!(a.pending().is_none());
 }
 
+/// A plan priced under the fresh oracle floor is not refused: the swap demands the floor, so a
+/// signed envelope still cannot sell collateral cheaply, and a pool that pays less rolls it back.
 #[test]
-fn deleverage_refuses_a_cheap_sale() {
+fn deleverage_never_sells_below_the_fresh_floor() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
     run_guardian(&mut a, &g, 1, delev(25_000_000));
+    // 10 NEAR at $3.00 = 30 USDC; 2% slippage puts the floor at 29.4 USDC.
     set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_prices(1);
-    assert!(calls().is_empty());
-    assert!(logs_contain("slippage bound") && logs_contain("deleverage_rolled_back"));
-    assert!(a.pending().is_none());
-    // The collateral no longer counts against the day's cap.
-    assert_eq!(a.mandate().unwrap().moved_today[0].1 .0, 0);
+    assert!(logs_contain("deleverage_floor_raised"));
+    assert_eq!(a.pending().unwrap().min_out, U128(29_400_000));
+    assert_eq!(calls()[0].1, "simple_withdraw");
+    set_with_results(NOW + 8, vec![ok_json(json!(true))]);
+    a.on_delev_withdrawn(1);
+    set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    a.on_delev_deposited(1);
+    assert_eq!(calls()[0].2["actions"][0]["min_amount_out"], "29400000");
+    // The pool pays only the plan's 25 USDC: under the floor, so the collateral goes back.
+    set_with_results(NOW + 10, vec![ok_json(json!("25000000"))]);
+    a.on_delev_swapped(1);
+    let c = calls();
+    assert_eq!((c[0].1.as_str(), c[0].2["token_id"].as_str().unwrap()), ("withdraw", "wrap.testnet"));
+}
+
+/// The guardian plans at the price of a minute earlier. When the price has risen since, the
+/// plan's minimum is under the fresh floor: the rescue goes ahead at the floor instead of failing.
+#[test]
+fn deleverage_proceeds_when_the_price_rose_after_planning() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    // Planned at $3.00: 29.5 USDC for 10 NEAR. The oracle now says $3.05: the floor is 29.89.
+    run_guardian(&mut a, &g, 1, delev(29_500_000));
+    set_with_results(NOW + 6, swap_prices(305_000_000));
+    a.on_delev_prices(1);
+    assert!(logs_contain("deleverage_floor_raised") && !logs_contain("deleverage_rolled_back"));
+    set_with_results(NOW + 8, vec![ok_json(json!(true))]);
+    a.on_delev_withdrawn(1);
+    set_with_results(NOW + 9, vec![ok_json(json!((10 * NEAR).to_string()))]);
+    a.on_delev_deposited(1);
+    assert_eq!(calls()[0].2["actions"][0]["min_amount_out"], "29890000");
+    set_with_results(NOW + 10, vec![ok_json(json!("30400000"))]);
+    a.on_delev_swapped(1);
+    let c = calls();
+    assert_eq!((c[0].1.as_str(), c[0].2["token_id"].as_str().unwrap()), ("withdraw", "usdc.parry.testnet"));
 }
 
 #[test]
@@ -1030,12 +1063,9 @@ fn audit_deleverage_prices_a_staked_token_with_its_rate() {
     assert!(c.iter().any(|x| x.0 == "linear-protocol.testnet" && x.1 == "ft_price"), "{c:?}");
     set_with_results(NOW + 6, answers());
     a.on_delev_prices(1);
-    assert!(logs_contain("slippage bound"), "30 USDC for $37.50 of LiNEAR is refused");
-    assert!(calls().is_empty());
-
-    run_guardian(&mut a, &g, 2, sell_linear(36_800_000));
-    set_with_results(NOW + 7, answers());
-    a.on_delev_prices(2);
+    // 30 USDC for $37.50 of LiNEAR: the swap demands the floor the rate gives, not the plan.
+    assert!(logs_contain("deleverage_floor_raised"));
+    assert_eq!(a.pending().unwrap().min_out, U128(36_750_000));
     assert_eq!(calls()[0].1, "simple_withdraw");
 }
 
@@ -1113,11 +1143,10 @@ fn audit_deleverage_is_priced_by_the_oracle_not_by_the_enclave_marks() {
     let c = calls();
     assert!(!c.iter().any(|x| x.0 == "risk.parry.testnet"), "{c:?}");
     assert_eq!(c.iter().filter(|x| x.0 == "oracle.parry.testnet").count(), 2);
-    // The oracle says $3.00: 25 USDC for 10 NEAR is below the 2% bound.
+    // The oracle says $3.00: 25 USDC for 10 NEAR is below the 2% bound, so the swap demands 29.4.
     set_with_results(NOW + 6, swap_prices(300_000_000));
     a.on_delev_prices(1);
-    assert!(logs_contain("slippage bound"));
-    assert!(a.pending().is_none());
+    assert_eq!(a.pending().unwrap().min_out, U128(29_400_000));
 }
 
 // ---------------------------------------------------------------------------------------------

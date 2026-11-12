@@ -288,6 +288,9 @@ pub enum Event<'a> {
     DeleverageStage { id: u64, stage: &'a str },
     #[event_version("1.0.0")]
     DeleverageRolledBack { id: u64, stage: &'a str },
+    /// The guardian's planned minimum was under the fresh oracle floor: the swap demands the floor.
+    #[event_version("1.0.0")]
+    DeleverageFloorRaised { id: u64, planned: U128, floor: U128 },
     #[event_version("1.0.0")]
     DeleverageCompleted { id: u64, repaid: U128, health_bps: Option<U128> },
     #[event_version("1.0.0")]

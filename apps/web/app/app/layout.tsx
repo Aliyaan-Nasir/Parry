@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { AccountUpdate } from "@/components/app/AccountUpdate";
 import { MobileNav, Sidebar } from "@/components/app/AppNav";
 import { HashScroll } from "@/components/app/HashScroll";
 import { TopBar } from "@/components/app/TopBar";
@@ -24,6 +25,7 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
                   This build has no Parry API address, so nothing live can load. Set <code className="num text-fg">NEXT_PUBLIC_API_URL</code> and rebuild.
                 </p>
               )}
+              <AccountUpdate />
               {children}
             </div>
           </main>

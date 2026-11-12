@@ -229,7 +229,7 @@ async fn atomic_deleverage_and_its_rollback() -> Result<()> {
     assert_eq!(c2, c1, "collateral restored");
     assert!(b2 >= b1, "no repay happened");
 
-    // A minimum below the slippage bound is refused before anything moves.
+    // A minimum below the oracle floor is raised to the floor: the sale never pays less.
     s.refresh().await?;
     let r = ok(s
         .guardian(
@@ -244,8 +244,18 @@ async fn atomic_deleverage_and_its_rollback() -> Result<()> {
             900,
         )
         .await?)?;
-    assert!(r.has_log("slippage bound"));
-    assert_eq!(s.position(&acct).await?.0, c2);
+    let raised = r.events("deleverage_floor_raised");
+    assert_eq!(raised.len(), 1, "logs: {:#?}", r.logs());
+    let floor = raised[0]["floor"].as_str().unwrap().parse::<u128>()?;
+    assert!(floor > 5 * USDC, "floor {floor}");
+    let (c3, b3) = s.position(&acct).await?;
+    if r.events("deleverage_completed").is_empty() {
+        assert_eq!(r.events("deleverage_rolled_back").len(), 1, "logs: {:#?}", r.logs());
+        assert_eq!(c3, c2, "collateral restored");
+    } else {
+        assert!(b3 + floor * INNER <= b2, "repaid at least the floor: debt {b2} -> {b3}");
+    }
+    let c2 = c3;
 
     // Too large a withdrawal: the lending contract refuses it and nothing changes.
     s.refresh().await?;

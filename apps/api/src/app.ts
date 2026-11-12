@@ -1,7 +1,7 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
 import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type ReserveLeaf } from "@parry/core";
-import { contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parry/services/lib/config";
+import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parry/services/lib/config";
 import type { Sql } from "@parry/services/lib/db";
 import { errorText } from "@parry/services/lib/log";
 import { nearHistory } from "@parry/services/lib/history";
@@ -100,6 +100,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
       contracts: Object.fromEntries(names.map((n) => [n, contract(n) || null])),
       dexPool: dexPool() >= 0 ? dexPool() : null,
       enclave,
+      accountCode: accountCode(),
       reviewModel: process.env.PARRY_REVIEW_MODEL ?? "z-ai/glm-5.3-flash",
       explorers,
     });

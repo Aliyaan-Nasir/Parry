@@ -44,6 +44,8 @@ export interface Config {
   /** The Rhea exchange pool rescues and closes swap on (`close_rhea`'s `pool_id`), or null when none is set. */
   dexPool: number | null;
   enclave: { publicKey: string; sealingPublicKey: string | null; wasmSha256: string };
+  /** The protected-account code the deployment publishes (a global contract hash): accounts on other code can upgrade to it. */
+  accountCode?: string | null;
   reviewModel: string;
   explorers: { near: string; hyperliquid: string; intents: string; evm: string };
 }

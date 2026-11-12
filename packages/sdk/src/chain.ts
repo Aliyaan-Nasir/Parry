@@ -45,6 +45,12 @@ export function chainReads(near: Near, contract: (name: keyof ContractIds) => st
     },
     /** The close round in flight on a protected account (`closing()`), or null when none is. */
     closing: async (accountId: string): Promise<Closing | null> => (await view<Closing | null>(accountId, "closing")) ?? null,
+    /** The code an account runs: the global code hash a protected account uses, else its own code's, or null for none. */
+    accountCode: async (accountId: string): Promise<string | null> => {
+      const a = await near.rpc.getAccount(accountId);
+      if (a.global_contract_hash) return a.global_contract_hash;
+      return a.code_hash && a.code_hash !== "11111111111111111111111111111111" ? a.code_hash : null;
+    },
     /** An account's Rhea lending position (`get_account` on the lending contract), or null when it has none. */
     rheaPosition: async (accountId: string): Promise<RheaLines | null> => {
       const v = await view<Partial<RheaLines> | null>(contract("lending"), "get_account", { account_id: accountId });

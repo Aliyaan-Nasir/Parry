@@ -61,6 +61,8 @@ export type MockState = {
   passkeys: Map<string, string>;
   /** NEAR balances in yocto per account (view_account). */
   balances: Map<string, bigint>;
+  /** The global code each account runs (view_account's global_contract_hash); none by default. */
+  accountCodes: Map<string, string>;
   /** Watched accounts per signed-in account. */
   watch: Map<string, Map<string, { thresholds: { score: number; health: number }; label: string | null }>>;
   /** Set once a relayed owner request closes the Rhea position (`close_rhea`): its debt is then gone. */
@@ -519,7 +521,8 @@ export function rpcReply(state: MockState, now: number, req: RpcRequest, calls: 
     const accountId = String(p.account_id);
     calls.push({ accountId, method: "view_account", args: {} });
     const amount = state.balances.get(accountId) ?? 25_000_000_000_000_000_000_000_000n;
-    return reply({ result: { amount: amount.toString(), locked: "0", code_hash: "11111111111111111111111111111111", storage_usage: 1820, storage_paid_at: 0, ...BLOCK } });
+    const global = state.accountCodes.get(accountId) ?? null;
+    return reply({ result: { amount: amount.toString(), locked: "0", code_hash: "11111111111111111111111111111111", global_contract_hash: global, storage_usage: 1820, storage_paid_at: 0, ...BLOCK } });
   }
   if (req?.method === "block") {
     return reply({ result: { author: "node0", header: { height: BLOCK.block_height, hash: BLOCK.block_hash, timestamp: now * 1_000_000 }, chunks: [] } });
@@ -553,6 +556,7 @@ export function freshState(options: MockOptions, now: number): MockState {
     created: new Map(),
     passkeys: new Map(),
     balances: new Map(),
+    accountCodes: new Map(),
     watch: new Map(),
     rheaClosed: false,
     certificates: [],

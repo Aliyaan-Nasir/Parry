@@ -72,6 +72,9 @@ export const dexPool = (): number => Number(process.env.PARRY_DEX_POOL ?? deploy
 
 export const enclaveInfo = () => deployment?.enclave ?? null;
 
+/** The protected-account code this deployment publishes (global, by hash), or null. */
+export const accountCode = (): string | null => process.env.PARRY_ACCOUNT_CODE ?? deployment?.contracts.account?.codeHash ?? null;
+
 export const RPC_URLS: string[] = (process.env.NEAR_RPC_URLS ?? (network === "testnet" ? "https://test.rpc.fastnear.com,https://testnet-rpc.intea.rs,https://near-testnet.drpc.org" : "https://free.rpc.fastnear.com,https://rpc.intea.rs,https://near.drpc.org"))
   .split(",")
   .map((s) => s.trim())
