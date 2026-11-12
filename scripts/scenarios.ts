@@ -4,6 +4,7 @@
  *
  *   bun scripts/scenarios.ts                     testnet (deployments/testnet.json, the root key in
  *                                                ~/.near-credentials/testnet), API at PARRY_API_URL
+ *                                                or the deployment record's hosted one
  *   bun scripts/scenarios.ts --sandbox           the local node from `bun scripts/sandbox.ts`
  *   bun scripts/scenarios.ts --only 2,3,4        a subset (each scenario creates what it needs)
  *   bun scripts/scenarios.ts --align-pool        only realign the testnet exchange pool with the oracle
@@ -64,7 +65,6 @@ const runs = (n: number) => !only || only.has(n);
 
 const NEAR = 10n ** 24n;
 const near = (n: number) => (BigInt(Math.round(n * 1000)) * NEAR) / 1000n;
-const API = (process.env.PARRY_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const COLLATERAL = Number(process.env.SCENARIO_COLLATERAL_NEAR ?? 3);
 /** Which rescue people scenarios 2 to 6 set up (each needs its own NEAR): repay, add, delev. */
 const PEOPLE = new Set((process.env.SCENARIO_PEOPLE ?? "repay,add,delev").split(",").map((x) => x.trim()));
@@ -76,6 +76,8 @@ const env = (file: string): Record<string, string> =>
     ? Object.fromEntries(readFileSync(file, "utf8").split("\n").filter((l) => l.includes("=") && !l.startsWith("#")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]))
     : {};
 const dep = JSON.parse(readFileSync(join(ROOT_DIR, "deployments", sandbox ? "sandbox.json" : "testnet.json"), "utf8"));
+/** The hosted API in the deployment record, unless PARRY_API_URL names another (a local stack). */
+const API = (process.env.PARRY_API_URL ?? dep.api ?? "http://localhost:4000").replace(/\/$/, "");
 const c = (name: string): string => dep.contracts[name]?.account ?? (name === "wnear" ? "wrap.testnet" : name === "signer" ? "v1.signer-prod.testnet" : "");
 const RPC = sandbox ? dep.rpc : (process.env.NEAR_RPC_URL ?? "https://test.rpc.fastnear.com");
 const networkId = sandbox ? "localnet" : "testnet";
