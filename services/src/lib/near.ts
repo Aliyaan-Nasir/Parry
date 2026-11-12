@@ -66,6 +66,25 @@ export async function view<T>(account: string, method: string, args: Record<stri
   return JSON.parse(Buffer.from(r.result).toString()) as T;
 }
 
+/** NEAR's storage price: 10^19 yoctoNEAR per byte. */
+const STORAGE_PRICE = 10n ** 19n;
+
+/** What an account can spend: its balance less the NEAR its storage holds (never negative). */
+export const spendable = (amount: bigint, storageUsage: number): bigint => {
+  const free = amount - BigInt(storageUsage) * STORAGE_PRICE;
+  return free > 0n ? free : 0n;
+};
+
+/** An account's spendable balance (`spendable`), so a contract's storage never counts as funds. */
+export async function spendableOf(account: string): Promise<bigint | null> {
+  try {
+    const r = await rpc<{ amount: string; storage_usage: number }>("query", { request_type: "view_account", finality: "optimistic", account_id: account });
+    return spendable(BigInt(r.amount), r.storage_usage);
+  } catch {
+    return null;
+  }
+}
+
 export async function balanceOf(account: string): Promise<bigint | null> {
   try {
     const r = await rpc<{ amount: string }>("query", { request_type: "view_account", finality: "optimistic", account_id: account });

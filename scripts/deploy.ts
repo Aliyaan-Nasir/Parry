@@ -226,11 +226,17 @@ async function deploy(name: string, id: string, init: { method: string; args: ob
     return (await tx.send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;
   };
   let migrated = !!opts.migrate && !fresh;
-  let o = await send(migrated);
-  if (migrated && /already migrated/.test(failure(o) ?? "")) {
+  // near-kit throws on a contract panic rather than returning the failed outcome: either way, a
+  // state that is already migrated takes the code alone.
+  let o = await send(migrated).catch((e: Error) => {
+    if (migrated && /already migrated/.test(e.message)) return null;
+    throw e;
+  });
+  if (migrated && (!o || /already migrated/.test(failure(o) ?? ""))) {
     migrated = false;
     o = await send(false);
   }
+  if (!o) throw new Error(`deploy ${id}: no outcome`);
   const f = failure(o);
   if (f) throw new Error(`deploy ${id}: ${f}`);
   dep.contracts[name] = { account: id, codeHash: hash, tx: hashOf(o), commit: builtFrom, source: "contracts/" + name, ...(migrated ? { migrated: true } : {}) };
@@ -366,7 +372,9 @@ async function main() {
   // The top-up service refills each wallet from the treasury to its opening balance.
   // Each target is the account's own opening balance: what is left after its gas key's prepaid NEAR.
   const prepaid = (n: string) => GAS_KEYS.find(([k]) => k === n)?.[2] ?? 0;
-  env.push(`TOPUP_WALLETS=${WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal - prepaid(n)}`).join(",")}`);
+  // The risk board pays for every report it stores: it is kept at 2 NEAR to spend.
+  const topups = WALLETS.filter(([n]) => n !== "treasury" && wallets[n]).map(([n, bal]) => `${n}:${wallets[n]}:${bal - prepaid(n)}`);
+  env.push(`TOPUP_WALLETS=${[...topups, `risk:${ids.risk}:2`].join(",")}`);
   const envFile = MAINNET ? ".env.services.mainnet" : ".env.services";
   writeFileSync(join(ROOT_DIR, envFile), `${env.join("\n")}\n`, { mode: 0o600 });
   console.log(`wrote ${envFile} (gitignored)`);

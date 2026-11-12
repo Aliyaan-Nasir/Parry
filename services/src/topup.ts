@@ -1,14 +1,16 @@
 /**
  * Top-up: keeps every service wallet funded from one treasury account, and records balances for
  * the status page, which warns when the treasury itself runs low.
- * TOPUP_WALLETS = "name:account:targetNear,..." (for example "keeper:keeper.parry.testnet:8").
+ * TOPUP_WALLETS = "name:account:targetNear,..." (for example "keeper:keeper.parry.testnet:8"). Targets are
+ * spendable NEAR, net of what storage holds, so a contract account (the risk board, which stores
+ * every report) is kept able to pay for its state.
  */
 
 import { intEnv } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
-import { balanceOf, senderFromEnv, toNear, yocto } from "./lib/near";
+import { senderFromEnv, spendableOf, toNear, yocto } from "./lib/near";
 
 const treasury = senderFromEnv("TREASURY");
 
@@ -28,13 +30,13 @@ async function pass(sql: Sql): Promise<string> {
   if (!treasury) throw new Error("TREASURY wallet is not configured");
   const notes: string[] = [];
   for (const w of wallets()) {
-    const b = await balanceOf(w.account);
+    const b = await spendableOf(w.account);
     const near = b === null ? 0 : toNear(b);
     // Refill to the target when a wallet falls under half of it.
     if (near < w.target / 2) {
       try {
         // Never more than the treasury can spare: it keeps 0.5 NEAR for its own transactions.
-        const spare = toNear((await balanceOf(treasury.accountId)) ?? 0n) - 0.5;
+        const spare = toNear((await spendableOf(treasury.accountId)) ?? 0n) - 0.5;
         const amount = Math.min(w.target - near, spare);
         if (amount <= 0) throw new Error("the treasury is empty");
         await treasury.transfer(w.account, yocto(amount));
@@ -46,7 +48,7 @@ async function pass(sql: Sql): Promise<string> {
     await sql`INSERT INTO wallets (name, account, balance, target, checked_at) VALUES (${w.name}, ${w.account}, ${near}, ${w.target}, now())
       ON CONFLICT (name) DO UPDATE SET account = excluded.account, balance = excluded.balance, target = excluded.target, checked_at = now()`;
   }
-  const t = toNear((await balanceOf(treasury.accountId)) ?? 0n);
+  const t = toNear((await spendableOf(treasury.accountId)) ?? 0n);
   const min = Number(process.env.TREASURY_MIN_NEAR ?? 20);
   await sql`INSERT INTO wallets (name, account, balance, target, checked_at) VALUES ('treasury', ${treasury.accountId}, ${t}, ${min}, now())
     ON CONFLICT (name) DO UPDATE SET balance = excluded.balance, target = excluded.target, checked_at = now()`;

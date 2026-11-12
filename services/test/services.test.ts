@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { migrate, useQuota } from "../src/lib/db";
 import { delegateTgas, ownerRequestTgas, prepaidNear } from "../src/relayer";
+import { spendable } from "../src/lib/near";
 import { wallets } from "../src/topup";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -14,6 +15,12 @@ describe("top-up configuration", () => {
     ]);
     expect(() => wallets("keeper:keeper.parry.testnet")).toThrow();
     expect(wallets("")).toEqual([]);
+  });
+
+  test("counts only what storage does not hold", () => {
+    // 5 NEAR with 400 kB of storage (4 NEAR at 10^19 yoctoNEAR a byte) leaves 1 NEAR to spend.
+    expect(spendable(5n * 10n ** 24n, 400_000)).toBe(10n ** 24n);
+    expect(spendable(10n ** 24n, 400_000)).toBe(0n);
   });
 });
 
