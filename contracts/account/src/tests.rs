@@ -437,6 +437,27 @@ fn guardian_refusals() {
 }
 
 #[test]
+fn audit_a_new_guardian_key_starts_its_own_nonces() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    // An envelope with an outsized nonce uses up every later nonce of this key...
+    let far = envelope(u64::MAX, repay(1_000_000));
+    assert_eq!(refused(&mut a, &far, g.sign(&far), NOW + 5), "accepted");
+    let next = envelope(2, repay(1_000_000));
+    assert!(refused(&mut a, &next, g.sign(&next), NOW + 6).contains("nonce already used"));
+    // ...but not those of the key the owner installs next.
+    let g2 = Guardian::new(2);
+    set("alice.testnet", 1, NOW + 7);
+    a.owner_call(vec![OwnerAction::SetMandate { mandate: mandate(&g2) }]);
+    let first = envelope(1, repay(1_000_000));
+    assert_eq!(refused(&mut a, &first, g2.sign(&first), NOW + 8), "accepted");
+    // The same key set again keeps its sequence.
+    set("alice.testnet", 1, NOW + 9);
+    a.owner_call(vec![OwnerAction::SetMandate { mandate: mandate(&g2) }]);
+    assert!(refused(&mut a, &first, g2.sign(&first), NOW + 10).contains("nonce already used"));
+}
+
+#[test]
 fn guardian_can_never_withdraw_or_transfer_out() {
     let g = Guardian::new(1);
     let mut a = with_mandate(&g);
@@ -851,6 +872,12 @@ fn stuck_deleverage_can_be_retried_by_anyone() {
     a.retry_deleverage();
     let c = calls();
     assert_eq!((c[0].1.as_str(), c[0].2["amount"].as_str().unwrap()), ("withdraw", "29800000"));
+    // The retry is in flight: a second one cannot run beside it.
+    assert_eq!(a.pending().unwrap().stage, "withdraw_out");
+    assert!(panic_text(|| {
+        a.retry_deleverage();
+    })
+    .contains("not stuck"));
 }
 
 #[test]
@@ -1099,6 +1126,11 @@ fn audit_refused_resupply_stays_pending_until_retried() {
     assert_eq!((c[0].0.as_str(), c[0].1.as_str()), ("wrap.testnet", "ft_transfer_call"));
     assert_eq!(c[0].2["receiver_id"], "lending.parry.testnet");
     assert_eq!(c[0].2["msg"], "\"OnlyIncreaseCollateral\"");
+    assert_eq!(a.pending().unwrap().stage, "restore_retry");
+    assert!(panic_text(|| {
+        a.retry_deleverage();
+    })
+    .contains("not stuck"));
     set_with_results(NOW + 14, vec![ok_json(json!((10 * NEAR).to_string()))]);
     assert!(a.on_restored(1));
     assert!(logs_contain("deleverage_rolled_back"));
@@ -1398,6 +1430,11 @@ fn close_rolls_back_when_the_withdrawal_or_deposit_fails() {
     assert_eq!(a.closing().unwrap().stage, "stuck_resupply");
     set("anyone.testnet", 0, NOW + 8);
     a.retry_close();
+    assert_eq!(a.closing().unwrap().stage, "restore_retry");
+    assert!(panic_text(|| {
+        a.retry_close();
+    })
+    .contains("not stuck"));
     set_with_results(NOW + 9, vec![ok_json(json!(sell.to_string()))]);
     assert!(a.on_close_restored(cid + 1));
     assert!(logs_contain("\"stage\":\"deposit\""));

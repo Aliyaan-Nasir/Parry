@@ -206,7 +206,8 @@ describe("write tools", () => {
     now = new Date("2026-11-11T00:01:00Z");
     expect((await call("vault_withdraw", { shares: "1000" })).error).toBe(false);
     expect(f.sent.filter((c) => c.methodName === "request_withdraw")).toHaveLength(6);
-    expect(f.sent[0]).toMatchObject({ methodName: "request_withdraw", args: { shares: "1000" }, deposit: "1" });
+    // 1000 units is a whole balance under one share, which pays its place in the queue.
+    expect(f.sent[0]).toMatchObject({ methodName: "request_withdraw", args: { shares: "1000" }, deposit: "5000000000000000000000" });
   });
 
   test("set_mandate sends owner_call on the agent's protected account with a sealed policy, capped at 10 a day", async () => {

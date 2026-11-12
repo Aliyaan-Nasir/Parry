@@ -413,6 +413,11 @@ impl Account {
                     sealed: mandate.sealed.is_some(),
                 }
                 .emit();
+                // A new guardian key starts its own nonce sequence: the old key's envelopes no
+                // longer verify, and one envelope with an outsized nonce cannot lock the new key out.
+                if rt.mandate.as_ref().map(|m| &m.guardian_key) != Some(&mandate.guardian_key) {
+                    rt.guardian_nonce = 0;
+                }
                 rt.mandate = Some(mandate);
                 rt.mandate_set_at = now;
                 rt.spent.clear();

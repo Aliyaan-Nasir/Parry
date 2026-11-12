@@ -11,7 +11,7 @@
 <p>
   <a href="https://parry.market/app"><img alt="Live on NEAR testnet" src="https://img.shields.io/badge/NEAR_testnet-live-C99A45?style=flat-square&labelColor=141614"></a>
   <a href="MAINNET.md"><img alt="Mainnet ready" src="https://img.shields.io/badge/mainnet-ready-C99A45?style=flat-square&labelColor=141614"></a>
-  <a href="JUDGES.md#technical-implementation"><img alt="274 contract tests" src="https://img.shields.io/badge/contract_tests-274_passing-24663A?style=flat-square&labelColor=141614"></a>
+  <a href="JUDGES.md#technical-implementation"><img alt="275 contract tests" src="https://img.shields.io/badge/contract_tests-275_passing-24663A?style=flat-square&labelColor=141614"></a>
   <a href="JUDGES.md#technical-implementation"><img alt="283 browser tests" src="https://img.shields.io/badge/browser_tests-283_passing-24663A?style=flat-square&labelColor=141614"></a>
   <a href="SECURITY.md"><img alt="Security reviewed" src="https://img.shields.io/badge/security-reviewed-24663A?style=flat-square&labelColor=141614"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5A5D55?style=flat-square&labelColor=141614"></a>
@@ -275,7 +275,7 @@ pnpm verify                       # this README's claims, against the live deplo
 
 | Contract unit tests | Sandbox flows | Enclave tests | TypeScript tests | Browser tests |
 | :---: | :---: | :---: | :---: | :---: |
-| **274** | **20** | **33** + 2 cross-language vectors | **218** | **283** at three widths, both themes |
+| **275** | **20** | **33** + 2 cross-language vectors | **218** | **283** at three widths, both themes |
 
 ## Use it from code
 

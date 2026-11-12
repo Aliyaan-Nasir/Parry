@@ -192,7 +192,9 @@ describe("vault calls and networks", () => {
       gas: "300000000000000",
       deposit: "1",
     });
-    expect(parry.requestWithdrawAction(5n)).toMatchObject({ receiverId: "vault.parry.testnet", methodName: "request_withdraw", args: { shares: "5" }, deposit: "1" });
+    expect(parry.requestWithdrawAction(10n ** 24n)).toMatchObject({ receiverId: "vault.parry.testnet", methodName: "request_withdraw", args: { shares: "1000000000000000000000000" }, deposit: "1" });
+    // A whole balance under one share pays its place in the queue.
+    expect(parry.requestWithdrawAction(5n)).toMatchObject({ args: { shares: "5" }, deposit: "5000000000000000000000" });
     expect(parry.claimAction()).toMatchObject({ receiverId: "vault.parry.testnet", methodName: "claim", args: {}, deposit: "0", gas: "150000000000000" });
     expect(parry.linearStorageAction("0ua.testnet")).toMatchObject({
       receiverId: "linear-protocol.testnet",

@@ -8,7 +8,7 @@ Links go to the exact code; `pnpm verify` re-checks the live claims and prints p
 ```bash
 pnpm install
 pnpm verify --quick          # the live claims against the testnet deployment: code hashes, the enclave key, each recorded primitive's transaction, the vault, the oracle, the API
-pnpm test:contracts          # 274 contract unit tests, including an audit_* test for every review finding
+pnpm test:contracts          # 275 contract unit tests, including an audit_* test for every review finding
 cd enclave && cargo test     # the guardian program, against the same risk fixtures as the TypeScript model
 ```
 
@@ -94,7 +94,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
   The owner can close a Rhea position by selling collateral in rounds that each keep health above 1, or unwind the whole account, with every failed step rolled back ([`contracts/account/src/close.rs`](contracts/account/src/close.rs)).
   The enclave signs private health certificates: "health is at least X" for one named reader at one block, with no amounts, optionally anchored on the risk board, checkable on `/verify`, in the SDK and over MCP.
 - **Tests.**
-  274 contract unit tests (each audit fix has an `audit_*` test that fails without it), 20 sandbox flows on real protocol code including a mainnet rehearsal, 33 enclave tests and 2 cross-language vectors, 218 TypeScript tests (the database ones need `TEST_DATABASE_URL`), and 283 browser tests that open every page at three widths in both themes; the risk model is one fixture file both languages pass: [`packages/core/fixtures/risk-cases.json`](packages/core/fixtures/risk-cases.json).
+  275 contract unit tests (each audit fix has an `audit_*` test that fails without it), 20 sandbox flows on real protocol code including a mainnet rehearsal, 33 enclave tests and 2 cross-language vectors, 218 TypeScript tests (the database ones need `TEST_DATABASE_URL`), and 283 browser tests that open every page at three widths in both themes; the risk model is one fixture file both languages pass: [`packages/core/fixtures/risk-cases.json`](packages/core/fixtures/risk-cases.json).
   The test matrix's scenarios run end to end with recorded transactions: [`scripts/scenarios.ts`](scripts/scenarios.ts), [`deployments/testnet-proofs.json`](deployments/testnet-proofs.json).
 
 ## Design

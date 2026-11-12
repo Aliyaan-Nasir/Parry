@@ -605,7 +605,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     {
       title: "Queue a vault withdrawal",
       description:
-        `Queues a withdrawal of the agent account's vault shares (request_withdraw, 1 yoctoNEAR): the shares move into the vault's escrow and are paid out in LiNEAR (and USDC for hedge gains) once a newer vault report lands. ` +
+        `Queues a withdrawal of the agent account's vault shares (request_withdraw, 1 yoctoNEAR, or 0.005 NEAR for a whole balance under one share): the shares move into the vault's escrow and are paid out in LiNEAR (and USDC for hedge gains) once a newer vault report lands. ` +
         `Changes: escrows the shares. Testnet only; at most ${caps.withdrawPerDay} call(s) per UTC day.`,
       inputSchema: { shares: z.string().regex(/^[1-9]\d*$/).describe("Share units to withdraw (a share has 24 decimals).") },
       annotations: write,

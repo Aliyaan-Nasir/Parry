@@ -486,7 +486,8 @@ impl Account {
 
     /// Resumes a close stuck after its swap (or in its rollback). Anyone may call it: every step
     /// only moves the account's own tokens between the exchange, the account and the lending
-    /// contract. It needs `retry_close_gas` of prepaid gas.
+    /// contract. It needs `retry_close_gas` of prepaid gas. Each step is marked in flight before it
+    /// starts, so a second retry cannot run beside it.
     pub fn retry_close(&mut self) -> Promise {
         require_gas(retry_close_gas());
         let c = load_closing().unwrap_or_else(|| env::panic_str("no close in flight"));
@@ -501,9 +502,13 @@ impl Account {
             "stuck_verify" | "stuck_withdraw_rest" => self.close_verify(c),
             "stuck_restore" => {
                 let (token, sell) = (c.collateral.clone(), c.sell.0);
+                self.close_stage(c, "restore_retry");
                 self.dex_withdraw(&token, sell).then(self.cb().on_close_restore_withdrawn(id, U128(sell)))
             }
-            "stuck_resupply" => self.close_resupply(c),
+            "stuck_resupply" => {
+                self.close_stage(c.clone(), "restore_retry");
+                self.close_resupply(c)
+            }
             _ => env::panic_str("the close is not stuck"),
         }
     }

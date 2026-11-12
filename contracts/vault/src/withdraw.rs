@@ -22,6 +22,9 @@ use near_contract_standards::fungible_token::FungibleTokenCore;
 
 /// One share (24 decimals): the smallest request that is not the account's whole balance.
 pub const MIN_WITHDRAW_SHARES: u128 = 1_000_000_000_000_000_000_000_000;
+/// What a whole-balance withdrawal under one share attaches: 0.005 NEAR, more than its queue entry's
+/// storage and its share of a keeper call.
+pub const DUST_WITHDRAW_FEE: u128 = 5_000_000_000_000_000_000_000;
 
 /// NEP-141 `ft_transfer` on LiNEAR or test USDC.
 const GAS_FT_TRANSFER: Gas = Gas::from_tgas(15);
@@ -68,20 +71,26 @@ impl Claim {
 #[near]
 impl Vault {
     /// Escrows `shares` of the caller and queues their withdrawal. Returns the withdrawal id.
-    /// One yoctoNEAR, so only a full-access key can start it.
+    /// One yoctoNEAR (so only a full-access key can start it), or `DUST_WITHDRAW_FEE` for a whole
+    /// balance under one share.
     #[payable]
     pub fn request_withdraw(&mut self, shares: U128) -> u64 {
-        assert_one_yocto();
         require!(shares.0 > 0, "shares must be positive");
         let account = env::predecessor_account_id();
-        // Each queued request is stored at the vault's cost until it is paid: a request must
-        // escrow at least one share (about a dollar) unless it is the account's whole balance,
-        // so filling the queue with dust costs the requester far more than it costs the vault.
-        let balance = self.token.ft_balance_of(account.clone()).0;
-        require!(
-            shares.0 >= MIN_WITHDRAW_SHARES || shares.0 == balance,
-            "withdraw at least one share, or your whole balance"
-        );
+        // Each queued request is stored at the vault's cost until it is paid, and a keeper call
+        // pays it: a request escrows at least one share (about a dollar), or it is the account's
+        // whole balance and attaches DUST_WITHDRAW_FEE for its queue entry and the keeper's gas, so
+        // filling the queue with dust always costs the requester more than it costs the vault.
+        if shares.0 >= MIN_WITHDRAW_SHARES {
+            assert_one_yocto();
+        } else {
+            let balance = self.token.ft_balance_of(account.clone()).0;
+            require!(shares.0 == balance, "withdraw at least one share, or your whole balance");
+            require!(
+                env::attached_deposit().as_yoctonear() == DUST_WITHDRAW_FEE,
+                "a withdrawal under one share attaches 0.005 NEAR for its place in the queue"
+            );
+        }
         self.token.internal_transfer(
             &account,
             &env::current_account_id(),

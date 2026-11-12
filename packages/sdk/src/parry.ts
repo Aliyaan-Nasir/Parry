@@ -9,6 +9,9 @@ import { contractCall, ONE_YOCTO, type ContractCall } from "./calls.js";
 
 /** LiNEAR's NEP-145 storage bound, in yoctoNEAR (0.00125 NEAR). */
 const LINEAR_STORAGE = "1250000000000000000000";
+/** One vault share (24 decimals), and what a whole-balance withdrawal under it attaches (0.005 NEAR). */
+const ONE_SHARE = 10n ** 24n;
+const DUST_WITHDRAW_FEE = "5000000000000000000000";
 import { chainReads, nearClient, sendCall, type ChainReads, type SentCall } from "./chain.js";
 import { u128 } from "./encoding.js";
 import { NETWORKS, isNetwork, type ContractIds, type Network } from "./networks.js";
@@ -82,7 +85,10 @@ export interface Parry extends ApiMethods, ChainReads {
   vaultDepositAction(amountYocto: string | bigint): ContractCall;
   /** wNEAR deposit: `ft_transfer_call` of wNEAR to the vault with msg "deposit", 1 yoctoNEAR, 300 Tgas. */
   vaultDepositWNearAction(amountYocto: string | bigint): ContractCall;
-  /** `request_withdraw(shares)` on the vault (share units), 1 yoctoNEAR, 30 Tgas. */
+  /**
+   * `request_withdraw(shares)` on the vault (share units), 30 Tgas: 1 yoctoNEAR, or 0.005 NEAR for
+   * a whole balance under one share (its place in the queue).
+   */
   requestWithdrawAction(shares: string | bigint): ContractCall;
   /** `claim()` on the vault: pays failed transfers and owed USDC, 150 Tgas. */
   claimAction(): ContractCall;
@@ -181,7 +187,10 @@ export function createParry(options: ParryOptions): Parry {
     vaultDepositAction: (amountYocto) => contractCall(contract("vault"), "deposit", {}, { tgas: 150, deposit: u128(amountYocto, "amountYocto") }),
     vaultDepositWNearAction: (amountYocto) =>
       contractCall(contracts.wnear, "ft_transfer_call", { receiver_id: contract("vault"), amount: u128(amountYocto, "amountYocto"), msg: "deposit" }, { tgas: 300, deposit: ONE_YOCTO }),
-    requestWithdrawAction: (shares) => contractCall(contract("vault"), "request_withdraw", { shares: u128(shares, "shares") }, { tgas: 30, deposit: ONE_YOCTO }),
+    requestWithdrawAction: (shares) => {
+      const units = u128(shares, "shares");
+      return contractCall(contract("vault"), "request_withdraw", { shares: units }, { tgas: 30, deposit: BigInt(units) < ONE_SHARE ? DUST_WITHDRAW_FEE : ONE_YOCTO });
+    },
     claimAction: () => contractCall(contract("vault"), "claim", {}, { tgas: 150 }),
     linearStorageAction: (accountId) => contractCall(contracts.linear, "storage_deposit", { account_id: accountId, registration_only: true }, { tgas: 10, deposit: LINEAR_STORAGE }),
     sendCall: (call, signer) => sendCall(signerClient(signer), signer.accountId, call),

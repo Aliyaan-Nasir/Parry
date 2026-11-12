@@ -628,19 +628,27 @@ impl Account {
     /// and the lending contract.
     ///
     /// It needs `retry_gas` of prepaid gas: with less, a later step could run out after the
-    /// tokens moved and leave the deleverage stuck where no retry can resume it.
+    /// tokens moved and leave the deleverage stuck where no retry can resume it. The step is
+    /// marked in flight before it starts, so a second retry cannot run beside it.
     pub fn retry_deleverage(&mut self) -> Promise {
         require_gas(retry_gas(self.core.protocol.tokens.len()));
-        let rt = load_runtime();
+        let mut rt = load_runtime();
         let pd = rt.pending.clone().unwrap_or_else(|| env::panic_str("no deleverage in flight"));
         match pd.stage.as_str() {
-            "stuck_withdraw_out" => self.dex_withdraw(&pd.debt, pd.out.0).then(self.cb().on_delev_out(pd.id)),
+            "stuck_withdraw_out" => {
+                self.set_stage(&mut rt, "withdraw_out");
+                self.dex_withdraw(&pd.debt, pd.out.0).then(self.cb().on_delev_out(pd.id))
+            }
             "stuck_restore" => {
+                self.set_stage(&mut rt, "restore_retry");
                 let amount = pd.amount.0;
                 self.dex_withdraw(&pd.collateral, amount)
                     .then(self.cb().on_restore_withdrawn(pd.id, U128(amount)))
             }
-            "stuck_resupply" => self.resupply(&pd),
+            "stuck_resupply" => {
+                self.set_stage(&mut rt, "restore_retry");
+                self.resupply(&pd)
+            }
             _ => env::panic_str("the deleverage is not stuck"),
         }
     }
