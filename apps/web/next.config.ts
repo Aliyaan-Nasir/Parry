@@ -29,6 +29,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // next dev would otherwise write a managed AGENTS.md block; this package keeps its own notes.
   agentRules: false,
+  // The share images read their fonts from node_modules: ship them with every function.
+  outputFileTracingIncludes: {
+    "/**": ["./node_modules/@fontsource/{fraunces,instrument-sans,jetbrains-mono}/files/*-latin-500-normal.woff"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

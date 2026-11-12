@@ -15,20 +15,24 @@ function font(pkg: string, file: string): Promise<Buffer> {
   return readFile(join(process.cwd(), "node_modules", "@fontsource", pkg, "files", file));
 }
 
-// The fonts never depend on the request, so they are read once at module scope and the
-// images are prerendered at build time.
-const [fraunces, sans, mono] = await Promise.all([
-  font("fraunces", "fraunces-latin-500-normal.woff"),
-  font("instrument-sans", "instrument-sans-latin-500-normal.woff"),
-  font("jetbrains-mono", "jetbrains-mono-latin-500-normal.woff"),
-]);
+// Read once, when an image is first drawn: not at import, because every page's metadata imports
+// the image routes, and a page rendered on request runs where only traced files exist
+// (next.config.ts traces these three).
+let fonts: Promise<[Buffer, Buffer, Buffer]> | null = null;
+const loadFonts = () =>
+  (fonts ??= Promise.all([
+    font("fraunces", "fraunces-latin-500-normal.woff"),
+    font("instrument-sans", "instrument-sans-latin-500-normal.woff"),
+    font("jetbrains-mono", "jetbrains-mono-latin-500-normal.woff"),
+  ]));
 
 // The instrument's log scale, as on the site.
 const MIN = 0.9;
 const MAX = 3;
 const frac = (h: number) => (Math.log(h) - Math.log(MIN)) / (Math.log(MAX) - Math.log(MIN));
 
-export function renderOgImage(): ImageResponse {
+export async function renderOgImage(): Promise<ImageResponse> {
+  const [fraunces, sans, mono] = await loadFonts();
   const logoH = 58;
   const logoW = (WORDMARK.width / WORDMARK.height) * logoH;
   const scaleW = 1056;
