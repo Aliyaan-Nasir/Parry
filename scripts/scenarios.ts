@@ -6,6 +6,7 @@
  *                                                ~/.near-credentials/testnet), API at PARRY_API_URL
  *   bun scripts/scenarios.ts --sandbox           the local node from `bun scripts/sandbox.ts`
  *   bun scripts/scenarios.ts --only 2,3,4        a subset (each scenario creates what it needs)
+ *   bun scripts/scenarios.ts --align-pool        only realign the testnet exchange pool with the oracle
  *
  * Scenarios (numbers as in the test matrix): 2 a gasless protected account, 3 a leveraged Rhea
  * position, 4 a mandate with a sealed policy, 5 the market shock, 6 the AI-reviewed rescues
@@ -1014,6 +1015,12 @@ async function insuranceInflow() {
 // ---------------------------------------------------------------------------------------------
 
 console.log(`scenarios on ${sandbox ? "the local sandbox" : "testnet"}, root ${rootId}, API ${API}`);
+// --align-pool alone: bring the testnet exchange pool back to the oracle's price and stop.
+if (process.argv.includes("--align-pool")) {
+  const tx = await alignPool();
+  console.log(tx ? `pool aligned: ${explorer(tx)}` : "the pool is in line with the oracle");
+  process.exit(0);
+}
 if (runs(2) || runs(3) || runs(4) || runs(5) || runs(6)) await protect();
 if (runs(7)) await limits();
 if (runs(8) && !sandbox) await hlOrder().catch((e) => save(8, "A Hyperliquid order signed by the protected account through Chain Signatures", false, [{ error: String(e), details: (e as { details?: unknown }).details }]));
