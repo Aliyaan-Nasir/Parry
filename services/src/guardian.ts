@@ -193,18 +193,19 @@ export async function verifyEvm(sql: Sql): Promise<number> {
  * Accounts whose mandate has used today's actions (the view counts the current UTC day): the
  * account would refuse any envelope, so neither the enclave run nor the transaction is paid for.
  */
-async function capped(accounts: string[]): Promise<Set<string>> {
+async function capped(accounts: string[], read: typeof view): Promise<Set<string>> {
   const out = new Set<string>();
   await Promise.all(
     accounts.map(async (a) => {
-      const m = await view<{ mandate: { max_actions_per_day: number }; actions_today: number } | null>(a, "mandate").catch(() => null);
+      const m = await read<{ mandate: { max_actions_per_day: number }; actions_today: number } | null>(a, "mandate").catch(() => null);
       if (m && m.actions_today >= m.mandate.max_actions_per_day) out.add(a);
     }),
   );
   return out;
 }
 
-export async function tick(sql: Sql) {
+/** One pass over the due accounts; the enclave run and the chain reads can be stood in for in tests. */
+export async function tick(sql: Sql, deps: { run: typeof runEnclave; read: typeof view } = { run: runEnclave, read: view }) {
   // A position queued only because it is under the highest trigger health (scored safe) is looked
   // at less often than one scored caution or worse.
   const due = await sql<{ account: string }[]>`SELECT account FROM guardian_queue
@@ -212,7 +213,7 @@ export async function tick(sql: Sql) {
       OR last_run_at < now() - make_interval(secs => CASE WHEN reason LIKE '% safe %' THEN ${intEnv("GUARDIAN_WATCH_COOLDOWN_S", 300)}::int ELSE ${intEnv("GUARDIAN_COOLDOWN_S", 60)}::int END)
     ORDER BY queued_at LIMIT 10`;
   if (due.length === 0) return;
-  const full = await capped(due.map((d) => d.account));
+  const full = await capped(due.map((d) => d.account), deps.read);
   if (full.size > 0) {
     // Looked at again after the cooldown: the count starts over with the next UTC day.
     await sql`UPDATE guardian_queue SET last_run_at = now() WHERE account = ANY(${[...full]})`;
@@ -220,7 +221,7 @@ export async function tick(sql: Sql) {
   }
   const accounts = due.map((d) => d.account).filter((a) => !full.has(a));
   if (accounts.length === 0) return;
-  const run = await runEnclave<GuardianOutput>("guardian", accounts);
+  const run = await deps.run<GuardianOutput>("guardian", accounts);
   for (const d of run.output.decisions) await carryOut(sql, d);
   for (const s of run.output.skipped) {
     // Nothing the guardian may do: dropped (the risk engine queues it again if that changes).
