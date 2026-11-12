@@ -58,7 +58,7 @@ export async function main() {
   const sql = db();
   await migrate(sql);
   let last = "";
-  every(intEnv("TOPUP_MS", 600_000), "topup", async () => {
+  every(intEnv("TOPUP_MS", 120_000), "topup", async () => {
     last = await pass(sql);
     await setStatus(sql, "topup", !last.includes("low") && !last.includes("failed"), last);
   });

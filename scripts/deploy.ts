@@ -247,7 +247,7 @@ const CONTRACT_ACCOUNTS: readonly (readonly [string, number])[] = MAINNET
  */
 const WALLETS: readonly (readonly [string, number])[] = MAINNET
   ? [["treasury", 5], ["monitor", 2], ["guardian", 2], ["keeper", 3], ["relayer", 5], ["api", 0.5], ["enclave", 2]]
-  : [["treasury", 2], ["monitor", 1.5], ["guardian", 3], ["keeper", 3.5], ["relayer", 3.5], ["api", 0.5], ["agent", 1], ["enclave", 3]];
+  : [["treasury", 2], ["monitor", 1.5], ["guardian", 3], ["keeper", 3.5], ["relayer", 6], ["api", 0.5], ["agent", 1], ["enclave", 3]];
 /** Gas keys: the wallet, its nonce lanes and the NEAR prepaid into the key (out of the wallet's balance). */
 const GAS_KEYS: readonly (readonly [string, number, number])[] = [
   ["monitor", 4, 0.5],

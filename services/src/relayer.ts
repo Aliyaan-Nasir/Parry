@@ -10,7 +10,7 @@ import { contract, intEnv, network, NEAR_USD } from "./lib/config";
 import { db, migrate, setStatus, useQuota, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
-import { senderFromEnv, tendGasKey, txHash, view, yocto } from "./lib/near";
+import { balanceOf, senderFromEnv, tendGasKey, toNear, txHash, view, yocto } from "./lib/near";
 import { derivedAddress, PATH_EVM, PATH_HYPERLIQUID } from "./lib/positions";
 
 const relayer = senderFromEnv("RELAYER");
@@ -29,11 +29,14 @@ export async function createAccount(sql: Sql, body: { passkey?: string; nearAcco
   if (!relayer) throw new Error("the relayer wallet is not configured");
   const owner = body.passkey ?? body.nearAccount;
   if (!owner || (body.passkey && body.nearAccount)) throw new Error("give exactly one of passkey or nearAccount");
+  // A drained wallet fails on chain with an opaque RPC error; say so before spending anyone's quota (top-up refills it).
+  const deposit = Number(process.env.RELAYER_ACCOUNT_DEPOSIT ?? 0.3);
+  if (toNear((await balanceOf(relayer.accountId)) ?? 0n) < deposit + 0.1) throw Object.assign(new Error("the relayer is being refilled; try again in a few minutes"), { status: 503 });
   if (!(await useQuota(sql, "create-account", "all", intEnv("RELAYER_DAILY_ACCOUNTS", 50)))) throw limited("the relayer's daily account budget is spent; try again tomorrow");
   if (!(await useQuota(sql, "create-account-ip", ip, intEnv("RELAYER_ACCOUNTS_PER_IP", 3)))) throw limited("too many accounts from this address today");
   const args = body.passkey ? { passkey: body.passkey } : { near_account: body.nearAccount };
   const accountId = await view<string>(contract("factory"), "account_id_of", args);
-  const o = await relayer.call({ receiverId: contract("factory"), methodName: "create_account", args, deposit: yocto(Number(process.env.RELAYER_ACCOUNT_DEPOSIT ?? 0.3)), tgas: 250 });
+  const o = await relayer.call({ receiverId: contract("factory"), methodName: "create_account", args, deposit: yocto(deposit), tgas: 250 });
   const [hl, evm] = await Promise.all([derivedAddress(accountId, PATH_HYPERLIQUID).catch(() => null), derivedAddress(accountId, PATH_EVM).catch(() => null)]);
   await sql`INSERT INTO accounts (account, owner_kind, owner_id, hl_address, evm_address, created_tx) VALUES (${accountId}, ${body.passkey ? "passkey" : "near"}, ${owner}, ${hl}, ${evm}, ${txHash(o)})
     ON CONFLICT (account) DO NOTHING`;
