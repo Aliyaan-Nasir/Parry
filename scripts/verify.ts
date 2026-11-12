@@ -403,6 +403,24 @@ async function main() {
     if (!llms.ok) throw new Error(`${SITE}/llms.txt answered ${llms.status}`);
     return `${SITE} ${r.status}, llms.txt ${llms.status}`;
   });
+
+  // A page rendered on request runs where only traced files exist: a render error still answers
+  // 200, with the error's digest in the page, so the page itself is read.
+  await check("A page rendered on request loads (a live position)", async () => {
+    const decisions = (await (await fetch(`${API}/v1/guardian/decisions?limit=20`)).json()) as { items: { account: string }[] };
+    let id: string | null = null;
+    for (const d of decisions.items) {
+      const a = (await (await fetch(`${API}/v1/accounts/${d.account}`)).json()) as { positions?: { id: string }[] };
+      id = a.positions?.[0]?.id ?? null;
+      if (id) break;
+    }
+    if (!id) throw new Error("no live position to open");
+    const url = `${SITE}/app/positions/${encodeURIComponent(id)}`;
+    const r = await fetch(url);
+    const html = await r.text();
+    if (!r.ok || /"digest":"\d+"/.test(html)) throw new Error(`${url} failed to render (${r.status})`);
+    return `${url} ${r.status}`;
+  });
 }
 
 await main();
