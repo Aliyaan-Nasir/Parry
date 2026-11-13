@@ -36,11 +36,10 @@
     },
     "vault": {
       "account": "vault.parry.testnet",
-      "codeHash": "CuvJWLL1RC1mi7BHKUY3fFRBZxQrXUw9BrQvHnY63wJN",
-      "tx": "rWP3GQKchpuunYjaqLim3nxB7DYQ7wzp1P87NmfLTY1",
-      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
-      "source": "contracts/vault",
-      "verified": "2026-11-12"
+      "codeHash": "Gj8z4eLnFjNZgpes5D5PP4U5dT17YYJE29hhsBEAMoKo",
+      "tx": "BvzMYzAu4kHBrGifwZwqJcz98GBcMCEhptHaAwuPFaGS",
+      "commit": "431568bb1c2214d30ed044b4e93bb9dc352d9355",
+      "source": "contracts/vault"
     },
     "usdc": {
       "account": "usdc.parry.testnet",
@@ -111,7 +110,7 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-12T20:01:27.487Z",
+  "updatedAt": "2026-11-13T12:02:53.441Z",
   "dexPool": 2939,
   "enclave": {
     "wasmSha256": "dd6532eda8d971dcecb009c2af3d41a767a03f2c19b8f0c45196d1b8cfaa203c",
