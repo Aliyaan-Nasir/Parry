@@ -162,6 +162,8 @@ export interface SenderOptions {
 
 const SEND_TIMEOUT_MS = Number(process.env.SEND_TIMEOUT_MS ?? 60_000);
 const LOOKUP_PAUSE_MS = Number(process.env.LOOKUP_PAUSE_MS ?? 2000);
+/** How long a landed transaction's outcome is awaited: past the 200-block timeout of a yielded call, which an OutLayer run is. */
+const OUTCOME_WAIT_MS = Number(process.env.OUTCOME_WAIT_MS ?? 240_000);
 
 export class Sender {
   readonly accountId: string;
@@ -276,22 +278,24 @@ export class Sender {
   /**
    * A transaction whose send failed: its outcome if it landed, null if the chain never saw it.
    * One the chain included is never sent again, even while its outcome is slow (an OutLayer run
-   * waits on the worker, and a second request would pay for a second run): when the outcome does
-   * not come, this send fails with the hash instead.
+   * waits on the worker, and a second request would pay for a second run). Its outcome is awaited
+   * until the run either answers or times out on chain; when it still has not come, this send
+   * fails with the hash instead.
    */
-  async lookup(hash: string, pauseMs = LOOKUP_PAUSE_MS): Promise<FinalExecutionOutcome | null> {
+  async lookup(hash: string, pauseMs = LOOKUP_PAUSE_MS, outcomeMs = OUTCOME_WAIT_MS): Promise<FinalExecutionOutcome | null> {
     const status = (wait_until: string) => rpc<FinalExecutionOutcome>("tx", { tx_hash: hash, sender_account_id: this.accountId, wait_until });
     const pause = () => new Promise((r) => setTimeout(r, pauseMs));
     let included = false;
     for (let i = 0; i < 3 && !included; i++) included = await status("INCLUDED").then(() => true, async () => (await pause(), false));
     if (!included) return null;
-    for (let i = 0; i < 3; i++) {
+    const until = Date.now() + outcomeMs;
+    do {
       try {
         return await status("EXECUTED_OPTIMISTIC");
       } catch {
         await pause();
       }
-    }
+    } while (Date.now() < until);
     throw new TxError("the transaction landed but its outcome did not arrive in time", hash);
   }
 

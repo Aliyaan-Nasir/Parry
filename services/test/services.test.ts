@@ -57,10 +57,23 @@ describe("a send that failed", () => {
   test("that landed but is still running is never sent twice", async () => {
     // An OutLayer request waits on the worker: a second send would pay for a second run.
     const asked = answering({ INCLUDED: {}, EXECUTED_OPTIMISTIC: "TIMEOUT_ERROR" });
-    const e = await sender.lookup("h3", 0).catch((x: unknown) => x);
+    const e = await sender.lookup("h3", 0, 0).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(TxError);
     expect((e as TxError).hash).toBe("h3");
     expect(asked.filter((w) => w === "INCLUDED")).toHaveLength(1);
+  });
+
+  test("that landed is awaited until its slow outcome arrives", async () => {
+    // A slow OutLayer worker answers after the RPC's own wait has timed out several times.
+    const outcome = { status: { SuccessValue: "" }, transaction: { hash: "h4" }, receipts_outcome: [] };
+    let pending = 5;
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      const wait = (JSON.parse(init.body) as { params: { wait_until: string } }).params.wait_until;
+      const late = wait === "EXECUTED_OPTIMISTIC" && pending-- > 0;
+      return Response.json(late ? { jsonrpc: "2.0", id: "parry", error: { code: -32000, message: "Server error", cause: { name: "TIMEOUT_ERROR" } } } : { jsonrpc: "2.0", id: "parry", result: wait === "INCLUDED" ? {} : outcome });
+    }) as unknown as typeof fetch;
+    expect(await sender.lookup("h4", 0, 60_000)).toEqual(outcome as never);
+    expect(pending).toBe(-1);
   });
 });
 
