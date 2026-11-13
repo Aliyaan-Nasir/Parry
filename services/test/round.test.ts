@@ -96,6 +96,27 @@ describe("margin decisions", () => {
   });
 });
 
+describe("margin sweep", () => {
+  test("moves whole cents from Spot, nothing under the minimum", async () => {
+    const { sweepAmount } = await import("../src/keeper");
+    expect(sweepAmount(997, 1)).toBe("997");
+    expect(sweepAmount(3.5678, 1)).toBe("3.56");
+    expect(sweepAmount(0.9, 1)).toBeNull();
+    expect(sweepAmount(0.004, 0)).toBeNull();
+  });
+
+  test("submits the transfer the vault signed, under the network's chain ids", async () => {
+    const { classTransferBody } = await import("../src/lib/hyperliquid");
+    const sig = { r: "1a".repeat(32), s: "2b".repeat(32), v: 28 };
+    expect(classTransferBody("997", 1_700_000_000_000, sig, false)).toEqual({
+      action: { type: "usdClassTransfer", hyperliquidChain: "Testnet", signatureChainId: "0x66eee", amount: "997", toPerp: true, nonce: 1_700_000_000_000 },
+      nonce: 1_700_000_000_000,
+      signature: { r: `0x${"1a".repeat(32)}`, s: `0x${"2b".repeat(32)}`, v: 28 },
+    });
+    expect(classTransferBody("1", 1, sig, true).action).toMatchObject({ hyperliquidChain: "Mainnet", signatureChainId: "0xa4b1" });
+  });
+});
+
 describe("certificate requests", () => {
   test("are checked before anything runs", () => {
     expect(checkInput({ account: "0ua.testnet", reader: "lender.testnet", threshold: 1.2, ttlSecs: 3600 })).toMatchObject({ venue: "rhea", anchor: false });

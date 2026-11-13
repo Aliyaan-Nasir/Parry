@@ -165,6 +165,50 @@ pub fn order_digest(order: &HlOrder, nonce: u64, mainnet: bool) -> [u8; 32] {
     agent_digest(&connection_id(&order_action(order), nonce), mainnet)
 }
 
+/// The Arbitrum chain id Hyperliquid's user-signed actions name (`signatureChainId`): Arbitrum
+/// One on mainnet, Arbitrum Sepolia on testnet.
+pub fn signature_chain_id(mainnet: bool) -> u64 {
+    if mainnet {
+        42_161
+    } else {
+        421_614
+    }
+}
+
+/// The EIP-712 digest of a `usdClassTransfer`, a user-signed action that moves USDC between the
+/// signer's own Spot and Perps balances: `HyperliquidTransaction:UsdClassTransfer(string
+/// hyperliquidChain,string amount,bool toPerp,uint64 nonce)` in the `HyperliquidSignTransaction`
+/// domain (version "1", the chain id above, zero verifying contract). It has no destination, so
+/// a signature for it can never move funds to another address.
+pub fn usd_class_transfer_digest(amount: &str, to_perp: bool, nonce: u64, mainnet: bool) -> [u8; 32] {
+    require!(parse_e8(amount).is_some_and(|a| a > 0), "bad transfer amount");
+    let mut domain = Vec::with_capacity(5 * 32);
+    domain.extend_from_slice(&env::keccak256_array(
+        b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+    ));
+    domain.extend_from_slice(&env::keccak256_array(b"HyperliquidSignTransaction"));
+    domain.extend_from_slice(&env::keccak256_array(b"1"));
+    domain.extend_from_slice(&u256_word(signature_chain_id(mainnet)));
+    domain.extend_from_slice(&[0u8; 32]);
+    let separator = env::keccak256_array(&domain);
+
+    let mut transfer = Vec::with_capacity(5 * 32);
+    transfer.extend_from_slice(&env::keccak256_array(
+        b"HyperliquidTransaction:UsdClassTransfer(string hyperliquidChain,string amount,bool toPerp,uint64 nonce)",
+    ));
+    transfer.extend_from_slice(&env::keccak256_array(if mainnet { b"Mainnet" } else { b"Testnet" }));
+    transfer.extend_from_slice(&env::keccak256_array(amount.as_bytes()));
+    transfer.extend_from_slice(&u256_word(to_perp as u64));
+    transfer.extend_from_slice(&u256_word(nonce));
+    let struct_hash = env::keccak256_array(&transfer);
+
+    let mut message = Vec::with_capacity(66);
+    message.extend_from_slice(&[0x19, 0x01]);
+    message.extend_from_slice(&separator);
+    message.extend_from_slice(&struct_hash);
+    env::keccak256_array(&message)
+}
+
 /// Parses a positive decimal string ("3.6345") into an integer scaled by 1e8; None for anything
 /// that is not plain digits with an optional fraction of at most 8 digits.
 pub fn parse_e8(s: &str) -> Option<u128> {
@@ -217,6 +261,29 @@ mod tests {
             "b2537461185e0995f837c1e35d7e8a19244a13383f2e5a7013e1572cd25543ba"
         );
         assert_ne!(agent_digest(&cid, true), agent_digest(&cid, false));
+    }
+
+    /// Vectors from ethers' `TypedDataEncoder.hash` over the same typed data.
+    #[test]
+    fn usd_class_transfer_digest_matches_eip712() {
+        assert_eq!(
+            hex::encode(usd_class_transfer_digest("997", true, 1_700_000_000_000, false)),
+            "d4b0ab05d405a1e7ce9b28eb6c4ba57972b792dae0036b699b714deabc3f383b"
+        );
+        assert_eq!(
+            hex::encode(usd_class_transfer_digest("997", true, 1_700_000_000_000, true)),
+            "1424d2e72a90323e096fc09f48d6a29794923275c225ba62e2e71e951cda37a7"
+        );
+        assert_ne!(
+            usd_class_transfer_digest("997", true, 1, false),
+            usd_class_transfer_digest("997", false, 1, false)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "bad transfer amount")]
+    fn usd_class_transfer_refuses_a_bad_amount() {
+        usd_class_transfer_digest("-5", true, 1, false);
     }
 
     #[test]

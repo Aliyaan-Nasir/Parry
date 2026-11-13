@@ -8,7 +8,7 @@ use near_sdk::serde_json::{self, json, Value};
 use near_sdk::test_utils::{get_created_receipts, get_logs, VMContextBuilder};
 use near_sdk::{testing_env, AccountId, NearToken, PromiseOrValue, PromiseResult, RuntimeFeesConfig};
 use num_bigint::BigUint;
-use parry_common::hyperliquid::{order_digest, parse_e8, HlOrder};
+use parry_common::hyperliquid::{order_digest, parse_e8, usd_class_transfer_digest, HlOrder};
 use parry_common::math::Rounding;
 use parry_common::pyth::NEAR_USD;
 use proptest::prelude::*;
@@ -874,6 +874,59 @@ fn rebalance_signs_the_expected_order_and_digest() {
     assert_eq!(sig.r, "1a".repeat(32));
     assert_eq!(sig.s, "2b".repeat(32));
     assert_eq!(sig.v, 28);
+}
+
+/// Margin that lands in the hedge account's Spot balance moves into Perps through a signed
+/// `usdClassTransfer`: keeper or owner only, toward Perps only, with a nonce no hedge order used.
+#[test]
+fn margin_moves_from_spot_to_perps_with_a_signed_transfer() {
+    let mut v = deploy();
+    for who in [ALICE, RISK] {
+        set(who, 0, NOW);
+        let msg = panic_of(|| {
+            v.hedge_margin_to_perp("997".into());
+        });
+        assert!(msg.contains("keeper or owner only"), "{msg}");
+    }
+    set(KEEPER, 0, NOW);
+    let msg = panic_of(|| {
+        v.hedge_margin_to_perp("-1".into());
+    });
+    assert!(msg.contains("bad transfer amount"), "{msg}");
+    let mut low = ctx(KEEPER, 0, NOW);
+    low.prepaid_gas(near_sdk::Gas::from_tgas(50));
+    testing_env!(low.build());
+    let msg = panic_of(|| {
+        v.hedge_margin_to_perp("997".into());
+    });
+    assert!(msg.contains("attach at least 80 TGas"), "{msg}");
+
+    set(KEEPER, 0, NOW);
+    v.hedge_margin_to_perp("997".into());
+    let e = vault_event("hedge_margin_to_perp");
+    let nonce = e["nonce"].as_u64().unwrap();
+    assert_eq!(nonce, NOW * 1000);
+    let digest = hex::encode(usd_class_transfer_digest("997", true, nonce, false));
+    assert_eq!((e["amount"].as_str(), e["digest"].as_str()), (Some("997"), Some(digest.as_str())));
+    let (to, args, attached) = call_to("sign");
+    assert_eq!((to.as_str(), attached), (SIGNER, 1));
+    assert_eq!(
+        args,
+        json!({ "request": { "path": "parry-vault-hedge", "payload_v2": { "Ecdsa": digest }, "domain_id": 0 } })
+    );
+    assert_eq!(call_to("on_margin_signed").1, json!({ "nonce": nonce }));
+
+    set_results(NOW + 1, vec![signature_response()]);
+    let sig = v.on_margin_signed(nonce).unwrap();
+    assert_eq!((sig.r, sig.s, sig.v), ("1a".repeat(32), "2b".repeat(32), 28));
+    set_results(NOW + 1, vec![PromiseResult::Failed]);
+    assert!(v.on_margin_signed(nonce).is_none());
+    assert!(has_vault_event("hedge_sign_failed"));
+
+    // The owner may move it too, and a second transfer in the same block takes the next nonce.
+    set(OWNER, 0, NOW);
+    v.hedge_margin_to_perp("3.5".into());
+    assert_eq!(vault_event("hedge_margin_to_perp")["nonce"].as_u64(), Some(nonce + 1));
 }
 
 #[test]

@@ -5,10 +5,13 @@
 //! chooses nothing: not the side, not the size, not the price. The signature is only usable for
 //! that exact order and nonce, and one order is signed per report, so calling `rebalance` again
 //! before the next report cannot stack orders.
+//!
+//! `hedge_margin_to_perp` (keeper or owner) signs the one other action the hedge account takes:
+//! moving its own USDC from Spot into Perps margin.
 
 use near_sdk::json_types::{I128, U128};
 use near_sdk::{env, near, require, serde_json, Gas, GasWeight, NearToken, Promise, PromiseOrValue};
-use parry_common::hyperliquid::{order_digest, HlOrder};
+use parry_common::hyperliquid::{order_digest, usd_class_transfer_digest, HlOrder};
 use parry_common::{now_secs, promise_bytes, wire as common_wire, ONE_YOCTO};
 
 use crate::deposit::parse_result;
@@ -21,6 +24,8 @@ const GAS_SIGN: Gas = Gas::from_tgas(60);
 const GAS_ON_SIGNED: Gas = Gas::from_tgas(10);
 /// Own work, the sign call and its callback.
 const GAS_ON_RATE: Gas = Gas::from_tgas(15 + 60 + 10);
+/// Least prepaid gas for `hedge_margin_to_perp`: own work, the sign call and its callback.
+pub const GAS_MARGIN_TO_PERP: Gas = Gas::from_tgas(10 + 60 + 10);
 /// Least prepaid gas for `rebalance`.
 pub const GAS_REBALANCE: Gas = Gas::from_tgas(10 + 10 + 85);
 
@@ -151,6 +156,42 @@ impl Vault {
                         .on_hedge_signed(report.run_id, nonce),
                 ),
         )
+    }
+
+    /// Signs a Hyperliquid `usdClassTransfer` that moves `amount` USDC (a decimal string) from the
+    /// hedge account's Spot balance into its Perps margin. Margin that arrives from outside can
+    /// land in Spot, where the short cannot use it. The action names no destination and only ever
+    /// moves toward Perps, so the signature can only add to the vault's own margin. Keeper or
+    /// owner; the result is `{ r, s, v }`, or null when signing failed.
+    pub fn hedge_margin_to_perp(&mut self, amount: String) -> Promise {
+        let caller = env::predecessor_account_id();
+        require!(caller == self.keeper || caller == self.owner_id, "keeper or owner only");
+        require!(env::prepaid_gas() >= GAS_MARGIN_TO_PERP, "attach at least 80 TGas to move margin");
+        let nonce = env::block_timestamp_ms().max(self.last_hedge_nonce + 1);
+        let digest = hex::encode(usd_class_transfer_digest(&amount, true, nonce, self.network == "mainnet"));
+        self.last_hedge_nonce = nonce;
+        Event::HedgeMarginToPerp { nonce, amount: &amount, digest: &digest }.emit();
+        Promise::new(self.signer.clone())
+            .function_call_weight(
+                "sign",
+                common_wire::mpc_sign(HEDGE_PATH, &digest),
+                ONE_YOCTO,
+                GAS_SIGN,
+                GasWeight(1),
+            )
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_ON_SIGNED).on_margin_signed(nonce))
+    }
+
+    /// The signature for the transfer emitted in `hedge_margin_to_perp`.
+    #[private]
+    pub fn on_margin_signed(&mut self, nonce: u64) -> Option<HedgeSignature> {
+        let signature = promise_bytes(0)
+            .and_then(|b| serde_json::from_slice::<SignatureResponse>(&b).ok())
+            .and_then(to_hedge_signature);
+        if signature.is_none() {
+            Event::HedgeSignFailed { nonce }.emit();
+        }
+        signature
     }
 
     /// The signature for the order emitted in `hedge_order`. When signing failed, the report may

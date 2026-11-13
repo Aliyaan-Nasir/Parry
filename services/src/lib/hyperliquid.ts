@@ -1,6 +1,6 @@
-/** Hyperliquid's public API: reads, and submitting orders signed by Chain Signatures. */
+/** Hyperliquid's public API: reads, and submitting orders and margin transfers signed by Chain Signatures. */
 
-import { HYPERLIQUID_URL } from "./config";
+import { HYPERLIQUID_URL, network } from "./config";
 
 export async function info<T>(body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
@@ -62,5 +62,27 @@ export async function submitOrder(order: HlOrder, nonce: number, sig: { r: strin
   };
   const body = { action, nonce, signature: { r: `0x${sig.r}`, s: `0x${sig.s}`, v: sig.v }, vaultAddress: null };
   const res = await fetch(`${HYPERLIQUID_URL}/exchange`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+  return (await res.json()) as { status: string; response?: unknown };
+}
+
+/** USDC `address` holds in its Spot balance and can move (total minus holds). */
+export async function spotUsdc(address: string): Promise<number> {
+  const s = await info<{ balances: { coin: string; total: string; hold: string }[] }>({ type: "spotClearinghouseState", user: address });
+  const b = s.balances.find((x) => x.coin === "USDC");
+  return b ? Math.max(0, Number(b.total) - Number(b.hold)) : 0;
+}
+
+/**
+ * The `/exchange` body for a Spot-to-Perps `usdClassTransfer` whose EIP-712 digest a NEAR contract
+ * had Chain Signatures sign: the same fields the contract hashed, and the Arbitrum chain id it
+ * signed under.
+ */
+export function classTransferBody(amount: string, nonce: number, sig: { r: string; s: string; v: number }, mainnet = network === "mainnet") {
+  const action = { type: "usdClassTransfer", hyperliquidChain: mainnet ? "Mainnet" : "Testnet", signatureChainId: mainnet ? "0xa4b1" : "0x66eee", amount, toPerp: true, nonce };
+  return { action, nonce, signature: { r: `0x${sig.r}`, s: `0x${sig.s}`, v: sig.v } };
+}
+
+export async function submitClassTransfer(amount: string, nonce: number, sig: { r: string; s: string; v: number }): Promise<{ status: string; response?: unknown }> {
+  const res = await fetch(`${HYPERLIQUID_URL}/exchange`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(classTransferBody(amount, nonce, sig)), signal: AbortSignal.timeout(15_000) });
   return (await res.json()) as { status: string; response?: unknown };
 }

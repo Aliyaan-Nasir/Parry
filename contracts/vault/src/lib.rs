@@ -178,6 +178,8 @@ pub enum Event<'a> {
     #[event_version("1.0.0")]
     HedgeSignFailed { nonce: u64 },
     #[event_version("1.0.0")]
+    HedgeMarginToPerp { nonce: u64, amount: &'a str, digest: &'a str },
+    #[event_version("1.0.0")]
     WithdrawalRequested { id: u64, account: &'a AccountId, shares: U128 },
     #[event_version("1.0.0")]
     WithdrawalProcessed {

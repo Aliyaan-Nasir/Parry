@@ -87,7 +87,7 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | NEP-655 universal accounts, global contracts | `contracts/accounts/src/lib.rs` (`state_init`, `create_account`), `contracts/account/src/lib.rs` (`Upgrade`) |
 | Passkey owner (WebAuthn P-256 on chain) | `contracts/account/src/passkey.rs` |
 | Guardian that can only protect | `contracts/account/src/guardian.rs` (`guardian_execute`), `contracts/common/src/mandate.rs` (`GuardianAction` has no transfer) |
-| Chain Signatures: Hyperliquid orders | `contracts/common/src/hyperliquid.rs` (agent digest), `guardian.rs` (`on_hl_mark` band check), `contracts/vault/src/hedge.rs` |
+| Chain Signatures: Hyperliquid orders and margin | `contracts/common/src/hyperliquid.rs` (agent digest; `usd_class_transfer_digest` for the vault's Spot-to-Perps margin move), `guardian.rs` (`on_hl_mark` band check), `contracts/vault/src/hedge.rs`, `services/src/keeper.ts` (`marginSweep`) |
 | Chain Signatures: EVM repay (Aave on Base) | `contracts/common/src/evm.rs`, `guardian.rs` (`EvmRepay`), `enclave/src/modes.rs` (`evm_step`), `services/src/lib/evm.ts` |
 | MPC foreign-transaction verification | `services/src/lib/evm.ts` (`verify_foreign_transaction`), `services/src/guardian.ts` (`verifyEvm`) |
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
@@ -131,6 +131,7 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 - `scripts/deploy.ts --only risk,vault,account` upgrades just those (a reproducible build at a later commit has other hashes for every crate), and runs `migrate()` in the same batch as the new risk board and vault code.
 - Contract refusals in callbacks are `guardian_refused` events, not failed transactions: read the receipts' logs.
 - The MPC network verifies Base transactions, so the EVM rescue runs on Base Sepolia (84532) on testnet and Base on mainnet; `scripts/evm-position.ts` opens a loan there from an account's derived address.
+- USDC sent to the vault's Hyperliquid address can land in its Spot balance, which the short cannot use: the keeper's margin sweep has the vault sign a Spot-to-Perps `usdClassTransfer` and submits it.
 - Vault withdrawals pay out in LiNEAR: send `linearStorageAction` before `request_withdraw` or `claim` (the app does), or the payout waits as a claim.
 - The default RPC list is FastNEAR, Intea and dRPC; dRPC lacks the `EXPERIMENTAL_*` methods, and the RPC helper falls through to the next provider.
 - A 300 Tgas call is checked against the pessimistic gas price: an account needs about 0.35 NEAR up front to send one (about 1.1 NEAR for a 900 Tgas close), though most of it is refunded; the relayer tops its gas key up before a call above 300 Tgas.

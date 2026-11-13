@@ -1,7 +1,8 @@
 /**
  * Keeper: keeps the testnet oracle fed with the live prices mainnet lending uses, has the enclave report the vault's
  * hedge and reserves, rebalances the hedge (the vault builds and Chain Signatures signs the
- * order; this service submits it to Hyperliquid), processes the withdrawal queue, liquidates the
+ * order; this service submits it to Hyperliquid), moves margin that lands in the hedge account's
+ * Spot balance into Perps, processes the withdrawal queue, liquidates the
  * unprotected demo positions it watches, warns about expiring mandates, keeps the risk board's
  * sealing key equal to the enclave's, and checks that the indexer keeps up with the chain. It
  * transacts on gas-key lanes, so these run in parallel.
@@ -12,7 +13,7 @@ import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
 import { every, serveHealth } from "./lib/health";
 import { latest, PRICE_SOURCE } from "./lib/prices";
-import { submitOrder, type HlOrder } from "./lib/hyperliquid";
+import { spotUsdc, submitClassTransfer, submitOrder, type HlOrder } from "./lib/hyperliquid";
 import { errorText, log } from "./lib/log";
 import { eventsOf, returnValue, rpc, senderFromEnv, tendGasKey, txHash, view } from "./lib/near";
 import { oraclePrices, readRhea } from "./lib/positions";
@@ -204,6 +205,38 @@ async function marginRoute(sql: Sql): Promise<string> {
   return "outUsd" in route.quote ? `margin needed: ${route.amountUsd} USDC routes to ${route.quote.outUsd} on HyperCore` : `margin needed; ${route.quote.unavailable}`;
 }
 
+/** The Spot USDC to move into Perps: whole cents, nothing under `min`. */
+export function sweepAmount(spot: number, min: number): string | null {
+  const cents = Math.floor(spot * 100);
+  return cents > 0 && cents / 100 >= min ? String(cents / 100) : null;
+}
+
+/**
+ * Margin that reaches the hedge account from outside (a transfer, or 1Click's route on mainnet)
+ * can land in its Spot balance, where the short cannot use it. The vault signs a
+ * `usdClassTransfer` of it into Perps (no destination, toward Perps only) and this submits it.
+ */
+async function marginSweep(sql: Sql): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
+  if (!keeper) throw new Error("KEEPER wallet is not configured");
+  const [r] = await sql<{ extra: { hedgeAddress?: string } }[]>`SELECT extra FROM reports WHERE kind = 'vault_report' ORDER BY run_id DESC LIMIT 1`;
+  const address = r?.extra?.hedgeAddress;
+  if (!address) return "no hedge address reported yet";
+  const amount = sweepAmount(await spotUsdc(address), Number(process.env.MARGIN_SWEEP_MIN_USD ?? 1));
+  if (!amount) return "no USDC in Spot";
+  const o = await keeper.call({ receiverId: contract("vault"), methodName: "hedge_margin_to_perp", args: { amount }, tgas: 100 });
+  const sig = returnValue<{ r: string; s: string; v: number } | null>(o);
+  const ev = eventsOf(o).find((e) => e.event === "hedge_margin_to_perp");
+  if (!sig || !ev) throw new Error(`the vault did not sign the margin transfer (${txHash(o)})`);
+  const { nonce, digest } = ev.data as { nonce: number; digest: string };
+  const res = await submitClassTransfer(amount, nonce, sig);
+  await sql`INSERT INTO reports (kind, run_id, tx_hash, payload) VALUES ('margin_transfer', ${nonce}, ${txHash(o)},
+    ${sql.json({ amount, nonce, digest, address, signature: sig, status: res.status, response: res } as never)}) ON CONFLICT DO NOTHING`;
+  log.info("margin to perps", { amount, res, tx: txHash(o) });
+  if (res.status !== "ok") throw new Error(`Hyperliquid refused the margin transfer: ${JSON.stringify(res.response ?? res).slice(0, 200)}`);
+  return `moved ${amount} USDC from Spot to Perps in ${txHash(o)}`;
+}
+
 async function rebalance(sql: Sql): Promise<string> {
   if (!contract("vault")) return "no vault in this deployment";
   if (!keeper) throw new Error("KEEPER wallet is not configured");
@@ -304,6 +337,7 @@ export async function main() {
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
   every(intEnv("MARGIN_ROUTE_MS", 1_800_000), "margin-route", track("margin-route", () => marginRoute(sql)));
   every(intEnv("MARGIN_WATCH_MS", 120_000), "margin-watch", track("margin-watch", () => marginWatch(sql)));
+  every(intEnv("MARGIN_SWEEP_MS", 300_000), "margin-sweep", track("margin-sweep", () => marginSweep(sql)));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));
   every(intEnv("LIQUIDATOR_MS", 30_000), "liquidator", track("liquidator", () => liquidator(sql)));
   every(600_000, "mandates", track("mandates", () => mandates(sql)));

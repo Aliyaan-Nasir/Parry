@@ -18,7 +18,7 @@ use common::*;
 use ed25519_dalek::{Signer, SigningKey};
 use near_workspaces::result::ExecutionFinalResult;
 use near_workspaces::{Account, AccountId, Contract};
-use parry_common::hyperliquid::{order_digest, HlOrder};
+use parry_common::hyperliquid::{order_digest, usd_class_transfer_digest, HlOrder};
 use parry_common::math::{checked_mul_div, Rounding};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -530,6 +530,30 @@ async fn rebalance_signs_one_hyperliquid_order_per_report() -> Result<()> {
     assert_eq!((num(&band["target_e8"]), signed(&band["current_e8"])), (target_e8, size_e8 as i128));
     assert!(events_from(&d, vault, "hedge_order").is_empty());
     assert_eq!(e.sign_requests().await?.len(), 2);
+    Ok(())
+}
+
+/// Margin in the hedge account's Spot balance: the keeper has the vault sign a `usdClassTransfer`
+/// into Perps. The mock signer signs exactly that EIP-712 digest at `parry-vault-hedge`, and the
+/// signature recovers to the vault's derived key, so Hyperliquid takes it as the hedge account's
+/// own. Anyone else is refused, and nothing is signed for them.
+#[tokio::test]
+async fn margin_moves_into_perps_signed_by_the_hedge_account() -> Result<()> {
+    let e = Earn::new().await?;
+    let (s, vault) = (&e.s, e.vault.id());
+    let alice = s.user("alice", 50).await?;
+    let refused =
+        err(try_call(&alice, vault, "hedge_margin_to_perp", json!({ "amount": "997" }), 0, 100).await?);
+    assert!(refused.contains("keeper or owner only"), "{refused}");
+    assert!(e.sign_requests().await?.is_empty());
+
+    let d = ok(try_call(&s.root, vault, "hedge_margin_to_perp", json!({ "amount": "997" }), 0, 100).await?)?;
+    let ev = event_from(&d, vault, "hedge_margin_to_perp");
+    let nonce = ev["nonce"].as_u64().unwrap();
+    let digest = hex::encode(usd_class_transfer_digest("997", true, nonce, false));
+    assert_eq!((ev["amount"].as_str(), ev["digest"].as_str()), (Some("997"), Some(digest.as_str())));
+    assert_eq!(e.sign_requests().await?, vec![(vault.to_string(), HEDGE_PATH.to_string(), digest.clone())]);
+    assert_signed_by(&e.s.worker, e.s.signer.id(), vault, HEDGE_PATH, &digest, &d.json::<Value>()?).await?;
     Ok(())
 }
 
