@@ -7,7 +7,7 @@
       "links": [
         {
           "label": "transaction",
-          "url": "https://testnet.nearblocks.io/txns/2vtsYQPjTEzRHa8zgEZqZyv71KoNMTQfdRToqXuuErGU"
+          "url": "https://testnet.nearblocks.io/txns/FYxvwqXmG7E84ifKZB4hQFNh7LEAuUfenaE7nrkjwyzL"
         }
       ]
     },
@@ -45,7 +45,7 @@
       "links": [
         {
           "label": "keys run",
-          "url": "https://testnet.nearblocks.io/txns/AZr51DDTUSFnW1EE3WngUEnp1Mz6Uir4asau9Q3TkBj5"
+          "url": "https://testnet.nearblocks.io/txns/7ENXHN7EFgSyP4rTcBSY88AqpuyZoMskNFmeRskB8A31"
         }
       ]
     },
@@ -55,7 +55,7 @@
       "links": [
         {
           "label": "AI-reviewed rescue",
-          "url": "https://testnet.nearblocks.io/txns/2NguU3SnRDAMKPPh5ouMMQhjbV58v6HZDabQmx2Veoz5"
+          "url": "https://testnet.nearblocks.io/txns/Hnwb9p1y8V5Ajxh2kEgWeNdz1qhb5i9BYLcwUD7VqHPS"
         }
       ]
     },
@@ -65,19 +65,19 @@
       "links": [
         {
           "label": "supply",
-          "url": "https://testnet.nearblocks.io/txns/ZBaGn8w3DWEyNwKWenrRtMZ922ouNNQzPsthYGtcGtq"
+          "url": "https://testnet.nearblocks.io/txns/HesapwfgHxDRXfQZGq6JwMRw9q3YZnRTFqfFp58e6tVw"
         },
         {
           "label": "borrow",
-          "url": "https://testnet.nearblocks.io/txns/BHNvAPRkwLTZFWdGgoQ9LXBPuoYzmUYWdP56S4pMwsZR"
+          "url": "https://testnet.nearblocks.io/txns/DPyQ9RUwNUBdm7V6y58J2hBmGZyYcgWFyyEKf6mDp1Ty"
         },
         {
           "label": "guardian repay",
-          "url": "https://testnet.nearblocks.io/txns/2NguU3SnRDAMKPPh5ouMMQhjbV58v6HZDabQmx2Veoz5"
+          "url": "https://testnet.nearblocks.io/txns/Hnwb9p1y8V5Ajxh2kEgWeNdz1qhb5i9BYLcwUD7VqHPS"
         },
         {
           "label": "deleverage",
-          "url": "https://testnet.nearblocks.io/txns/ESthDF8jpH9iHkjLMd8guQpQRT7ex6i7Mhb8ffdJi8Kg"
+          "url": "https://testnet.nearblocks.io/txns/54XMKdDUu6dV7ErFg8Pv4pEdS98BfALbBGq9N3LtNGtZ"
         }
       ]
     },
@@ -87,7 +87,7 @@
       "links": [
         {
           "label": "transaction",
-          "url": "https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf"
+          "url": "https://testnet.nearblocks.io/txns/ETZ1TFMQAHRwnkEdC9QAdWJHVhEMxYYi8FBRWLy2UyqT"
         }
       ]
     },

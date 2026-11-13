@@ -402,7 +402,7 @@ async function protect() {
   for (const [kind, p] of Object.entries(people)) {
     try {
       // The guardian looks every 2 minutes, and an OutLayer run it misses is tried again on the next look.
-      const d = await until(`a ${kind} decision for ${p.account}`, Number(process.env.SCENARIO_DECISION_MS ?? 15 * 60_000), async () => {
+      const d = await until(`a ${kind} decision for ${p.account}`, Number(process.env.SCENARIO_DECISION_MS ?? 25 * 60_000), async () => {
         const log = await api<{ items: Decision[] }>(`/v1/guardian/decisions?account=${p.account}&limit=5`);
         return log.items.find((x) => x.createdAt > since && (x.outcome === "executed" || x.outcome === "rejected_by_review" || x.outcome === "refused" || x.outcome === "rolled_back"));
       });
