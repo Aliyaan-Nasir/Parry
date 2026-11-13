@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useState } from "react";
 import { ownerActions, type MandateView } from "@parryguard/sdk";
-import { DataList, DataRow, errorMessage, Eyebrow, QueryError, Segmented } from "@/components/app/bits";
+import { DataList, DataRow, errorMessage, Eyebrow, Note, QueryError, Segmented } from "@/components/app/bits";
 import { POWER_LABEL } from "@/components/app/labels";
 import { mandateStatus } from "@/components/app/mandate";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useEnclave } from "@/lib/queries";
 import { formatBps, formatDateTime, formatNumber, fromUnits, unitsToNumber } from "@/lib/units";
 import { useNow } from "@/lib/use-now";
 
@@ -52,6 +53,7 @@ export function MandatePanel({
   tokens: Record<string, TokenInfo>;
 }) {
   const acct = useParryAccount();
+  const enclave = useEnclave();
   const now = useNow();
   const [pauseFor, setPauseFor] = useState<number>(86_400);
   const [confirm, setConfirm] = useState(false);
@@ -90,13 +92,21 @@ export function MandatePanel({
     );
   }
   const nowSec = now / 1000;
-  const status = mandateStatus(view, nowSec);
+  // A new enclave build has a new key: a mandate naming an earlier one is skipped by the guardian.
+  const status = mandateStatus(view, nowSec, enclave.data?.key.public_key);
   const m = view?.mandate;
   const paused = status.key === "paused";
+  const staleKey = status.key === "stale";
 
   return (
     <Card as="section" aria-labelledby="mandate-title" className="grid content-start gap-5">
       <CardHeader titleAs="h2" title={<span id="mandate-title">Current mandate</span>} description={status.detail} actions={<Badge tone={status.tone}>{status.label}</Badge>} />
+      {staleKey ? (
+        <Note tone="caution">
+          This mandate names the guardian key of an earlier enclave build, so the guardian does not act on it. Set it again below: the form starts from your current
+          limits.
+        </Note>
+      ) : null}
       {m && view ? (
         <>
           <div className="grid gap-5 md:grid-cols-2">

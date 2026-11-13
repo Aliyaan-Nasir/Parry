@@ -9,6 +9,7 @@
  *   bun scripts/scenarios.ts --only 2,3,4        a subset (each scenario creates what it needs)
  *   bun scripts/scenarios.ts --align-pool        only realign the testnet exchange pool with the oracle
  *   bun scripts/scenarios.ts --upgrade-accounts  only move the accounts whose owner keys are on hand to the published code
+ *   bun scripts/scenarios.ts --remandate         only set again the mandates that name an earlier enclave key (owner keys on hand)
  *
  * Scenarios (numbers as in the test matrix): 2 a gasless protected account, 3 a leveraged Rhea
  * position, 4 a mandate with a sealed policy, 5 the market shock, 6 the AI-reviewed rescues
@@ -45,9 +46,12 @@ import {
   createParry,
   ownerActions,
   ownerActionsTgas,
+  sealPolicy,
+  toBase64,
   verifyReserves,
   type Decision,
   type HlOrder,
+  type Mandate,
   type OwnerAction,
   type PasskeyAssertion,
   type Policy,
@@ -1068,6 +1072,37 @@ async function upgradeAll(): Promise<void> {
     if (!o.failure) moved++;
   }
   console.log(`${moved} accounts moved to ${ACCOUNT_CODE}`);
+}
+
+/**
+ * A new enclave build has new keys, and the guardian skips every mandate that names the old one.
+ * This sets each such mandate again, for the owners whose keys are in the keychain: the same
+ * powers, limits, caps, guards and expiry, the enclave's current key, and the policy its scenario
+ * uses sealed to the current sealing key.
+ */
+async function remandateAll(): Promise<void> {
+  const { key, sealingKey } = await parry.enclave();
+  const strategy = (owner: string): Policy["strategy"] => (owner.startsWith("adder") ? "keep-exposure" : owner.startsWith("delev") ? "deleverage-only" : "repay-first");
+  const keychain = join(homedir(), ".near-credentials", "testnet");
+  let set = 0;
+  for (const file of readdirSync(keychain).filter((f) => f.endsWith(`.${rootId}.json`))) {
+    const owner = file.slice(0, -".json".length);
+    const account = await parry.protectedAccountId({ nearAccount: owner }).catch(() => null);
+    const current = account ? await view<{ mandate: Mandate; expired: boolean } | null>(account, "mandate").catch(() => null) : null;
+    if (!account || !current || current.expired || current.mandate.guardian_key === key.public_key) continue;
+    const sealed = sealingKey ? toBase64(sealPolicy(policy(strategy(owner)), { account, sealingPublicKey: sealingKey.public_key })) : null;
+    const mandate: Mandate = { ...current.mandate, guardian_key: key.public_key, sealed };
+    const k = (JSON.parse(readFileSync(join(keychain, file), "utf8")) as { private_key: string }).private_key;
+    const o = await ownerCall({ owner, key: k, n: client(owner, k), account, steps: [] }, [{ set_mandate: { mandate } }]).catch((e: Error) => ({ hash: "", failure: e.message, o: null }));
+    console.log(`${o.failure ? "FAIL" : "ok  "} ${account} (${owner}) ${o.failure ?? explorer(o.hash)}`);
+    if (!o.failure) set++;
+  }
+  console.log(`${set} mandates now name ${key.public_key}`);
+}
+
+if (process.argv.includes("--remandate")) {
+  await remandateAll();
+  process.exit(0);
 }
 
 if (process.argv.includes("--upgrade-accounts")) {

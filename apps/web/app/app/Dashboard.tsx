@@ -25,7 +25,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useAccountSummary, useAlerts, useDecisions } from "@/lib/queries";
+import { useAccountSummary, useAlerts, useDecisions, useEnclave } from "@/lib/queries";
 import { useNow } from "@/lib/use-now";
 
 function ListSkeleton({ rows = 3 }: { rows?: number }) {
@@ -128,6 +128,7 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
   const acct = useParryAccount();
   const summary = useAccountSummary(account);
   const decisions = useDecisions(account, 10);
+  const enclave = useEnclave();
   const { format } = useMoney();
   const now = useNow();
   const s = summary.data;
@@ -159,7 +160,7 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
   const positions = s?.positions ?? [];
   const collateral = positions.reduce((t, p) => t + p.collateralUsd, 0);
   const debt = positions.reduce((t, p) => t + p.debtUsd, 0);
-  const status = s && now ? mandateStatus(s.mandate, now / 1000) : null;
+  const status = s && now ? mandateStatus(s.mandate, now / 1000, enclave.data?.key.public_key) : null;
   const recent = decisions.data?.pages[0]?.items ?? [];
   const lastFor = (venue: string) => recent.find((d) => d.venue === venue || (venue === "aave" && (d.venue as string) === "evm")) ?? null;
   const action = params.get("action");

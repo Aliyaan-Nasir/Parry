@@ -4,12 +4,16 @@ import type { MandateView, Strategy } from "@parryguard/sdk";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/units";
 
-export type MandateStatus = { key: "none" | "expired" | "paused" | "active"; label: string; tone: BadgeTone; detail: string };
+export type MandateStatus = { key: "none" | "expired" | "stale" | "paused" | "active"; label: string; tone: BadgeTone; detail: string };
 
-export function mandateStatus(view: MandateView | null | undefined, nowSeconds: number): MandateStatus {
+/** `guardianKey` is the enclave's current key, when known: a mandate naming another one is skipped. */
+export function mandateStatus(view: MandateView | null | undefined, nowSeconds: number, guardianKey?: string): MandateStatus {
   if (!view) return { key: "none", label: "No mandate", tone: "neutral", detail: "The guardian cannot act on this account until a mandate is set." };
   if (view.expired || view.mandate.expires_at <= nowSeconds) {
     return { key: "expired", label: "Mandate expired", tone: "caution", detail: `Expired ${formatDateTime(view.mandate.expires_at)}. Set a new one to keep protection.` };
+  }
+  if (guardianKey && view.mandate.guardian_key !== guardianKey) {
+    return { key: "stale", label: "Not protected", tone: "caution", detail: "The mandate names an earlier guardian key. Set it again to keep protection." };
   }
   if (view.paused_until > nowSeconds) {
     return { key: "paused", label: "Guardian paused", tone: "caution", detail: `Paused until ${formatDateTime(view.paused_until)}.` };

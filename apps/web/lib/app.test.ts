@@ -2,6 +2,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { compressedPasskey, toHex } from "@parryguard/sdk";
 import { describe, expect, it } from "vitest";
+import { mandateStatus } from "@/components/app/mandate";
 import { buildCsp } from "./csp";
 import { hyperliquidAddressUrl, nearAccountUrl } from "./explorer";
 import { formatMoney } from "./money";
@@ -84,5 +85,19 @@ describe("passkey recovery", () => {
     const candidates = recoverCandidates(digest, der);
     expect(candidates).toHaveLength(2);
     expect(candidates).toContain(compressedPasskey(toHex(p256.getPublicKey(secret, true))));
+  });
+});
+
+describe("mandate status", () => {
+  const view = (guardianKey: string, expiresAt: number, pausedUntil = 0) =>
+    ({ mandate: { guardian_key: guardianKey, expires_at: expiresAt }, expired: false, paused_until: pausedUntil }) as unknown as Parameters<typeof mandateStatus>[0];
+
+  it("is not protected when the mandate names an earlier guardian key", () => {
+    expect(mandateStatus(view("ed25519:old", 2_000), 1_000, "ed25519:new").key).toBe("stale");
+    expect(mandateStatus(view("ed25519:new", 2_000), 1_000, "ed25519:new").key).toBe("active");
+    // Before the enclave's key is known, the mandate is shown as it stands.
+    expect(mandateStatus(view("ed25519:old", 2_000), 1_000).key).toBe("active");
+    // Expiry is told first: setting a new mandate fixes both.
+    expect(mandateStatus(view("ed25519:old", 500), 1_000, "ed25519:new").key).toBe("expired");
   });
 });
