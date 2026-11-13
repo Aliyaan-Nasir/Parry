@@ -347,6 +347,9 @@ const people: Record<string, Person> = {};
 const decisions: Record<string, Decision> = {};
 
 async function protect() {
+  // Positions opened during an earlier run's shock would be sized at the shocked price, and this
+  // run's shock would not move it further: wait for the oracle to be back on the market price.
+  if (!sandbox) await until("the previous market shock to end", 35 * 60_000, async () => ((await api<{ shock: unknown }>("/v1/shock")).shock === null ? true : null));
   // Decisions made before this run's mandates (an earlier run's, on a reused owner) do not count.
   const since = new Date().toISOString();
   // 2, 3 and 4 for three people, one per rescue kind.
