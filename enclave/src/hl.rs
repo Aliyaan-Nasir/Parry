@@ -102,17 +102,34 @@ pub fn clearinghouse(io: &dyn Io, address: &str, coin: &str) -> Result<Clearingh
 }
 
 /// USDC moved into `address`'s perp account minus USDC moved out: the margin the operator put
-/// in, so that account value minus this is the hedge's own PnL and funding.
+/// in, so that account value minus this is the hedge's own PnL and funding. Only the Perps side
+/// counts: a send names the balance it left and reached (`sourceDex`, `destinationDex`: "spot",
+/// or "" for Perps; older records name neither and are Perps), and USDC that reaches Spot counts
+/// once it moves into Perps (`accountClassTransfer`).
 pub fn net_deposits(io: &dyn Io, address: &str) -> Result<f64> {
     let v = info(
         io,
         &json!({ "type": "userNonFundingLedgerUpdates", "user": address, "startTime": 0 }),
     )?;
+    ledger_net(&v, address)
+}
+
+fn ledger_net(v: &Value, address: &str) -> Result<f64> {
     let f = |x: &Value| {
         x.as_str()
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0)
     };
+    // A send's USDC: `usdc` in older records, `usdcValue` or `amount` in newer ones.
+    let usdc = |d: &Value| {
+        ["usdc", "usdcValue", "amount"]
+            .iter()
+            .map(|k| &d[*k])
+            .find(|x| x.is_string())
+            .map(f)
+            .unwrap_or(0.0)
+    };
+    let perps = |dex: &Value| dex.as_str().is_none_or(str::is_empty);
     let mut net = 0.0;
     for u in v.as_array().ok_or("ledger updates are not a list")? {
         let d = &u["delta"];
@@ -127,14 +144,17 @@ pub fn net_deposits(io: &dyn Io, address: &str) -> Result<f64> {
                 }
             }
             "internalTransfer" | "send" => {
+                if d["token"].as_str().is_some_and(|t| t != "USDC") {
+                    continue;
+                }
                 let incoming = d["destination"]
                     .as_str()
                     .is_some_and(|x| x.eq_ignore_ascii_case(address));
-                net += if incoming {
-                    f(&d["usdc"])
-                } else {
-                    -f(&d["usdc"])
-                };
+                if incoming && perps(&d["destinationDex"]) {
+                    net += usdc(d);
+                } else if !incoming && perps(&d["sourceDex"]) {
+                    net -= usdc(d) + f(&d["fee"]);
+                }
             }
             _ => {}
         }
@@ -181,4 +201,37 @@ pub fn funding_sum(io: &dyn Io, coin: &str, start_secs: u64) -> Result<(f64, usi
         .filter(|r| r.is_finite())
         .collect();
     Ok((rates.iter().sum(), rates.len()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ME: &str = "0x33aacfd7ed3dd010f659455155e820bfcddf1af1";
+
+    /// The vault's own ledger on testnet: a Spot-to-Spot send, then the vault's move into Perps.
+    #[test]
+    fn spot_arrivals_count_once_they_move_into_perps() {
+        let v = json!([
+            { "delta": { "type": "send", "user": "0x6a0cb8ee002ef101541decd5f59e67c90c454b5c", "destination": ME, "sourceDex": "spot", "destinationDex": "spot", "token": "USDC", "amount": "997.0", "usdcValue": "997.0", "fee": "1.0" } },
+            { "delta": { "type": "accountClassTransfer", "usdc": "997.0", "toPerp": true } },
+        ]);
+        assert_eq!(ledger_net(&v, ME).unwrap(), 997.0);
+    }
+
+    #[test]
+    fn sends_count_by_the_balance_they_touch() {
+        let v = json!([
+            // Straight into Perps, in the newer and the older record.
+            { "delta": { "type": "send", "user": "0xabc", "destination": ME, "sourceDex": "", "destinationDex": "", "token": "USDC", "amount": "50.0", "usdcValue": "50.0", "fee": "0.0" } },
+            { "delta": { "type": "send", "user": "0xabc", "destination": ME.to_uppercase(), "usdc": "20.0", "fee": "0.0" } },
+            // Out of Perps, with its fee.
+            { "delta": { "type": "send", "user": ME, "destination": "0xdef", "sourceDex": "", "destinationDex": "spot", "token": "USDC", "amount": "5.0", "fee": "1.0" } },
+            // Out of Spot, and a token that is not USDC: neither touches Perps margin.
+            { "delta": { "type": "send", "user": ME, "destination": "0xdef", "sourceDex": "spot", "destinationDex": "spot", "token": "USDC", "amount": "7.0", "fee": "1.0" } },
+            { "delta": { "type": "send", "user": "0xabc", "destination": ME, "sourceDex": "", "destinationDex": "", "token": "HYPE", "amount": "3.0", "fee": "0.0" } },
+            { "delta": { "type": "accountClassTransfer", "usdc": "4.0", "toPerp": false } },
+        ]);
+        assert_eq!(ledger_net(&v, ME).unwrap(), 50.0 + 20.0 - 6.0 - 4.0);
+    }
 }
