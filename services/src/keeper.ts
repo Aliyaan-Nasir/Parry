@@ -339,7 +339,7 @@ export async function main() {
   await migrate(sql);
   every(600_000, "gas-key", () => tendGasKey(sql, "keeper", keeper));
   every(intEnv("FEED_MS", 30_000), "feed", track("feed", feed));
-  every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey));
+  every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey), intEnv("SEALING_KEY_RETRY_MS", 600_000));
   every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
   every(intEnv("MARGIN_ROUTE_MS", 1_800_000), "margin-route", track("margin-route", () => marginRoute(sql)));

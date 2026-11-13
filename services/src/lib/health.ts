@@ -28,20 +28,29 @@ export function serveHealth(name: string, port: number, check: () => Promise<Che
   log.info("listening", { port });
 }
 
-/** Runs `tick` every `ms`, never overlapping, logging failures. */
-export function every(ms: number, name: string, tick: () => Promise<void>): void {
+/** Runs `tick` every `ms`, never overlapping, logging failures (and after `retryMs` when one fails); returns a stop. */
+export function every(ms: number, name: string, tick: () => Promise<void>, retryMs?: number): () => void {
   let running = false;
+  let retry: ReturnType<typeof setTimeout> | null = null;
   const run = async () => {
     if (running) return;
     running = true;
+    if (retry) clearTimeout(retry);
+    retry = null;
     try {
       await tick();
     } catch (e) {
       log.error(`${name} failed`, { error: (e as Error).message?.slice(0, 400) });
+      // A task that runs rarely tries again sooner after a failure than its next period.
+      if (retryMs !== undefined && retryMs < ms) retry = setTimeout(run, retryMs);
     } finally {
       running = false;
     }
   };
   void run();
-  setInterval(run, ms);
+  const interval = setInterval(run, ms);
+  return () => {
+    clearInterval(interval);
+    if (retry) clearTimeout(retry);
+  };
 }

@@ -4,6 +4,7 @@ import { migrate, useQuota } from "../src/lib/db";
 import { delegateTgas, ownerRequestTgas, prepaidNear } from "../src/relayer";
 import { Sender, spendable, TxError } from "../src/lib/near";
 import { wallets } from "../src/topup";
+import { every } from "../src/lib/health";
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -183,5 +184,19 @@ describe("Agent Market worker", () => {
     );
     expect(md).toContain("| `alice.near` | 1.040 | $2.310 | 18.0 % | 30.5 h | 81 (critical) |");
     expect(md).toContain("`gone.near` | could not be read");
+  });
+});
+
+describe("a task that runs rarely", () => {
+  test("tries again soon after a failure, then waits its period", async () => {
+    let calls = 0;
+    const stop = every(60_000, "rare", async () => {
+      calls++;
+      if (calls === 1) throw new Error("OutLayer did not answer");
+    }, 20);
+    await new Promise((r) => setTimeout(r, 120));
+    stop();
+    // The first run failed, the retry 20 ms later succeeded, and nothing ran after it.
+    expect(calls).toBe(2);
   });
 });
