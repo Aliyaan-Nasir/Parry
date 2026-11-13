@@ -56,7 +56,8 @@
       "tx": "6AoEjdXk7ak5FERHk83MiL6siKNedhC353GDHnQbna8Y",
       "commit": "964cf3724931cb972f41e659b881838f43f64db4",
       "source": "contracts/account",
-      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a"
+      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
+      "verified": "2026-11-13"
     },
     "accounts": {
       "account": "accounts.parry.testnet",
