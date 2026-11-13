@@ -352,6 +352,44 @@ fn owner_lending_actions_go_to_the_lending_contract() {
     assert_eq!(c[1].2["actions"][0]["Borrow"]["amount"], "5000000000000000000");
 }
 
+#[test]
+fn owner_moves_hyperliquid_spot_usdc_into_perps() {
+    let mut a = near_owned();
+    set("alice.testnet", 1, NOW);
+    a.owner_call(vec![OwnerAction::HlMarginToPerp { amount: "997".into(), nonce: 1_700_000_000_000 }]);
+    let c = calls();
+    assert_eq!(c[0].0, "v1.signer-prod.testnet");
+    assert_eq!(c[0].2["request"]["path"], "parry-hyperliquid");
+    // The testnet `usdClassTransfer` digest, checked against ethers in the common crate.
+    assert_eq!(
+        c[0].2["request"]["payload_v2"]["Ecdsa"],
+        "d4b0ab05d405a1e7ce9b28eb6c4ba57972b792dae0036b699b714deabc3f383b"
+    );
+    assert!(logs_contain("hyperliquid_margin_to_perp"));
+
+    // A signing action stands alone, the amount must be a positive decimal, and only the owner signs.
+    let mut a = near_owned();
+    set("alice.testnet", 1, NOW);
+    let mixed = panic_text(|| {
+        a.owner_call(vec![
+            OwnerAction::HlMarginToPerp { amount: "5".into(), nonce: 1 },
+            OwnerAction::RevokeMandate,
+        ]);
+    });
+    assert!(mixed.contains("must be the only action"), "{mixed}");
+    for bad in ["0", "-1", "1e3", ""] {
+        let t = panic_text(|| {
+            a.owner_call(vec![OwnerAction::HlMarginToPerp { amount: bad.into(), nonce: 2 }]);
+        });
+        assert!(t.contains("bad transfer amount"), "{bad}: {t}");
+    }
+    set("mallory.testnet", 1, NOW);
+    let t = panic_text(|| {
+        a.owner_call(vec![OwnerAction::HlMarginToPerp { amount: "5".into(), nonce: 3 }]);
+    });
+    assert!(t.contains("owner only"), "{t}");
+}
+
 // ---------------------------------------------------------------------------------------------
 // Guardian: what it may do
 // ---------------------------------------------------------------------------------------------

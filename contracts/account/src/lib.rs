@@ -32,7 +32,7 @@ use near_sdk::serde_json;
 use near_sdk::{
     env, near, require, AccountId, Gas, GasWeight, NearToken, PanicOnDefault, Promise, PromiseError,
 };
-use parry_common::hyperliquid::{order_digest, HlOrder};
+use parry_common::hyperliquid::{order_digest, usd_class_transfer_digest, HlOrder};
 use parry_common::mandate::{GuardianAction, Mandate, Power, Trigger};
 use parry_common::math::pow10;
 use parry_common::protocol::{AccountCore, Owner, Protocol, PATH_EVM, PATH_HYPERLIQUID};
@@ -118,6 +118,14 @@ pub enum OwnerAction {
     /// the only action.
     HlOrder {
         order: HlOrder,
+        nonce: u64,
+    },
+    /// Signs a Hyperliquid `usdClassTransfer` that moves `amount` USDC (a decimal string) from the
+    /// account's own Spot balance into its Perps margin: USDC sent from a Unified Hyperliquid
+    /// account lands in Spot, where orders cannot use it. The action names no destination, so the
+    /// signature can only move the account's own USDC. Must be the only action.
+    HlMarginToPerp {
+        amount: String,
         nonce: u64,
     },
     /// Moves the account to another published global code hash.
@@ -283,6 +291,8 @@ pub enum Event<'a> {
     #[event_version("1.0.0")]
     HyperliquidSigned { nonce: u64, kind: &'a str, digest: String },
     #[event_version("1.0.0")]
+    HyperliquidMarginToPerp { nonce: u64, amount: &'a str, digest: String },
+    #[event_version("1.0.0")]
     EvmSigned { nonce: u64, kind: &'a str, hash: String, unsigned_tx: String },
     #[event_version("1.0.0")]
     DeleverageStage { id: u64, stage: &'a str },
@@ -375,6 +385,7 @@ impl Account {
                 a,
                 OwnerAction::MpcSign { .. }
                     | OwnerAction::HlOrder { .. }
+                    | OwnerAction::HlMarginToPerp { .. }
                     | OwnerAction::CloseRhea { .. }
                     | OwnerAction::Unwind { .. }
             )
@@ -506,6 +517,15 @@ impl Account {
             OwnerAction::HlOrder { order, nonce } => {
                 let digest = order_digest(&order, nonce, self.core.network == "mainnet");
                 Event::HyperliquidSigned { nonce, kind: "owner", digest: hex::encode(digest) }.emit();
+                Some(
+                    self.mpc_sign(PATH_HYPERLIQUID, &hex::encode(digest)).then(
+                        Self::ext(env::current_account_id()).with_static_gas(GAS_AFTER_SIGN).on_signed(),
+                    ),
+                )
+            }
+            OwnerAction::HlMarginToPerp { amount, nonce } => {
+                let digest = usd_class_transfer_digest(&amount, true, nonce, self.core.network == "mainnet");
+                Event::HyperliquidMarginToPerp { nonce, amount: &amount, digest: hex::encode(digest) }.emit();
                 Some(
                     self.mpc_sign(PATH_HYPERLIQUID, &hex::encode(digest)).then(
                         Self::ext(env::current_account_id()).with_static_gas(GAS_AFTER_SIGN).on_signed(),

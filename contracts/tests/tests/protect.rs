@@ -422,9 +422,27 @@ async fn unprotected_position_is_liquidated_while_the_protected_one_is_rescued()
 async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()> {
     let s = Stack::new().await?;
     let key = SigningKey::from_bytes(&[1u8; 32]);
-    let (_, acct) = protected(&s, "alice", &key).await?;
+    let (owner, acct) = protected(&s, "alice", &key).await?;
     let relayer = s.user("relayer", 20).await?;
     s.mark(250_000_000).await?;
+
+    // The owner moves the account's own Hyperliquid Spot USDC into Perps margin: the transfer
+    // digest is built on chain and signed for the same Hyperliquid path the orders use.
+    let r = s
+        .owner(&owner, &acct, json!([{ "hl_margin_to_perp": { "amount": "48.5", "nonce": 1_800_000_000_000u64 } }]), 120)
+        .await?;
+    let moved = r.events("hyperliquid_margin_to_perp");
+    assert_eq!(moved.len(), 1, "logs: {:#?}", r.logs());
+    let digest = hex::encode(parry_common::hyperliquid::usd_class_transfer_digest(
+        "48.5",
+        true,
+        1_800_000_000_000,
+        false,
+    ));
+    assert_eq!(moved[0]["digest"].as_str().unwrap(), digest);
+    let sig: Value = r.json()?;
+    assert_signed_by(&s.worker, s.signer.id(), &acct, "parry-hyperliquid", &digest, &sig).await?;
+
     let order = |price: &str| json!({ "asset_index": 54, "is_buy": false, "price": price, "size": "12.5", "reduce_only": false, "tif": "Ioc" });
 
     // Inside the 2% band: signed for the account's Hyperliquid path.

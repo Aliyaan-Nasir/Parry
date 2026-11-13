@@ -25,6 +25,7 @@ export type OwnerAction =
   | { ft_transfer: { token: string; receiver_id: string; amount: string } }
   | { mpc_sign: { path: string; payload: string; domain_id: number } }
   | { hl_order: { order: HlOrder; nonce: number } }
+  | { hl_margin_to_perp: { amount: string; nonce: number } }
   | { upgrade: { code_hash: string } }
   | { close_rhea: { slippage_bps: number; pool_id: number } }
   | { unwind: { tokens: string[]; to?: string } };
@@ -101,6 +102,18 @@ export const ownerActions = {
     return { hl_order: { order, nonce } };
   },
   /**
+   * Signs a Hyperliquid `usdClassTransfer` that moves `amount` USDC (a decimal string, at most 8
+   * decimals) from the account's own Hyperliquid Spot balance into its Perps margin. USDC sent
+   * from a Unified Hyperliquid account lands in Spot, where orders cannot use it. The transfer
+   * names no destination. Must be the only action; submit the signature with
+   * `hyperliquidMarginBody`.
+   */
+  hlMarginToPerp: (amount: string, nonce: number): OwnerAction => {
+    if (!/^(0|[1-9]\d*)(\.\d{1,8})?$/.test(amount) || !/[1-9]/.test(amount)) throw new Error("amount must be a positive USDC amount with at most 8 decimals, such as \"20\" or \"12.5\"");
+    if (!Number.isSafeInteger(nonce) || nonce <= 0) throw new Error("Hyperliquid nonce must be a positive integer (milliseconds)");
+    return { hl_margin_to_perp: { amount, nonce } };
+  },
+  /**
    * Closes the Rhea position through the exchange pool `poolId` (the API's `/v1/config` names it as
    * `dexPool`): one round sells at most the collateral that keeps health at 1.02, repays the debt
    * it buys, and when that is the whole debt withdraws the rest of the collateral into the account
@@ -129,8 +142,8 @@ export const ownerActions = {
 
 function assertActions(actions: OwnerAction[]): void {
   if (actions.length === 0) throw new Error("no actions");
-  const signing = actions.some((a) => typeof a === "object" && ("mpc_sign" in a || "hl_order" in a));
-  if (signing && actions.length !== 1) throw new Error("a signing action (mpc_sign, hl_order) must be the only action");
+  const signing = actions.some((a) => typeof a === "object" && ("mpc_sign" in a || "hl_order" in a || "hl_margin_to_perp" in a));
+  if (signing && actions.length !== 1) throw new Error("a signing action (mpc_sign, hl_order, hl_margin_to_perp) must be the only action");
   const closing = actions.some((a) => typeof a === "object" && "close_rhea" in a);
   if (closing && actions.length !== 1) throw new Error("close_rhea must be the only action");
   const unwinding = actions.some((a) => typeof a === "object" && "unwind" in a);

@@ -10,7 +10,7 @@ import { contract, intEnv, network, NEAR_USD } from "./lib/config";
 import { db, migrate, setStatus, useQuota, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
 import { errorText, log } from "./lib/log";
-import { balanceOf, senderFromEnv, tendGasKey, toNear, txHash, view, yocto } from "./lib/near";
+import { balanceOf, returnValue, senderFromEnv, tendGasKey, toNear, txHash, view, yocto } from "./lib/near";
 import { derivedAddress, PATH_EVM, PATH_HYPERLIQUID } from "./lib/positions";
 
 const relayer = senderFromEnv("RELAYER");
@@ -94,7 +94,9 @@ async function owner(sql: Sql, body: { account: string; request: string; asserti
   const tgas = ownerRequestTgas(body.request);
   await ensureGasKeyFor(tgas);
   const o = await relayer.call({ receiverId: body.account, methodName: "owner_execute", args: { request: body.request, assertion: body.assertion }, tgas });
-  return { txHash: txHash(o) };
+  // The account's answer travels back: a signing action returns its `{ r, s, v }`, which the owner
+  // then sends to Hyperliquid or the EVM chain.
+  return { txHash: txHash(o), value: returnValue<unknown>(o) ?? null };
 }
 
 /** What a NEAR-wallet owner may have relayed: calls on their Parry account, the vault, or a test USDC transfer. */

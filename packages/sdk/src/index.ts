@@ -115,3 +115,15 @@ export {
   yoctoToNear,
 } from "./encoding.js";
 export * from "./types.js";
+export {
+  HYPERLIQUID_API,
+  hyperliquidBalances,
+  hyperliquidBody,
+  hyperliquidError,
+  hyperliquidMarginBody,
+  hyperliquidOrderBody,
+  marginAmount,
+  submitHyperliquid,
+  type HyperliquidAnswer,
+  type HyperliquidSignature,
+} from "./hyperliquid.js";

@@ -23,6 +23,7 @@ import { assembleSigned, signerOf, txHashOf } from "../services/src/lib/evm";
 
 const ROOT = join(import.meta.dir, "..");
 const NETWORK = process.env.PARRY_NETWORK === "mainnet" ? "mainnet" : "testnet";
+const HYPERLIQUID_URL = process.env.HYPERLIQUID_URL ?? (NETWORK === "testnet" ? "https://api.hyperliquid-testnet.xyz" : "https://api.hyperliquid.xyz");
 const RPC = process.env.NEAR_RPC_URL ?? (NETWORK === "testnet" ? "https://archival-rpc.testnet.fastnear.com" : "https://archival-rpc.mainnet.fastnear.com");
 const MAINNET_RPC = "https://free.rpc.fastnear.com";
 const quick = process.argv.includes("--quick");
@@ -304,27 +305,47 @@ async function main() {
     wait("The vault's Hyperliquid short, signed by Chain Signatures", "Hyperliquid testnet USDC at the vault's derived address (the keeper signs the short once it has margin)");
   }
 
+  /** A protected account's signing transaction in scenario 8: its event, and the address its signature recovers to. */
+  const hlSigned = async (tx: string, event: string) => {
+    // The signing step names its owner; a record from before that names it in the creation step.
+    const steps = proofs.scenarios!["8"]!.steps as { step?: string; owner?: string }[];
+    const owner = steps.find((s) => s.owner)?.owner ?? steps[0]?.step?.match(/ for (\S+),/)?.[1] ?? "";
+    const o = await txOutcome(tx, owner);
+    const ev = events(o).find((e) => e.event === event);
+    const sv = (o.status as { SuccessValue?: string }).SuccessValue;
+    if (!ev || !sv) throw new Error(`no ${event} event or signature`);
+    const sig = JSON.parse(Buffer.from(sv, "base64").toString()) as { r: string; s: string; v: number };
+    const acct = o.transaction.receiver_id;
+    const pk = await view<string>(NETWORK === "testnet" ? "v1.signer-prod.testnet" : "v1.signer", "derived_public_key", { path: "parry-hyperliquid", predecessor: acct, domain_id: 0 });
+    const point = unb58(pk.replace(/^secp256k1:/, ""));
+    const recovered = secp256k1.Signature.fromBytes(Buffer.from(sig.r + sig.s, "hex"), "compact").addRecoveryBit(sig.v >= 27 ? sig.v - 27 : sig.v).recoverPublicKey(Buffer.from(String(ev.data.digest), "hex")).toBytes(false);
+    if (Buffer.compare(Buffer.from(recovered.subarray(1)), Buffer.from(point.length === 65 ? point.subarray(1) : point)) !== 0) throw new Error("the signature does not recover to the account's derived key");
+    const address = `0x${bytesToHex(keccak_256(point.length === 65 ? point.subarray(1) : point).slice(12))}`;
+    return { ev, acct, address };
+  };
+
   const hlTx = stepTx(8, /signs a Hyperliquid order/);
   if (hlTx) {
     await check("A protected account signs a Hyperliquid order through Chain Signatures, for its own derived address", async () => {
-      // The signing step names its owner; a record from before that names it in the creation step.
-      const steps = proofs.scenarios!["8"]!.steps as { step?: string; owner?: string }[];
-      const owner = steps.find((s) => s.owner)?.owner ?? steps[0]?.step?.match(/ for (\S+),/)?.[1] ?? "";
-      const o = await txOutcome(hlTx, owner);
-      const ev = events(o).find((e) => e.event === "hyperliquid_signed");
-      const sv = (o.status as { SuccessValue?: string }).SuccessValue;
-      if (!ev || !sv) throw new Error("no hyperliquid_signed event or signature");
-      const sig = JSON.parse(Buffer.from(sv, "base64").toString()) as { r: string; s: string; v: number };
-      const acct = o.transaction.receiver_id;
-      const pk = await view<string>(NETWORK === "testnet" ? "v1.signer-prod.testnet" : "v1.signer", "derived_public_key", { path: "parry-hyperliquid", predecessor: acct, domain_id: 0 });
-      const point = unb58(pk.replace(/^secp256k1:/, ""));
-      const recovered = secp256k1.Signature.fromBytes(Buffer.from(sig.r + sig.s, "hex"), "compact").addRecoveryBit(sig.v >= 27 ? sig.v - 27 : sig.v).recoverPublicKey(Buffer.from(String(ev.data.digest), "hex")).toBytes(false);
-      if (Buffer.compare(Buffer.from(recovered.subarray(1)), Buffer.from(point.length === 65 ? point.subarray(1) : point)) !== 0) throw new Error("the signature does not recover to the account's derived key");
-      const address = `0x${bytesToHex(keccak_256(point.length === 65 ? point.subarray(1) : point).slice(12))}`;
+      const { ev, acct, address } = await hlSigned(hlTx, "hyperliquid_signed");
       return `${hlTx}: digest ${String(ev.data.digest).slice(0, 16)}... signed for ${address}, ${acct.slice(0, 12)}...'s Hyperliquid address`;
     });
   } else {
     wait("A protected account signs a Hyperliquid order through Chain Signatures", "`bun scripts/scenarios.ts --only 8`");
+  }
+
+  const marginTx = stepTx(8, /USDC from its Spot balance into Perps/);
+  if (marginTx) {
+    await check("A protected account moves its own Hyperliquid Spot USDC into Perps, and Hyperliquid executed the transfer", async () => {
+      const { ev, address } = await hlSigned(marginTx, "hyperliquid_margin_to_perp");
+      const res = await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "userNonFundingLedgerUpdates", user: address, startTime: Number(ev.data.nonce) - 60_000 }) });
+      const ledger = (await res.json()) as { delta: { type: string; usdc?: string; toPerp?: boolean } }[];
+      const done = ledger.find((l) => l.delta.type === "accountClassTransfer" && l.delta.toPerp === true && Number(l.delta.usdc) === Number(ev.data.amount));
+      if (!done) throw new Error(`Hyperliquid's ledger for ${address} has no transfer of ${String(ev.data.amount)} USDC into Perps`);
+      return `${marginTx}: ${String(ev.data.amount)} USDC into Perps, signed for ${address} and in Hyperliquid's ledger`;
+    });
+  } else {
+    wait("A protected account moves its own Hyperliquid Spot USDC into Perps", "Spot USDC at the scenario 8 account's Hyperliquid address, then `bun scripts/scenarios.ts --only 8`");
   }
 
   const created = stepTx(2, /relayer creates/);

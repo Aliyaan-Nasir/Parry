@@ -106,7 +106,7 @@ Calls and payments:
 
 Owner actions:
 
-- `ownerActions`: a builder for every owner action (`setMandate`, `revokeMandate`, `pauseGuardian`, `clearPending`, `supply`, `borrow`, `repay`, `withdraw`, `call`, `transfer`, `ftTransfer`, `mpcSign`, `hlOrder`, `closeRhea`, `unwind`, `upgrade`).
+- `ownerActions`: a builder for every owner action (`setMandate`, `revokeMandate`, `pauseGuardian`, `clearPending`, `supply`, `borrow`, `repay`, `withdraw`, `call`, `transfer`, `ftTransfer`, `mpcSign`, `hlOrder`, `hlMarginToPerp`, `closeRhea`, `unwind`, `upgrade`).
 - `ownerCallAction(account, actions, { protocolTokens? })`: `owner_call` for a NEAR-account owner, 1 yoctoNEAR, with the gas the actions need (`ownerActionsTgas`): 300 Tgas, 900 for a close, `unwindTgas(tokens)` (at least 600) for an unwind.
   One call may carry up to 1 PGas; the account refuses a close or unwind sent with less than its whole chain needs.
 - `retryCloseAction(account)`: `retry_close()`, 400 Tgas, no deposit: resumes a close stuck after its swap (anyone may send it).
@@ -120,6 +120,14 @@ Owner actions:
 - `closeRheaRounds({ account, slippageBps, poolId, read, sendOwnerActions, sendCall?, maxRounds?, onRound? })` (or `parry.closeRheaRounds` with the client's reads): sends rounds until no debt is left, `retry_close` for a stuck round, and waits while a round is in flight; `closeStatus(closing, position)` says where a close stands (`closed`, `open`, `in_flight`, `stuck`).
 - `closeFromWalletActions(...)`, `unwindAction(tokens, to?)`: closing the Rhea position with the owner's own debt tokens, and unwinding the account (at most 16 tokens).
 - `closePerpAction(...)`: a reduce-only order that closes a Hyperliquid perp; `repayAaveActions(...)`: the approve and repay transactions of an Aave loan, each with its `mpc_sign` action.
+
+Hyperliquid (the account's own derived address):
+
+- The account only signs: an `hlOrder`, `closePerpAction` or `hlMarginToPerp` action returns `{ r, s, v }`, and Hyperliquid acts once that signature reaches its `/exchange` endpoint with the exact action the account hashed.
+  A NEAR-account owner reads it as the call's return value; the passkey relay returns it as `value`.
+- `hyperliquidBody(action, signature, network)`: that `/exchange` body (`hyperliquidOrderBody`, `hyperliquidMarginBody` for each kind); `submitHyperliquid(body, network)` sends it and throws on a refusal, and `hyperliquidError(answer)` reads an order's own rejection.
+- `hlMarginToPerp(amount, nonce)`: moves USDC from the address's Spot balance into Perps margin, where orders can use it; USDC sent from a Unified Hyperliquid account lands in Spot.
+  The transfer names no destination. `hyperliquidBalances(address, network)` reads Perps and Spot, and `marginAmount(spotUsdc)` gives the whole cents to move.
 
 Mandates:
 

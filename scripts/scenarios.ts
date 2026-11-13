@@ -42,6 +42,13 @@ import type { FinalExecutionOutcome } from "near-kit";
 import {
   buildMandate,
   closeFromWalletActions,
+  closePerpAction,
+  hyperliquidBalances,
+  hyperliquidBody,
+  hyperliquidError,
+  marginAmount,
+  submitHyperliquid,
+  type HyperliquidAnswer,
   compressedPasskey,
   createParry,
   ownerActions,
@@ -57,9 +64,8 @@ import {
   type Policy,
   type Power,
 } from "../packages/sdk/src/index";
-import { HYPERLIQUID_URL, RPC_URLS } from "../services/src/lib/config";
+import { HYPERLIQUID_URL, network, RPC_URLS } from "../services/src/lib/config";
 import { recoverAddress } from "../services/src/lib/evm";
-import { submitOrder } from "../services/src/lib/hyperliquid";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 /** Local key files (gitignored); PARRY_KEYS_DIR points elsewhere. */
@@ -638,35 +644,75 @@ async function evmRescue() {
 }
 
 /**
- * Scenario 8: the protected account signs a Hyperliquid order for its own derived address through
- * Chain Signatures. The signature must recover to that address, as Hyperliquid recovers it; the
- * order fills once the address holds Hyperliquid testnet USDC, and Hyperliquid's answer is kept.
+ * Scenario 8: the protected account signs for its own derived Hyperliquid address through Chain
+ * Signatures. USDC that reached the address's Spot balance first moves into Perps (a
+ * `usdClassTransfer` the account signs); then the account signs a short and a reduce-only close,
+ * each of which must recover to that address and is sent to Hyperliquid, whose answers are kept.
+ * With no margin in Perps the orders are signed and Hyperliquid's refusal is recorded.
  */
 async function hlOrder() {
   const title = "A Hyperliquid order signed by the protected account through Chain Signatures";
   const reuse = process.env.SCENARIO_PERP_OWNER;
   // A 300 Tgas call is checked against the pessimistic gas price, so the owner needs about 0.35 NEAR up front.
   const p = reuse ? await existingPerson(reuse) : await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.6));
+  await upgraded(p);
   const { hyperliquidAddress } = await api<{ hyperliquidAddress: string }>(`/v1/accounts/${p.account}`);
-  const state = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "clearinghouseState", user: hyperliquidAddress }) })).json()) as { marginSummary: { accountValue: string } };
-  p.steps.push({ step: `${p.account}'s Hyperliquid address ${hyperliquidAddress} holds ${state.marginSummary.accountValue} USDC in Perps` });
+  const hl = { url: HYPERLIQUID_URL };
+  let ok = true;
+  /** Runs one signing owner action, checks the signature recovers to the address, and sends it to Hyperliquid. */
+  const signAndSend = async (action: OwnerAction, event: string, step: string) => {
+    const o = await ownerCall(p, [action]);
+    const ev = o.o ? eventsOf(o.o).find((e) => e.event === event) : undefined;
+    const digest = (ev?.data as { digest?: string } | undefined)?.digest;
+    const value = (o.o?.status as { SuccessValue?: string } | undefined)?.SuccessValue;
+    const sig = value ? (JSON.parse(Buffer.from(value, "base64").toString()) as { r: string; s: string; v: number }) : null;
+    if (!sig || !digest) {
+      ok = false;
+      p.steps.push({ step, tx: explorer(o.hash), error: "no signature came back", status: o.o?.status, owner: p.owner });
+      return null;
+    }
+    const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig).replace(/^0x/, "")}`;
+    const recovers = signer.toLowerCase() === hyperliquidAddress.toLowerCase();
+    ok &&= recovers;
+    const response = await submitHyperliquid(hyperliquidBody(action, sig, network), network, hl).catch((e) => ({ status: "error", response: String(e) }));
+    p.steps.push({ step, tx: explorer(o.hash), digest, owner: p.owner, signer, recovers, response });
+    return response;
+  };
+
+  const before = await hyperliquidBalances(hyperliquidAddress, network, hl);
+  p.steps.push({ step: `${p.account}'s Hyperliquid address ${hyperliquidAddress} holds ${before.perps} USDC in Perps and ${before.spotUsdc} in Spot` });
+  const amount = marginAmount(before.spotUsdc, 1);
+  if (amount) {
+    const moved = await signAndSend(ownerActions.hlMarginToPerp(amount, Date.now()), "hyperliquid_margin_to_perp", `the account moves ${amount} USDC from its Spot balance into Perps (usdClassTransfer)`);
+    let after = before;
+    for (let i = 0; i < 15 && moved?.status === "ok" && after.perps < before.perps + Number(amount) - 0.01; i++) {
+      await sleep(2_000);
+      after = await hyperliquidBalances(hyperliquidAddress, network, hl);
+    }
+    const arrived = after.perps >= before.perps + Number(amount) - 0.01;
+    ok &&= arrived;
+    p.steps.push({ step: `Perps now holds ${after.perps} USDC and Spot ${after.spotUsdc}`, arrived });
+  }
+
   const mids = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) })).json()) as Record<string, string>;
   const mark = Number(mids.NEAR);
   // A short of 3 NEAR (over Hyperliquid's $10 minimum), immediate-or-cancel, 3 % under the mark.
   const order: HlOrder = { asset_index: Number(process.env.HYPERLIQUID_NEAR_INDEX ?? 54), is_buy: false, price: String(Number((mark * 0.97).toPrecision(5))), size: "3", reduce_only: false, tif: "Ioc" };
-  const nonce = Date.now();
-  const o = await ownerCall(p, [{ hl_order: { order, nonce } }]);
-  const ev = o.o ? eventsOf(o.o).find((e) => e.event === "hyperliquid_signed") : undefined;
-  const digest = (ev?.data as { digest?: string } | undefined)?.digest;
-  const value = (o.o?.status as { SuccessValue?: string } | undefined)?.SuccessValue;
-  const sig = value ? (JSON.parse(Buffer.from(value, "base64").toString()) as { r: string; s: string; v: number }) : null;
-  p.steps.push({ step: `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`, tx: explorer(o.hash), digest, owner: p.owner });
-  if (!sig || !digest) return save(8, title, false, [...p.steps, { step: "no signature came back", status: o.o?.status }]);
-  const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig).replace(/^0x/, "")}`;
-  const ok = signer.toLowerCase() === hyperliquidAddress.toLowerCase();
-  p.steps.push({ step: "the MPC signature recovers to the account's derived Hyperliquid address", signer, hyperliquidAddress, ok });
-  const res = await submitOrder(order, nonce, sig).catch((e) => ({ status: "error", response: String(e) }));
-  p.steps.push({ step: "Hyperliquid's answer (the order fills once the address holds testnet USDC)", response: res });
+  const opened = await signAndSend(ownerActions.hlOrder(order, Date.now()), "hyperliquid_signed", `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`);
+  const funded = (await hyperliquidBalances(hyperliquidAddress, network, hl)).perps > 0;
+  if (funded) {
+    // With margin the short must fill, and the reduce-only close the app sends must take it off again.
+    const filled = opened?.status === "ok" && !hyperliquidError(opened as HyperliquidAnswer);
+    ok &&= filled;
+    const state = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "clearinghouseState", user: hyperliquidAddress }) })).json()) as { assetPositions: { position: { coin: string; szi: string } }[] };
+    const size = Number(state.assetPositions.find((a) => a.position.coin === "NEAR")?.position.szi ?? 0);
+    p.steps.push({ step: `the account's NEAR position on Hyperliquid is ${size}`, filled });
+    if (size !== 0) {
+      const close = closePerpAction({ assetIndex: order.asset_index, size, markPrice: mark, szDecimals: 1, slippageBps: 300 });
+      const closed = await signAndSend(close, "hyperliquid_signed", `the account signs the reduce-only close of ${Math.abs(size)} NEAR, as the app's close flow does`);
+      ok &&= closed?.status === "ok" && !hyperliquidError(closed as HyperliquidAnswer);
+    }
+  }
   save(8, title, ok, p.steps);
 }
 

@@ -56,7 +56,7 @@ Writes that change a person's settings need a sign-in (section "Auth").
 | GET | `/v1/status` | `Status`: services, oracle freshness, gas-key lanes, treasury |
 | GET | `/v1/treasury` | `{ account, balanceNear, postQuantumKey }`: the treasury account (null when unset), its balance and whether it holds an ML-DSA-65 key |
 | POST | `/v1/relay/create-account` | takes `{ passkey }` (a P-256 key, `p256:<base58>` or 66 hex characters) or `{ nearAccount }`, returns `{ accountId, txHash }`: a gasless protected account |
-| POST | `/v1/relay/owner` | takes `{ account, request, assertion }`, returns `{ txHash }`: relays a passkey-signed owner request with the gas its actions need (300 Tgas, 900 for `close_rhea`, at least 600 for `unwind`) |
+| POST | `/v1/relay/owner` | takes `{ account, request, assertion }`, returns `{ txHash, value }` (`value` is the account's JSON answer, such as the `{ r, s, v }` a signing action returns, or null): relays a passkey-signed owner request with the gas its actions need (300 Tgas, 900 for `close_rhea`, at least 600 for `unwind`) |
 | POST | `/v1/relay/delegate` | takes `{ payload }` or `{ signedDelegateAction }` (base64 borsh), returns `{ txHash }`: relays a NEP-366 signed delegate action to a Parry account, the vault, the factory or test USDC |
 | GET | `/v1/shock` | testnet only (`404` on mainnet): `ShockState`, the active shock and the oracle's NEAR price with it applied |
 | POST | `/v1/shock` | testnet only: takes `{ bps }` (signed basis points the oracle bounds; `0` clears), returns `{ txHash, shock: ShockView \| null }` |

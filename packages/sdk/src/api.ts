@@ -175,7 +175,7 @@ export function apiMethods(api: ParryApi) {
       // The request names its account; the relayer checks it is a Parry account before relaying.
       const account = (JSON.parse(text) as { account?: string }).account;
       if (!account) throw new Error("the owner request names no account");
-      return api.request<{ txHash: string }>("/v1/relay/owner", { method: "POST", body: { account, request: text, assertion } });
+      return api.request<{ txHash: string; value?: unknown }>("/v1/relay/owner", { method: "POST", body: { account, request: text, assertion } });
     },
     /** Creates a protected account without gas, for a passkey (compressed P-256 hex) or a NEAR account. */
     createProtectedAccount: (owner: { passkey: string } | { nearAccount: string }) =>
