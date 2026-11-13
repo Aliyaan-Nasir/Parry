@@ -1,6 +1,6 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
-import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type ReserveLeaf } from "@parryguard/core";
+import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type LendingPosition, type ReserveLeaf } from "@parryguard/core";
 import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parryguard/services/lib/config";
 import type { Sql } from "@parryguard/services/lib/db";
 import { errorText } from "@parryguard/services/lib/log";
@@ -169,9 +169,21 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   /** Any NEAR account's lending risk, read live (the free, rate-limited version). */
   async function riskCheck(id: string) {
+    // A named account's suffix says where it lives; any other id is read on this deployment's network.
+    const net = id.endsWith(".near") ? "mainnet" : id.endsWith(".testnet") ? "testnet" : network;
+    if (net !== network) {
+      // Another network's account: its lending position across every listed asset, at Rhea's own prices.
+      const { readLending } = await import("@parryguard/services/lib/heatmap");
+      return scored(id, net, await readLending(net, id), "Rhea lending");
+    }
     const { near } = await oraclePrices();
     if (near === null) throw bad("no fresh NEAR price", 503);
     const r = await readRhea(id, near);
+    return scored(id, net, r && { position: r.position, nearPrice: near, collateralUsd: r.collateralUsd, debtUsd: r.debtUsd }, "Rhea wNEAR/USDC");
+  }
+
+  async function scored(id: string, net: string, r: { position: LendingPosition; nearPrice: number; collateralUsd: number; debtUsd: number } | null, label: string) {
+    const near = r?.nearPrice ?? 0;
     // The same inputs the risk engine scores with: market volatility and the latest cascade pressure.
     const { history } = await nearHistory(sql);
     const [m] = await sql<{ payload: { cascade?: { pressure?: number } } }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
@@ -179,9 +191,10 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const a = r ? assess(r.position, near, history, Date.now() / 1000, m?.payload.cascade?.pressure ?? 0) : null;
     return {
       account: id,
+      network: net,
       checkedAt: new Date().toISOString(),
       position: r && a
-        ? { id: `${id}:rhea:main`, account: id, venue: "rhea", label: "Rhea wNEAR/USDC", collateralUsd: r.collateralUsd, debtUsd: r.debtUsd, health: Number.isFinite(a.health) ? a.health : null, liqPrice: a.liqPrice,
+        ? { id: `${id}:rhea:main`, account: id, venue: "rhea", label, collateralUsd: r.collateralUsd, debtUsd: r.debtUsd, health: Number.isFinite(a.health) ? a.health : null, liqPrice: a.liqPrice,
             distance: a.distance, score: a.score.score, tier: a.score.tier, probability24h: a.probability24h, ttlHours: a.ttl.medianHours, valueAtRisk99: a.valueAtRisk99, updatedAt: new Date().toISOString() }
         : null,
       market: m?.payload ?? null,

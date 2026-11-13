@@ -787,7 +787,7 @@ export function shock(now: number, bps: number | null = -2000): ShockState {
 }
 
 export function riskCheck(now: number) {
-  return { account: ACCOUNT, checkedAt: iso(now), position: positions(now)[0]!, market: market(now), model: "docs/risk-model.md" as const };
+  return { account: ACCOUNT, network: "testnet" as const, checkedAt: iso(now), position: positions(now)[0]!, market: market(now), model: "docs/risk-model.md" as const };
 }
 
 // ---------------------------------------------------------------------------------------------

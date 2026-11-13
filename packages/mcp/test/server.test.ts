@@ -122,7 +122,7 @@ describe("read tools", () => {
     expect(risk.text).toContain("score 64 (danger)");
 
     const check = await call("risk_check", { account: "alice.testnet" });
-    expect(Object.keys(check.data!).sort()).toEqual(["account", "checkedAt", "market", "model", "position"]);
+    expect(Object.keys(check.data!).sort()).toEqual(["account", "checkedAt", "market", "model", "network", "position"]);
 
     const market = await call("get_market");
     expect(Object.keys(market.data!).sort()).toEqual(["cascade", "near", "tremor"]);

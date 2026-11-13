@@ -8,7 +8,7 @@
 import { chainedCascades, heatBuckets, heatmapPressure, liquidationPrice, healthFactor, underwater, DEFAULT_CASCADE_PARAMS, type HeatmapAccount, type LendingPosition, type Line } from "@parryguard/core";
 import { intEnv, RPC_BY_NETWORK, type Network } from "./config";
 import type { Sql } from "./db";
-import { lendingOf, mainnetTokenOf, pythInfos, rheaAssets, tokenPrices, type RheaAsset, type TokenPrice } from "./markets";
+import { lendingOf, mainnetTokenOf, pythInfos, remember, rheaAssets, tokenPrices, type RheaAsset, type TokenPrice } from "./markets";
 import { view } from "./near";
 
 type RawAccount = {
@@ -78,6 +78,26 @@ export async function pricedAssets(net: Network): Promise<{ assets: Map<string, 
     if (price && decimals !== undefined) assets.set(a.tokenId, { asset: a, price, decimals });
   }
   return { assets, nearPrice };
+}
+
+/**
+ * One account's lending position on `net`, every listed asset priced the way Rhea prices it, with
+ * the NEAR price it was valued at; null without debt. The prices are shared for a minute.
+ */
+export async function readLending(net: Network, account: string): Promise<{ position: LendingPosition; nearPrice: number; collateralUsd: number; debtUsd: number } | null> {
+  const lending = lendingOf(net);
+  if (!lending) return null;
+  type Shares = { token_id: string; shares: string }[];
+  const [v, { assets, nearPrice }] = await Promise.all([
+    view<{ collateral?: Shares; borrowed?: Shares } | null>(lending, "get_account", { account_id: account }, "optimistic", RPC_BY_NETWORK[net]),
+    remember(`priced-assets:${net}`, 60_000, () => pricedAssets(net)),
+  ]);
+  if (!v) return null;
+  const shares = (ls: Shares | undefined) => Object.fromEntries((ls ?? []).map((l) => [l.token_id, l.shares]));
+  const position = accountPosition({ account_id: account, positions: { REGULAR: { RegularPosition: { collateral: shares(v.collateral), borrowed: shares(v.borrowed) } } } }, assets);
+  if (!position) return null;
+  const usd = (ls: Line[]) => ls.reduce((s, l) => s + l.amount * l.priceUsd, 0);
+  return { position, nearPrice, collateralUsd: usd(position.collateral), debtUsd: usd(position.debt) };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

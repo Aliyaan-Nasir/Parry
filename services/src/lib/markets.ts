@@ -7,7 +7,7 @@
 
 import { contractOn, HYPERLIQUID_NEAR_INDEX, HYPERLIQUID_URL, NEAR_USD, RPC_BY_NETWORK, type Network } from "./config";
 import { view } from "./near";
-import { PRICE_SOURCE } from "./prices";
+import { PRICE_MAX_AGE, PRICE_SOURCE } from "./prices";
 
 const memo = new Map<string, { at: number; value: unknown }>();
 /** A small in-process cache for reads many requests share. */
@@ -112,7 +112,8 @@ export interface TokenPrice {
 
 /**
  * USD prices of every token mainnet Rhea lending prices, read the way it reads them: the Pyth
- * feed's price on `aggregate-oracle.near` (`get_price_unsafe`), times the token's own rate view
+ * feed's price on `aggregate-oracle.near` (`get_price_no_older_than` within Rhea's freshness
+ * bound), times the token's own rate view
  * for liquid staking tokens (`ft_price`, `get_st_near_price`, ...), or the configured fixed price.
  */
 export async function tokenPrices(): Promise<Map<string, TokenPrice>> {
@@ -122,7 +123,7 @@ export async function tokenPrices(): Promise<Map<string, TokenPrice>> {
     const feedPrice = new Map<string, number>();
     await Promise.all(
       feeds.map(async (id) => {
-        const p = await view<{ price: string; expo: number } | null>(PRICE_SOURCE, "get_price_unsafe", { price_identifier: id }, "optimistic", RPC_BY_NETWORK.mainnet).catch(() => null);
+        const p = await view<{ price: string; expo: number } | null>(PRICE_SOURCE, "get_price_no_older_than", { price_id: id, age: PRICE_MAX_AGE }, "optimistic", RPC_BY_NETWORK.mainnet).catch(() => null);
         if (p) feedPrice.set(id, Number(p.price) * 10 ** p.expo);
       }),
     );
@@ -136,7 +137,7 @@ export async function tokenPrices(): Promise<Map<string, TokenPrice>> {
         const base = feedPrice.get(info.price_identifier);
         if (base === undefined) return;
         let priceUsd = base;
-        let source = `${PRICE_SOURCE} get_price_unsafe (Pyth ${info.price_identifier.slice(0, 8)})`;
+        let source = `${PRICE_SOURCE} get_price_no_older_than (Pyth ${info.price_identifier.slice(0, 8)})`;
         if (info.extra_call) {
           const rate = await view<string>(tokenId, info.extra_call, {}, "optimistic", RPC_BY_NETWORK.mainnet).catch(() => null);
           if (rate === null) return;

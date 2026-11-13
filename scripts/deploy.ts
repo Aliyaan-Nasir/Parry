@@ -162,13 +162,9 @@ async function call(from: string, to: string, method: string, args: object, depo
 const NEAR_USD_ID = "c415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750";
 const USDC_USD_ID = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
 async function sourcePrices(): Promise<{ id: string; price: { price: string; conf: string; expo: number; publish_time: number } }[]> {
-  // The prices mainnet Rhea lending uses, read with a free mainnet view call.
-  const out = [];
-  for (const id of [NEAR_USD_ID, USDC_USD_ID]) {
-    const r = (await (await fetch("https://free.rpc.fastnear.com", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "final", account_id: "aggregate-oracle.near", method_name: "get_price_unsafe", args_base64: Buffer.from(JSON.stringify({ price_identifier: id })).toString("base64") } }) })).json()) as { result: { result: number[] } };
-    out.push({ id, price: JSON.parse(Buffer.from(r.result.result).toString()) });
-  }
-  return out;
+  // The prices mainnet Rhea lending uses, read the way it reads them (a free mainnet view call).
+  const { latest } = await import("../services/src/lib/prices");
+  return (await latest([NEAR_USD_ID, USDC_USD_ID])).map((p) => ({ id: p.id, price: { price: p.price, conf: p.conf, expo: p.expo, publish_time: p.publishTime } }));
 }
 
 function step(name: string) {

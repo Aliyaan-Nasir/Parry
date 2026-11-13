@@ -196,15 +196,17 @@ export async function main() {
   const networks = (process.env.HEATMAP_NETWORKS ?? "testnet,mainnet").split(",").map((x) => x.trim()).filter((x): x is Network => x === "testnet" || x === "mainnet");
   every(intEnv("HEATMAP_MS", 120_000), "heatmap", async () => {
     const parts: string[] = [];
+    let failed = false;
     for (const net of networks) {
       try {
         const r = await sweep(sql, net);
         parts.push(`${net}: ${r.read} read, ${r.borrowers} borrowers of ${r.total}`);
       } catch (e) {
+        failed = true;
         parts.push(`${net}: ${errorText(e)}`);
       }
     }
-    await setStatus(sql, "heatmap", !parts.some((p) => /error|failed|rpc /i.test(p)), parts.join("; ").slice(0, 400));
+    await setStatus(sql, "heatmap", !failed, parts.join("; ").slice(0, 400));
   });
   serveHealth("risk", intEnv("PORT", 4200), async () => ({ ok: Date.now() - lastOk < 60_000, detail: lastReport ? `last report ${lastReport}` : "scoring" }));
 }

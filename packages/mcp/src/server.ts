@@ -100,7 +100,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       title: "Risk check for any NEAR account",
       description:
         "Scores the Rhea lending position of any NEAR account (protected by Parry or not) with Parry's risk model: health, liquidation price, 24 hour liquidation probability, time to liquidation and score, " +
-        "plus the market it was scored against. Reads the Parry API (free tier, rate limited). Changes nothing.",
+        "plus the market it was scored against. A .near account is read on mainnet and a .testnet one on testnet. Reads the Parry API (free tier, rate limited). Changes nothing.",
       inputSchema: { account: accountArg },
       annotations: read,
     },

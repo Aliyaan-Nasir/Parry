@@ -117,6 +117,8 @@ export interface HistoryPoint {
 
 export interface RiskCheck {
   account: string;
+  /** Where the position was read: a `.near` account on mainnet, a `.testnet` one on testnet, any other id on the API's network. */
+  network: "testnet" | "mainnet";
   checkedAt: string;
   /** null when the account has no lending position */
   position: Position | null;

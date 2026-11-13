@@ -1,6 +1,6 @@
 {
   "name": "@parryguard/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Parry: risk, vault, guardian log and policy-limited testnet actions.",
   "author": "Aliyaan Nasir",
   "license": "MIT",

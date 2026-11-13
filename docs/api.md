@@ -474,7 +474,7 @@ The SDK signs in with a NEAR owner's full-access key in one call (`parry.signIn(
 
 Every number read live says where it came from.
 Rhea rates and assets come from the lending contract's `get_assets_paged_detailed` on the API's network.
-Prices are the Pyth feeds mainnet Rhea lending prices with (`get_all_token_pyth_infos`), read from `aggregate-oracle.near` (`get_price_unsafe`), times the token's own rate view for liquid staking tokens (`ft_price`, `get_st_near_price`, `get_nearx_price`).
+Prices are the Pyth feeds mainnet Rhea lending prices with (`get_all_token_pyth_infos`), read from `aggregate-oracle.near` the way Rhea reads them (`get_price_no_older_than`, within its 60 second bound), times the token's own rate view for liquid staking tokens (`ft_price`, `get_st_near_price`, `get_nearx_price`).
 The 24 hour change is Binance's public 24 hour ticker for the feed's market (NEAR, BTC, ETH, ZEC, USDC); a liquid staking token takes NEAR's change, and a token without such a market has `null`.
 Hyperliquid funding is its info API (`metaAndAssetCtxs` for the live rate, `fundingHistory` for the last 24 hours).
 The heatmap pages every Rhea lending account read-only (`get_accounts_paged`, 100 at a time, a pause between calls) on testnet and on mainnet (`contract.main.burrow.near`), in the risk service, about 3000 accounts every 2 minutes per network; it keeps borrowers in Postgres and drops the accounts a whole sweep did not see.
