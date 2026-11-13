@@ -1,6 +1,6 @@
 // Web Push: the service worker in public/sw.js shows the alerts the API pushes.
 
-import { fromBase64 } from "@parry/sdk";
+import { fromBase64 } from "@parryguard/sdk";
 
 export function pushSupported(): boolean {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;

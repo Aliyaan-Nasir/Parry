@@ -11,7 +11,7 @@
     "bun": ">=1.3"
   },
   "scripts": {
-    "postinstall": "test -n \"$PARRY_SKIP_PACKAGE_BUILD\" || pnpm -F @parry/core -F @parry/sdk -F @parry/mcp build",
+    "postinstall": "test -n \"$PARRY_SKIP_PACKAGE_BUILD\" || pnpm -F @parryguard/core -F @parryguard/sdk -F @parryguard/mcp build",
     "build:contracts": "contracts/scripts/build.sh",
     "test:contracts": "cd contracts && cargo test --workspace --exclude parry-sandbox-tests",
     "test:sandbox": "cd contracts && cargo test -p parry-sandbox-tests",
@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "@parry/core": "workspace:*",
+    "@parryguard/core": "workspace:*",
     "@types/bun": "1.3.1",
     "near-kit": "0.20.2",
     "@noble/curves": "2.4.0",

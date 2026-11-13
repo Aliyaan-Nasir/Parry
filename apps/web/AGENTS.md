@@ -7,13 +7,13 @@ This Next version differs from older training data: read `node_modules/next/dist
 ## Commands
 
 ```bash
-pnpm --filter @parry/web dev         # local dev server
-pnpm --filter @parry/web lint        # ESLint, zero warnings allowed
-pnpm --filter @parry/web typecheck   # next typegen, then tsc
-pnpm --filter @parry/web test        # vitest unit tests (lib, components)
-pnpm --filter @parry/web e2e         # builds, starts, runs Playwright (Chromium 1.64)
-SCREENS=1 pnpm --filter @parry/web e2e screens   # full page screenshots to test-results/screens
-pnpm --filter @parry/web icons       # regenerate every brand asset from scripts/brand.mjs
+pnpm --filter @parryguard/web dev         # local dev server
+pnpm --filter @parryguard/web lint        # ESLint, zero warnings allowed
+pnpm --filter @parryguard/web typecheck   # next typegen, then tsc
+pnpm --filter @parryguard/web test        # vitest unit tests (lib, components)
+pnpm --filter @parryguard/web e2e         # builds, starts, runs Playwright (Chromium 1.64)
+SCREENS=1 pnpm --filter @parryguard/web e2e screens   # full page screenshots to test-results/screens
+pnpm --filter @parryguard/web icons       # regenerate every brand asset from scripts/brand.mjs
 ```
 
 ## Layout
@@ -21,7 +21,7 @@ pnpm --filter @parry/web icons       # regenerate every brand asset from scripts
 - `app/(site)`: landing and legal pages; `app/app`: the app shell and its routes; `app/tokens.css` mirrors `packages/brand/tokens.json` (a unit test keeps them equal).
 - `components/ui`: the design system; `components/site`: landing; `components/app`: shell, nav, account button and dialogs, shared app pieces (`bits.tsx`, feeds, decision card, positions table).
 - `components/providers`: `AccountProvider` (`useParryAccount`: wallet via NEAR Connect, passkey, watched account, `runOwnerActions`, `withSignIn`) and `MoneyProvider` (`useMoney`: every USD figure in the display currency), mounted by the app layout only.
-- `lib/`: env, CSP, theme, stats fetch, risk tiers, explorer links, the hero geometry (`deflection.ts`, the mark's guard), `parry.ts` (the @parry/sdk client and typed extras), `queries.ts` (React Query hooks and polling paces), `passkey.ts`, `wallet.ts`, `units.ts`, `money.ts`.
+- `lib/`: env, CSP, theme, stats fetch, risk tiers, explorer links, the hero geometry (`deflection.ts`, the mark's guard), `parry.ts` (the @parryguard/sdk client and typed extras), `queries.ts` (React Query hooks and polling paces), `passkey.ts`, `wallet.ts`, `units.ts`, `money.ts`.
 - Page bodies are client components next to each `page.tsx` (for example `app/app/vault/VaultView.tsx`); the page itself stays a server component with the header.
 
 ## Conventions and traps
@@ -30,7 +30,7 @@ pnpm --filter @parry/web icons       # regenerate every brand asset from scripts
 - Tailwind has no default palette (`--color-*: initial`); use the token utilities (`bg-surface`, `text-muted`, `text-brass`, tier colors).
 - Motion: framer-motion only through `m.*` under the root `LazyMotion`; GSAP and Lenis only on the landing page, loaded after hydration; everything honors reduced motion.
 - Never show a figure that did not come from the API or the chain; the live strip shows "unavailable" instead, the app shows its error or empty state.
-- The app consumes `@parry/sdk` and `@parry/core` from their `dist/`: run `pnpm -F @parry/core build && pnpm -F @parry/sdk build` after changing them, or types and fields go missing here.
+- The app consumes `@parryguard/sdk` and `@parryguard/core` from their `dist/`: run `pnpm -F @parryguard/core build && pnpm -F @parryguard/sdk build` after changing them, or types and fields go missing here.
 - `NEXT_PUBLIC_NEAR_RPC_URL` is for a local node only: chain reads then take contract ids from the API's `/v1/config`.
 - `/app/positions/[id]` has a runtime param: anything reading the URL in the shared layout must sit under Suspense (see `AppNav`).
 - End-to-end tests mock the whole API and NEAR RPC (`e2e/mock.ts`, `e2e/fixtures.ts`, `seedAccount`, `addVirtualAuthenticator`); nothing reaches a real service. `E2E_PORT=<port of a running dev server>` reuses it instead of building.

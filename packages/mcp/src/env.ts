@@ -2,7 +2,7 @@
  * Configuration from environment variables, for the `parry-mcp` command.
  */
 
-import { createParry, isNetwork, type NearSigner } from "@parry/sdk";
+import { createParry, isNetwork, type NearSigner } from "@parryguard/sdk";
 import type { ParryMcpOptions } from "./server.js";
 
 export interface EnvConfig {

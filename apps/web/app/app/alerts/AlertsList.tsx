@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useState } from "react";
-import type { Alert } from "@parry/sdk";
+import type { Alert } from "@parryguard/sdk";
 import { AccountGate } from "@/components/app/AccountGate";
 import { errorMessage, Note, QueryError, Segmented } from "@/components/app/bits";
 import { AlertRow, newestFirst } from "@/components/app/Feeds";

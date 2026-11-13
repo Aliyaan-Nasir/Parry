@@ -1,6 +1,6 @@
 ---
 name: parry
-description: Use Parry on NEAR from an agent or from code - check the liquidation risk of a lending position, protect it with a guardian mandate, read and verify the guardian's decisions, use the delta-neutral NEAR vault and its proof of reserves, and extend the Parry codebase (contracts, enclave, services, SDK, MCP). Use when the user mentions Parry, liquidation protection on NEAR, Rhea lending risk, a guardian mandate, the EARN vault, or the @parry/sdk or @parry/mcp packages.
+description: Use Parry on NEAR from an agent or from code - check the liquidation risk of a lending position, protect it with a guardian mandate, read and verify the guardian's decisions, use the delta-neutral NEAR vault and its proof of reserves, and extend the Parry codebase (contracts, enclave, services, SDK, MCP). Use when the user mentions Parry, liquidation protection on NEAR, Rhea lending risk, a guardian mandate, the EARN vault, or the @parryguard/sdk or @parryguard/mcp packages.
 ---
 
 # Parry
@@ -11,7 +11,7 @@ The person's account contract accepts only protective actions within their on-ch
 
 ## Pick the right tool
 
-- To answer questions about risk, the vault or the guardian, use the MCP server (`@parry/mcp`) if it is connected, otherwise the SDK (`@parry/sdk`), otherwise the HTTP API (`docs/api.md`).
+- To answer questions about risk, the vault or the guardian, use the MCP server (`@parryguard/mcp`) if it is connected, otherwise the SDK (`@parryguard/sdk`), otherwise the HTTP API (`docs/api.md`).
 - To change Parry itself, read `AGENTS.md` at the repository root first: it maps every NEAR primitive to its file and lists the commands and traps.
 - Everything runs on NEAR testnet; mainnet code paths exist but Parry's own contracts are not deployed there.
 
@@ -20,7 +20,7 @@ The person's account contract accepts only protective actions within their on-ch
 Claude Code:
 
 ```bash
-claude mcp add parry -e PARRY_NETWORK=testnet -e PARRY_API_URL=https://api.parry.market -- npx -y @parry/mcp
+claude mcp add parry -e PARRY_NETWORK=testnet -e PARRY_API_URL=https://api.parry.market -- npx -y @parryguard/mcp
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -28,11 +28,11 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.parry]
 command = "npx"
-args = ["-y", "@parry/mcp"]
+args = ["-y", "@parryguard/mcp"]
 env = { PARRY_NETWORK = "testnet", PARRY_API_URL = "https://api.parry.market" }
 ```
 
-From a clone (to run local changes, or before the package is on npm): `pnpm install && pnpm -F @parry/mcp build`, then use `node packages/mcp/dist/bin.js` as the command.
+From a clone (to run local changes): `pnpm install && pnpm -F @parryguard/mcp build`, then use `node packages/mcp/dist/bin.js` as the command.
 Any client that speaks streamable HTTP can use the hosted server at `/mcp` on the Parry API instead.
 Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_KEY` (a testnet account's own full-access key) are set; they act only for that account and are capped per call and per UTC day.
 
@@ -77,7 +77,7 @@ Every refusal says why; nothing is sent when a call is refused.
 ## Use the SDK
 
 ```ts
-import { buildMandate, createParry, NETWORKS, ownerActions, ownerCallAction } from "@parry/sdk";
+import { buildMandate, createParry, NETWORKS, ownerActions, ownerCallAction } from "@parryguard/sdk";
 
 const parry = createParry({ network: "testnet", apiUrl: process.env.PARRY_API_URL });
 const risk = await parry.riskCheck("alice.testnet");

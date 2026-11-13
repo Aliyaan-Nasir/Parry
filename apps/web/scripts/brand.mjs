@@ -1,7 +1,7 @@
 // Generates every brand asset from one geometry: the mark (a P cut into a stem and a guard),
 // the outlined wordmark, the lockup, the favicons, the apple-touch icon and the PWA icons.
 //
-//   pnpm --filter @parry/web icons
+//   pnpm --filter @parryguard/web icons
 //
 // Outputs are committed. Edit this file, run it, then look at every image it writes.
 import { readFile, writeFile, mkdir } from "node:fs/promises";

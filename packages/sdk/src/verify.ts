@@ -8,7 +8,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
-import { leafHash, reserveRoot, verifyReserveProof } from "@parry/core";
+import { leafHash, reserveRoot, verifyReserveProof } from "@parryguard/core";
 import { concatBytes, fromBase64, fromHex, parseEd25519PublicKey, toHex, utf8 } from "./encoding.js";
 import type { Decision, Reserves } from "./types.js";
 

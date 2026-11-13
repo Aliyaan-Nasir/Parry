@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { healthFactor, liquidationPrice, type LendingPosition } from "@parry/core";
-import { buildMandate, ownerActions, sealPolicy, toBase64, type Mandate } from "@parry/sdk";
+import { healthFactor, liquidationPrice, type LendingPosition } from "@parryguard/core";
+import { buildMandate, ownerActions, sealPolicy, toBase64, type Mandate } from "@parryguard/sdk";
 import { AccountGate } from "@/components/app/AccountGate";
 import { AmountField } from "@/components/app/AmountField";
 import { DataList, DataRow, errorMessage, Note, QueryError } from "@/components/app/bits";

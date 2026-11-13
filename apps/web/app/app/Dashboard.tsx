@@ -1,6 +1,6 @@
 "use client";
 
-import { ParryApiError } from "@parry/sdk";
+import { ParryApiError } from "@parryguard/sdk";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueries } from "@tanstack/react-query";

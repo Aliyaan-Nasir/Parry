@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { riskScore } from "@parry/core";
-import type { Market, Position } from "@parry/sdk";
+import { riskScore } from "@parryguard/core";
+import type { Market, Position } from "@parryguard/sdk";
 import { QueryError, Segmented } from "@/components/app/bits";
 import { CloseFlow } from "@/components/app/CloseFlow";
 import { Copilot } from "@/components/app/Copilot";

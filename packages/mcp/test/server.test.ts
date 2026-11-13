@@ -4,7 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import { openPolicy, toBase58 } from "@parry/sdk";
+import { openPolicy, toBase58 } from "@parryguard/sdk";
 import { configFromEnv, createMcpHttpHandler, createParryMcpServer, createUsageLedger, DEFAULT_CAPS, type ParryMcpOptions } from "../src/index.js";
 import { closingAt, enclaveKey, fakeParry, genuineDecision, sealingSecret } from "./fixtures.js";
 

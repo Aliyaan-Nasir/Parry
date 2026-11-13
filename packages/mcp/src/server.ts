@@ -20,7 +20,7 @@ import {
   type NearSigner,
   type Parry,
   type Power,
-} from "@parry/sdk";
+} from "@parryguard/sdk";
 import { z } from "zod";
 import { createUsageLedger, resolveCaps, type McpCaps, type UsageLedger } from "./caps.js";
 

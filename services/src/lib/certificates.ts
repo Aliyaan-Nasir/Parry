@@ -3,7 +3,7 @@
  * block and signs, only when health is at least the threshold, a statement for one reader until an
  * expiry (never the amounts). This flow runs it through OutLayer, optionally anchors it on the risk
  * board (an enclave-signed report of kind `certificate`), and stores it. The shapes are
- * `CertificateBody` in @parry/sdk and docs/api.md.
+ * `CertificateBody` in @parryguard/sdk and docs/api.md.
  */
 
 import { sha256 } from "@noble/hashes/sha2.js";

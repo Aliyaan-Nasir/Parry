@@ -1,7 +1,7 @@
-// The Parry client for the app: one @parry/sdk client for API reads, relays and builders, and the
+// The Parry client for the app: one @parryguard/sdk client for API reads, relays and builders, and the
 // same client (or, against a local node, one with that deployment's contract ids) for chain reads.
 
-import { createParry, type ContractIds, type PasskeyAssertion, type Parry } from "@parry/sdk";
+import { createParry, type ContractIds, type PasskeyAssertion, type Parry } from "@parryguard/sdk";
 import type {
   AuthChallenge,
   AuthProof,

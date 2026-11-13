@@ -4,7 +4,7 @@
  * shock moves health without passing for market volatility. Without market prices, the oracle's.
  */
 
-import type { Sample } from "@parry/core";
+import type { Sample } from "@parryguard/core";
 import type { Sql } from "./db";
 
 async function samples(sql: Sql, source: string, hours: number): Promise<Sample[]> {

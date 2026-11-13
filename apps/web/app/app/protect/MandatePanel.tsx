@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useState } from "react";
-import { ownerActions, type MandateView } from "@parry/sdk";
+import { ownerActions, type MandateView } from "@parryguard/sdk";
 import { DataList, DataRow, errorMessage, Eyebrow, QueryError, Segmented } from "@/components/app/bits";
 import { POWER_LABEL } from "@/components/app/labels";
 import { mandateStatus } from "@/components/app/mandate";

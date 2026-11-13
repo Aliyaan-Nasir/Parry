@@ -1,14 +1,14 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
-import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type ReserveLeaf } from "@parry/core";
-import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parry/services/lib/config";
-import type { Sql } from "@parry/services/lib/db";
-import { errorText } from "@parry/services/lib/log";
-import { nearHistory } from "@parry/services/lib/history";
-import { balanceOf, gasKeyNonces, rpc, toNear, view } from "@parry/services/lib/near";
-import { oraclePrices, readRhea } from "@parry/services/lib/positions";
-import { quoteRescue } from "@parry/services/lib/routes";
-import { scoreAll } from "@parry/services/risk";
+import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type ReserveLeaf } from "@parryguard/core";
+import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parryguard/services/lib/config";
+import type { Sql } from "@parryguard/services/lib/db";
+import { errorText } from "@parryguard/services/lib/log";
+import { nearHistory } from "@parryguard/services/lib/history";
+import { balanceOf, gasKeyNonces, rpc, toNear, view } from "@parryguard/services/lib/near";
+import { oraclePrices, readRhea } from "@parryguard/services/lib/positions";
+import { quoteRescue } from "@parryguard/services/lib/routes";
+import { scoreAll } from "@parryguard/services/risk";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { challenge, session, verify, type Proof } from "./auth";
@@ -175,7 +175,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     // The same inputs the risk engine scores with: market volatility and the latest cascade pressure.
     const { history } = await nearHistory(sql);
     const [m] = await sql<{ payload: { cascade?: { pressure?: number } } }[]>`SELECT payload FROM reports WHERE kind = 'market' ORDER BY run_id DESC LIMIT 1`;
-    const { assess } = await import("@parry/core");
+    const { assess } = await import("@parryguard/core");
     const a = r ? assess(r.position, near, history, Date.now() / 1000, m?.payload.cascade?.pressure ?? 0) : null;
     return {
       account: id,
@@ -191,7 +191,7 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
 
   app.get("/v1/risk/:id", async (c) => {
     const ip = clientIp(c.req.header("x-forwarded-for"));
-    const { useQuota } = await import("@parry/services/lib/db");
+    const { useQuota } = await import("@parryguard/services/lib/db");
     if (!(await useQuota(sql, "risk-check", ip, Number(process.env.FREE_RISK_CHECKS_PER_DAY ?? 200)))) return c.json({ error: "daily free checks used; use /v1/paid/risk over x402" }, 429);
     return c.json(await riskCheck(account(c.req.param("id"))));
   });

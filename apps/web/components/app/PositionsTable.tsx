@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Position } from "@parry/sdk";
+import type { Position } from "@parryguard/sdk";
 import { useMoney } from "@/components/providers/MoneyProvider";
 import { TierBadge } from "@/components/ui/TierBadge";
 import { formatDuration, formatHealth, formatPercent } from "@/lib/units";

@@ -1,8 +1,8 @@
 /** Starts the API on Bun, with the hosted MCP endpoint at /mcp. */
 
-import { intEnv } from "@parry/services/lib/config";
-import { db, migrate } from "@parry/services/lib/db";
-import { log } from "@parry/services/lib/log";
+import { intEnv } from "@parryguard/services/lib/config";
+import { db, migrate } from "@parryguard/services/lib/db";
+import { log } from "@parryguard/services/lib/log";
 import { createApp } from "./app";
 
 const sql = db();

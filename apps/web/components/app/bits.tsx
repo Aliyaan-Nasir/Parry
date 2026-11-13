@@ -5,7 +5,7 @@
 
 import { m } from "framer-motion";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ParryApiError } from "@parry/sdk";
+import { ParryApiError } from "@parryguard/sdk";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 

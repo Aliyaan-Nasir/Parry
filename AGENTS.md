@@ -50,7 +50,7 @@ The services can delay a rescue but never redirect funds: the account contract e
 | `contracts/tests` | Sandbox flows on a local node with Rhea lending's exact mainnet wasm, the exchange, wNEAR and LiNEAR, plus a mainnet rehearsal | `tests/protect.rs`, `tests/mainnet.rs` |
 | `enclave/` | The guardian program for OutLayer (Rust, `wasm32-wasip2`): risk model, planner, AI review, sealed policies, health certificates, reserves tree, signed outputs | `src/modes.rs`, `src/plan.rs`, `src/ai.rs`, `src/seal.rs` |
 | `packages/core` | The risk model (with the Tremor regime), planner, hedge math, reserves tree, liquidation heatmap and crash replay in TypeScript; the enclave mirrors the model and both pass one fixture file | `src/risk.ts`, `fixtures/risk-cases.json` |
-| `packages/sdk`, `packages/mcp`, `packages/brand` | `@parry/sdk`, `@parry/mcp` and the design tokens | each package's README |
+| `packages/sdk`, `packages/mcp`, `packages/brand` | `@parryguard/sdk`, `@parryguard/mcp` and the design tokens | each package's README |
 | `services/` | Monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts, top-up and the Agent Market worker (Bun, one package: `bun services/src/main.ts <name>`) | `src/guardian.ts`, `src/lib/near.ts` |
 | `apps/api` | The API (Hono on Bun) with MCP at `/mcp`, x402 paid checks and the event stream | `src/app.ts`, `src/routes.ts`, `src/verify.ts` |
 | `apps/web` | The site and app (Next.js 16) with the risk instrument | `components/instrument/`, `app/system.css` |
@@ -92,12 +92,12 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 | MPC foreign-transaction verification | `services/src/lib/evm.ts` (`verify_foreign_transaction`), `services/src/guardian.ts` (`verifyEvm`) |
 | OutLayer TEE (keys bound to the build) | `enclave/manifest.json`, `enclave/src/main.rs`, `services/src/lib/enclave.ts` |
 | NEAR AI Cloud verifiable review | `enclave/src/ai.rs` (signature over the exact exchange), `apps/api/src/verify.ts` (`modelAttestation`: TDX and GPU attestation with NEAR AI's inference SDK) |
-| Sealed mandates (thresholds, strategy, step order) | `enclave/src/seal.rs`, `@parry/sdk` `sealPolicy` |
-| Private health certificates | `enclave/src/modes.rs` (`certificate`), `contracts/risk/src/lib.rs` (`certificate`), `@parry/sdk` `verifyCertificate` |
+| Sealed mandates (thresholds, strategy, step order) | `enclave/src/seal.rs`, `@parryguard/sdk` `sealPolicy` |
+| Private health certificates | `enclave/src/modes.rs` (`certificate`), `contracts/risk/src/lib.rs` (`certificate`), `@parryguard/sdk` `verifyCertificate` |
 | Gas keys (NEP-611, parallel lanes) | `services/src/lib/near.ts` (`Sender`, `tendGasKey`), `scripts/deploy.ts` (lanes) |
 | Post-quantum keys (ML-DSA-65) | `scripts/deploy.ts` (the treasury's signing key), `apps/api/src/app.ts` (`postQuantum`) |
 | NEP-366 relayer | `services/src/relayer.ts` |
-| x402 on NEAR | `apps/api/src/x402.ts`, `@parry/sdk` `paidRiskCheck` |
+| x402 on NEAR | `apps/api/src/x402.ts`, `@parryguard/sdk` `paidRiskCheck` |
 | NEAR Intents 1Click (dry-run quotes) | `services/src/lib/routes.ts` (`quoteRescue`, `marginQuote` for the vault's Hyperliquid margin) |
 | NEAR Intents Agent API (mainnet) | `services/src/lib/intents.ts`: a confidential rescue reserve whose owner-signed policy only swaps and pays back into the protected account |
 | NEAR Agent Market (market.near.ai) | `services/src/market.ts` (answers hires with risk reports) |

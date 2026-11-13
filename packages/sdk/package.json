@@ -1,5 +1,5 @@
 {
-  "name": "@parry/sdk",
+  "name": "@parryguard/sdk",
   "version": "0.1.0",
   "description": "Read and act on Parry: positions, risk, vault, mandates and guardian decisions.",
   "author": "Aliyaan Nasir",
@@ -53,7 +53,7 @@
     "@noble/ciphers": "2.4.0",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@parry/core": "workspace:*",
+    "@parryguard/core": "workspace:*",
     "near-kit": "0.20.2"
   },
   "devDependencies": {

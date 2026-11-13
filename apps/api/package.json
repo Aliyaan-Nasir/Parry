@@ -1,5 +1,5 @@
 {
-  "name": "@parry/api",
+  "name": "@parryguard/api",
   "version": "0.1.0",
   "private": true,
   "description": "The Parry API: positions, risk, vault, guardian log, x402 risk checks and the hosted MCP endpoint.",
@@ -16,10 +16,10 @@
     "@nearai/inference-sdk": "0.3.0",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@parry/core": "workspace:*",
-    "@parry/mcp": "workspace:*",
-    "@parry/sdk": "workspace:*",
-    "@parry/services": "workspace:*",
+    "@parryguard/core": "workspace:*",
+    "@parryguard/mcp": "workspace:*",
+    "@parryguard/sdk": "workspace:*",
+    "@parryguard/services": "workspace:*",
     "hono": "4.13.17",
     "near-kit": "0.20.2"
   },

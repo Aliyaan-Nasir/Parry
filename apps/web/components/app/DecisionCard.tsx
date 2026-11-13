@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useLayoutEffect, type ReactNode } from "react";
-import { verifyDecision, type Decision, type DecisionCheck, type DecisionVerification } from "@parry/sdk";
+import { verifyDecision, type Decision, type DecisionCheck, type DecisionVerification } from "@parryguard/sdk";
 import { CopyButton, DataList, DataRow, Eyebrow, ExternalLink, QueryError } from "./bits";
 import { TimeAgo } from "./Feeds";
 import { ACTION_LABEL, OUTCOME } from "./labels";

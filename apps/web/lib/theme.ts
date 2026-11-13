@@ -2,7 +2,7 @@
 // localStorage under THEME_STORAGE_KEY ("light", "dark", or absent for "follow the system").
 // An inline script in <head> applies it before the first paint, so there is no flash.
 
-import tokens from "@parry/brand";
+import tokens from "@parryguard/brand";
 
 export const THEME_STORAGE_KEY = "parry-theme";
 export const THEME_EVENT = "parry-theme-change";

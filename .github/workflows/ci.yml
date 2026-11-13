@@ -43,7 +43,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: pnpm install --frozen-lockfile
-      # Dependents resolve @parry/core, @parry/sdk and @parry/mcp types from their dist folders.
+      # Dependents resolve @parryguard/core, @parryguard/sdk and @parryguard/mcp types from their dist folders.
       - name: Build the workspace packages
         run: pnpm --filter "./packages/*" build
       - run: pnpm typecheck
@@ -105,7 +105,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The site and every workspace package it depends on, in dependency order.
-      - run: pnpm --filter "@parry/web..." build
+      - run: pnpm --filter "@parryguard/web..." build
 
   contracts:
     name: Contract unit tests

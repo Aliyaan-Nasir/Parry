@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans, JetBrains_Mono } from "next/font/google";
-import tokens from "@parry/brand";
+import tokens from "@parryguard/brand";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 import { siteUrl } from "@/lib/env";

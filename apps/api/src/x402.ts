@@ -1,14 +1,14 @@
 /**
  * Paid risk checks over x402 on NEAR. An agent pays per call in test USDC by signing a NEP-366
  * delegate action (an `ft_transfer` to the API's account). Before relaying it the API checks it
- * with @parry/sdk: the signature over the NEP-461 prefixed delegate, the exact asset, amount,
+ * with @parryguard/sdk: the signature over the NEP-461 prefixed delegate, the exact asset, amount,
  * recipient and gas, and on chain that the key is the payer's full-access key, the nonce unused
  * and the delegate unexpired. It answers only after the transfer settled on chain.
  */
 
-import { checkDelegateOnChain, decodePaymentHeader, encodePaymentResponse, verifyPayment, type PaymentRequirements } from "@parry/sdk";
-import { contract, network, RPC_URLS } from "@parry/services/lib/config";
-import type { Sql } from "@parry/services/lib/db";
+import { checkDelegateOnChain, decodePaymentHeader, encodePaymentResponse, verifyPayment, type PaymentRequirements } from "@parryguard/sdk";
+import { contract, network, RPC_URLS } from "@parryguard/services/lib/config";
+import type { Sql } from "@parryguard/services/lib/db";
 import { Near } from "near-kit";
 import type { Context } from "hono";
 

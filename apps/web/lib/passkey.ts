@@ -3,7 +3,7 @@
 
 import { p256 } from "@noble/curves/nist.js";
 import { useSyncExternalStore } from "react";
-import { assertionFromWebAuthn, compressedPasskey, fromBase64, toBase64Url, type PasskeyAssertion } from "@parry/sdk";
+import { assertionFromWebAuthn, compressedPasskey, fromBase64, toBase64Url, type PasskeyAssertion } from "@parryguard/sdk";
 
 export const PASSKEY_STORAGE_KEY = "parry-passkey";
 

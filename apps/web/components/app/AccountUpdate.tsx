@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ownerActions } from "@parry/sdk";
+import { ownerActions } from "@parryguard/sdk";
 import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Button } from "@/components/ui/Button";
 import { chain } from "@/lib/parry";

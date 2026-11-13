@@ -9,8 +9,8 @@ import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { p256 } from "@noble/curves/nist.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
-import { reserveProof, reserveRoot, type ReserveLeaf } from "@parry/core";
-import { envelopeDigest, reviewHash, sealPolicy, toBase58, toBase64, toBase64Url, toHex } from "@parry/sdk";
+import { reserveProof, reserveRoot, type ReserveLeaf } from "@parryguard/core";
+import { envelopeDigest, reviewHash, sealPolicy, toBase58, toBase64, toBase64Url, toHex } from "@parryguard/sdk";
 import type {
   AccountSummary,
   Alert,
@@ -25,7 +25,7 @@ import type {
   Stats,
   VaultChainState,
   Verification,
-} from "@parry/sdk";
+} from "@parryguard/sdk";
 import type { CopilotAnswer, Fx, Portfolio, Settings, ShockState, SimulationResult, StatusView, VaultHistoryPoint, VaultView } from "@/lib/api-types";
 
 // ---------------------------------------------------------------------------------------------

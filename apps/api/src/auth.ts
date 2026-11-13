@@ -9,8 +9,8 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { p256 } from "@noble/curves/nist.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { randomBytes } from "@noble/hashes/utils.js";
-import type { Sql } from "@parry/services/lib/db";
-import { rpc, view } from "@parry/services/lib/near";
+import type { Sql } from "@parryguard/services/lib/db";
+import { rpc, view } from "@parryguard/services/lib/near";
 
 /**
  * NEP-413's signed payload: borsh of (u32 tag 2^31 + 413, message, 32-byte nonce, recipient,

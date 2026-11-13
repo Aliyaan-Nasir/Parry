@@ -1,8 +1,8 @@
 /** Database rows and chain views shaped as the API types in docs/api.md. */
 
-import { contract, network } from "@parry/services/lib/config";
-import { view } from "@parry/services/lib/near";
-import type { Sql } from "@parry/services/lib/db";
+import { contract, network } from "@parryguard/services/lib/config";
+import { view } from "@parryguard/services/lib/near";
+import type { Sql } from "@parryguard/services/lib/db";
 import { reviewHash } from "./verify";
 
 export type Tier = "safe" | "caution" | "danger" | "critical";

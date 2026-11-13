@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useState, type FormEvent } from "react";
-import { ParryApiError } from "@parry/sdk";
+import { ParryApiError } from "@parryguard/sdk";
 import Link from "next/link";
 import { DataList, DataRow, errorMessage, QueryError } from "@/components/app/bits";
 import { DecisionRow, FeedLink } from "@/components/app/Feeds";

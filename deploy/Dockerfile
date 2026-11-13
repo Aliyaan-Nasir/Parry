@@ -13,11 +13,11 @@ COPY packages/mcp/package.json packages/mcp/
 COPY services/package.json services/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-RUN pnpm install --frozen-lockfile --prod=false --filter "@parry/api..." --filter "@parry/services..."
+RUN pnpm install --frozen-lockfile --prod=false --filter "@parryguard/api..." --filter "@parryguard/services..."
 # The workspace packages resolve to their built dist, which the build context leaves out.
 COPY tsconfig.base.json ./
 COPY packages ./packages
-RUN pnpm -F @parry/core -F @parry/sdk -F @parry/mcp build
+RUN pnpm -F @parryguard/core -F @parryguard/sdk -F @parryguard/mcp build
 
 FROM oven/bun:1.3.1-alpine
 WORKDIR /app

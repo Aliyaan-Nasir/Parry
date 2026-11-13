@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Heatmap as HeatmapData } from "@parry/sdk";
+import type { Heatmap as HeatmapData } from "@parryguard/sdk";
 import { QueryError, Segmented } from "@/components/app/bits";
 import { Heatmap } from "@/components/instrument/Heatmap";
 import { useParryAccount } from "@/components/providers/AccountProvider";

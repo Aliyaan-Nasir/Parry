@@ -13,9 +13,9 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { findModelAttestationsForSignature, InferenceClient } from "@nearai/inference-sdk";
-import { enclaveKeyAt, envelopeIssuedAt } from "@parry/sdk";
-import { contract } from "@parry/services/lib/config";
-import { eventsOf, rpc, view } from "@parry/services/lib/near";
+import { enclaveKeyAt, envelopeIssuedAt } from "@parryguard/sdk";
+import { contract } from "@parryguard/services/lib/config";
+import { eventsOf, rpc, view } from "@parryguard/services/lib/near";
 import type { FinalExecutionOutcome } from "near-kit";
 import type { DecisionRow } from "./views";
 

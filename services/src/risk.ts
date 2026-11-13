@@ -1,5 +1,5 @@
 /**
- * Risk engine: turns the monitor's snapshots into scores with @parry/core (Tremor index from the
+ * Risk engine: turns the monitor's snapshots into scores with @parryguard/core (Tremor index from the
  * stored price samples, cascade pressure across every position, first-passage probabilities),
  * keeps history, raises and resolves alerts, queues protected accounts for the guardian, and has
  * the enclave publish signed scores and marks on the risk board.
@@ -23,7 +23,7 @@ import {
   type AlertThresholds,
   type Assessment,
   type HeatmapAccount,
-} from "@parry/core";
+} from "@parryguard/core";
 import { contract, intEnv, type Network } from "./lib/config";
 import { cascadeParams, heatmapAccounts, sweep } from "./lib/heatmap";
 import { nearHistory } from "./lib/history";

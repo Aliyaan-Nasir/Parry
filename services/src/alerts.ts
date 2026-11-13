@@ -7,7 +7,7 @@
  */
 
 import webpush from "web-push";
-import { incidentSummary, joinsIncident, type AlertKind, type Severity } from "@parry/core";
+import { incidentSummary, joinsIncident, type AlertKind, type Severity } from "@parryguard/core";
 import { intEnv } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { every, serveHealth } from "./lib/health";

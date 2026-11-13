@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { Alert, Decision } from "@parry/sdk";
+import type { Alert, Decision } from "@parryguard/sdk";
 import { ALERT_KIND, ALERT_STATUS, ACTION_LABEL, OUTCOME, SEVERITY } from "./labels";
 import { VENUE_LABEL } from "./PositionsTable";
 import { Badge } from "@/components/ui/Badge";

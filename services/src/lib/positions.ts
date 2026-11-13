@@ -5,7 +5,7 @@
 
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import type { LendingPosition } from "@parry/core";
+import type { LendingPosition } from "@parryguard/core";
 import { contract, EVM_RPC_URL, NEAR_USD, USDC_USD } from "./config";
 import { clearinghouse } from "./hyperliquid";
 import { view } from "./near";

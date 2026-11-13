@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import type { Certificate, CertificateBody } from "@parry/sdk";
+import type { Certificate, CertificateBody } from "@parryguard/sdk";
 import { AccountGate } from "@/components/app/AccountGate";
 import { errorMessage, QueryError, Segmented } from "@/components/app/bits";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";

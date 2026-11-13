@@ -1,6 +1,6 @@
 // Words and tones for the API's enums, in one place.
 
-import type { Alert, Decision } from "@parry/sdk";
+import type { Alert, Decision } from "@parryguard/sdk";
 import type { BadgeTone } from "@/components/ui/Badge";
 
 export const ACTION_LABEL: Record<string, string> = {

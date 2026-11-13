@@ -26,7 +26,7 @@ import {
   tremorSeries,
   type Candle,
   type FundingPoint,
-} from "@parry/core";
+} from "@parryguard/core";
 
 const ROOT = join(import.meta.dir, "..");
 const OUT = join(ROOT, "deployments", "replay.json");

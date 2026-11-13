@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { CDPSession, Page, Request, Route } from "@playwright/test";
 import { p256 } from "@noble/curves/nist.js";
-import { fromBase64, requestDigest, toBase64, toBase64Url, type Alert, type OwnerAction } from "@parry/sdk";
+import { fromBase64, requestDigest, toBase64, toBase64Url, type Alert, type OwnerAction } from "@parryguard/sdk";
 import type { Settings } from "@/lib/api-types";
 import * as fx from "./fixtures";
 

@@ -1,7 +1,7 @@
 // Types of the Parry API routes the SDK has no typed method for yet (docs/api.md and the API's
 // own extras), and the fields the API adds to the SDK's documented shapes.
 
-import type { Position, RouteComparison, SimulationStep, Simulation, VaultState, Status } from "@parry/sdk";
+import type { Position, RouteComparison, SimulationStep, Simulation, VaultState, Status } from "@parryguard/sdk";
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "SGD", "HKD", "AED", "INR", "CNY"] as const;
 export type Currency = (typeof CURRENCIES)[number];

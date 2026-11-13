@@ -1,5 +1,5 @@
 {
-  "name": "@parry/mcp",
+  "name": "@parryguard/mcp",
   "version": "0.1.0",
   "description": "MCP server for Parry: risk, vault, guardian log and policy-limited testnet actions.",
   "author": "Aliyaan Nasir",
@@ -52,13 +52,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
-    "@parry/sdk": "workspace:*",
+    "@parryguard/sdk": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@parry/core": "workspace:*",
+    "@parryguard/core": "workspace:*",
     "@types/bun": "1.3.1",
     "@types/node": "22.20.5",
     "typescript": "5.9.3"

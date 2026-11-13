@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
-import { encodeEip1559, repayAaveActions } from "@parry/sdk";
-import { encodeUnsigned } from "@parry/services/lib/evm";
-import { migrate } from "@parry/services/lib/db";
+import { encodeEip1559, repayAaveActions } from "@parryguard/sdk";
+import { encodeUnsigned } from "@parryguard/services/lib/evm";
+import { migrate } from "@parryguard/services/lib/db";
 import { sseFrame, StreamHub } from "../src/stream";
 
 describe("EVM encoding", () => {

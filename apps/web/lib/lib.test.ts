@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import tokens from "@parry/brand";
+import tokens from "@parryguard/brand";
 import { buildCsp, originOf } from "./csp";
 import { explorerUrl, isTxHash } from "./explorer";
 import { formatInteger, formatRelativeTime, formatUsdCompact } from "./format";

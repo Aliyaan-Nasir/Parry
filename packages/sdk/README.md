@@ -1,4 +1,4 @@
-# @parry/sdk
+# @parryguard/sdk
 
 TypeScript client for Parry: liquidation protection under an on-chain mandate, and a delta-neutral NEAR vault.
 It reads the Parry API and the chain, builds every contract call as plain data, seals mandate policies to the guardian enclave, and verifies what the guardian publishes.
@@ -7,13 +7,13 @@ It runs in browsers, Node 20+ and Bun.
 ## Install
 
 ```bash
-npm install @parry/sdk
+npm install @parryguard/sdk
 ```
 
 ## Quick start
 
 ```ts
-import { createParry, ownerActions, ownerCallAction, verifyDecision } from "@parry/sdk";
+import { createParry, ownerActions, ownerCallAction, verifyDecision } from "@parryguard/sdk";
 
 const parry = createParry({ network: "testnet", apiUrl: process.env.PARRY_API_URL });
 

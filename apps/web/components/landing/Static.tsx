@@ -132,7 +132,7 @@ export function Agents() {
         <Terminal
           title="claude"
           lines={[
-            { kind: "cmd", text: "claude mcp add parry -- npx -y @parry/mcp" },
+            { kind: "cmd", text: "claude mcp add parry -- npx -y @parryguard/mcp" },
             { kind: "out", text: "Added stdio MCP server parry" },
             { kind: "comment", text: "# ask the agent: is alice.near at risk?" },
             { kind: "cmd", text: "parry.risk_check({ account: \"alice.near\" })" },

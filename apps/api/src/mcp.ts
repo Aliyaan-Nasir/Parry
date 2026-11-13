@@ -1,8 +1,8 @@
 /** The hosted MCP endpoint: read tools only (no agent wallet on the server). */
 
-import { createParry } from "@parry/sdk";
-import { createMcpHttpHandler } from "@parry/mcp";
-import { network } from "@parry/services/lib/config";
+import { createParry } from "@parryguard/sdk";
+import { createMcpHttpHandler } from "@parryguard/mcp";
+import { network } from "@parryguard/services/lib/config";
 
 let app: { fetch: (req: Request) => Response | Promise<Response> } | null = null;
 

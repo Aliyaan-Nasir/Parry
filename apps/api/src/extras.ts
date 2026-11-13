@@ -2,8 +2,8 @@
 
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
-import type { Sql } from "@parry/services/lib/db";
-import { useQuota } from "@parry/services/lib/db";
+import type { Sql } from "@parryguard/services/lib/db";
+import { useQuota } from "@parryguard/services/lib/db";
 import { cached, position, type PositionRow } from "./views";
 import { recoverEip191 } from "./verify";
 

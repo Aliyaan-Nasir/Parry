@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useState, type FormEvent } from "react";
-import { verifyReserves, type ReservesVerification, type VaultPoint } from "@parry/sdk";
+import { verifyReserves, type ReservesVerification, type VaultPoint } from "@parryguard/sdk";
 import { AmountField } from "@/components/app/AmountField";
 import { DataList, DataRow, errorMessage, ExternalLink, Note, QueryError } from "@/components/app/bits";
 import { useParryAccount, type Signer } from "@/components/providers/AccountProvider";

@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import { Heatmap } from "@/components/instrument/Heatmap";
 import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { Button } from "@/components/ui/Button";
-import type { RiskCheck } from "@parry/sdk";
+import type { RiskCheck } from "@parryguard/sdk";
 import { getJson, useHeatmap } from "@/lib/live";
 import { formatDuration, formatProbability } from "@/lib/units";
 import { formatUsdCompact } from "@/lib/format";

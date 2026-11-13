@@ -3,7 +3,7 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import tokens from "@parry/brand";
+import tokens from "@parryguard/brand";
 import { MARK, WORDMARK } from "@/components/brand/paths";
 import { isTestnet } from "./env";
 

@@ -5,7 +5,7 @@
  * resumable; accounts not seen in a whole sweep are dropped at its end.
  */
 
-import { chainedCascades, heatBuckets, heatmapPressure, liquidationPrice, healthFactor, underwater, DEFAULT_CASCADE_PARAMS, type HeatmapAccount, type LendingPosition, type Line } from "@parry/core";
+import { chainedCascades, heatBuckets, heatmapPressure, liquidationPrice, healthFactor, underwater, DEFAULT_CASCADE_PARAMS, type HeatmapAccount, type LendingPosition, type Line } from "@parryguard/core";
 import { intEnv, RPC_BY_NETWORK, type Network } from "./config";
 import type { Sql } from "./db";
 import { lendingOf, mainnetTokenOf, pythInfos, rheaAssets, tokenPrices, type RheaAsset, type TokenPrice } from "./markets";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { fromHex, ownerCallAction, type ContractCall, type OwnerAction } from "@parry/sdk";
+import { fromHex, ownerCallAction, type ContractCall, type OwnerAction } from "@parryguard/sdk";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { api, chain, parry } from "@/lib/parry";

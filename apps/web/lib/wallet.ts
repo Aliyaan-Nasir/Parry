@@ -3,7 +3,7 @@
 // first use.
 
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import type { ContractCall } from "@parry/sdk";
+import type { ContractCall } from "@parryguard/sdk";
 import { nearRpcUrl, network } from "./env";
 
 export const WALLET_STORAGE_KEY = "parry-wallet";

@@ -5,7 +5,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import postgres from "postgres";
-import { migrate } from "@parry/services/lib/db";
+import { migrate } from "@parryguard/services/lib/db";
 import { nep413Payload } from "../src/auth";
 import { recoverEip191, reviewHash } from "../src/verify";
 import { requirements } from "../src/x402";

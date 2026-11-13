@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openPolicy } from "@parry/sdk";
+import { openPolicy } from "@parryguard/sdk";
 import * as fx from "./fixtures";
 import { addVirtualAuthenticator, asPasskeyOwner, mockApi, relayedActions, seedAccount } from "./mock";
 import { POSITION_PATH, watchConsole } from "./support";

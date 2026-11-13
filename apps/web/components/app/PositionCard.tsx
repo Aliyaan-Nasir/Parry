@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Decision, MandateView, Position } from "@parry/sdk";
+import type { Decision, MandateView, Position } from "@parryguard/sdk";
 import { Spotlight } from "@/components/fx/Spotlight";
 import { RiskInstrument } from "@/components/instrument/RiskInstrument";
 import { useMoney } from "@/components/providers/MoneyProvider";

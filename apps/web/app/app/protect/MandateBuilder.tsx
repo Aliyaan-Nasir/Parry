@@ -1,8 +1,8 @@
 "use client";
 
 import { useId, useLayoutEffect, useState, type FormEvent, type ReactNode } from "react";
-import { MAX_TRIGGER_HEALTH } from "@parry/core";
-import { buildMandate, MANDATE_LIMITS, ownerActions, POLICY_STEPS, POWERS, sealPolicy, STRATEGIES, STRATEGY_STEPS, toBase64, type ContractIds, type Mandate, type PolicyStep, type Position, type Power, type Strategy } from "@parry/sdk";
+import { MAX_TRIGGER_HEALTH } from "@parryguard/core";
+import { buildMandate, MANDATE_LIMITS, ownerActions, POLICY_STEPS, POWERS, sealPolicy, STRATEGIES, STRATEGY_STEPS, toBase64, type ContractIds, type Mandate, type PolicyStep, type Position, type Power, type Strategy } from "@parryguard/sdk";
 import { AmountField } from "@/components/app/AmountField";
 import { GuardianPreview } from "@/components/app/GuardianPreview";
 import { StepOrder, type OrderItem } from "@/components/app/StepOrder";

@@ -1,4 +1,4 @@
-# @parry/mcp
+# @parryguard/mcp
 
 An MCP server for Parry: liquidation risk, the delta-neutral NEAR vault, proof of reserves and the guardian's verifiable log.
 Read tools change nothing.
@@ -7,7 +7,7 @@ Write tools are scoped to the agent's own account: they appear once an agent acc
 ## Install and run
 
 ```bash
-PARRY_NETWORK=testnet PARRY_API_URL=https://api.parry.market npx @parry/mcp
+PARRY_NETWORK=testnet PARRY_API_URL=https://api.parry.market npx @parryguard/mcp
 ```
 
 As an MCP client entry:
@@ -17,7 +17,7 @@ As an MCP client entry:
   "mcpServers": {
     "parry": {
       "command": "npx",
-      "args": ["-y", "@parry/mcp"],
+      "args": ["-y", "@parryguard/mcp"],
       "env": { "PARRY_NETWORK": "testnet", "PARRY_API_URL": "https://api.parry.market" }
     }
   }
@@ -27,7 +27,7 @@ As an MCP client entry:
 From a clone of the repository, build it and point the client at the built entry instead:
 
 ```bash
-pnpm install && pnpm -F @parry/mcp build
+pnpm install && pnpm -F @parryguard/mcp build
 PARRY_NETWORK=testnet PARRY_API_URL=http://localhost:4000 node packages/mcp/dist/bin.js
 ```
 
@@ -80,8 +80,8 @@ Every refusal says why, and nothing is sent when a call is refused.
 ## In code
 
 ```ts
-import { createParry } from "@parry/sdk";
-import { createParryMcpServer } from "@parry/mcp";
+import { createParry } from "@parryguard/sdk";
+import { createParryMcpServer } from "@parryguard/mcp";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 const parry = createParry({ network: "testnet", apiUrl: process.env.PARRY_API_URL });
@@ -99,8 +99,8 @@ await server.connect(new StdioServerTransport());
 
 ```ts
 import { Hono } from "hono";
-import { createParry } from "@parry/sdk";
-import { createMcpHttpHandler } from "@parry/mcp";
+import { createParry } from "@parryguard/sdk";
+import { createMcpHttpHandler } from "@parryguard/mcp";
 
 const mcp = createMcpHttpHandler({ parry: createParry({ network: "testnet", apiUrl: process.env.PARRY_API_URL }) });
 const app = new Hono();
@@ -112,7 +112,7 @@ Without an `agent` the HTTP endpoint serves the read tools only.
 ## Networks
 
 `PARRY_NETWORK` (or the `parry` client's `network`) switches between testnet and mainnet.
-Contract ids come from `@parry/sdk`, and Parry's own mainnet contracts are not deployed yet.
+Contract ids come from `@parryguard/sdk`, and Parry's own mainnet contracts are not deployed yet.
 
 ## License
 

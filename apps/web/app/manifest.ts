@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import tokens from "@parry/brand";
+import tokens from "@parryguard/brand";
 import { SITE_DESCRIPTION } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {

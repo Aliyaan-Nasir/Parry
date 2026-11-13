@@ -6,8 +6,8 @@
  * while a client is connected. Each client gets a heartbeat comment every 15 seconds.
  */
 
-import type { Sql } from "@parry/services/lib/db";
-import { errorText } from "@parry/services/lib/log";
+import type { Sql } from "@parryguard/services/lib/db";
+import { errorText } from "@parryguard/services/lib/log";
 import { decision, position, vaultState, type DecisionRow, type PositionRow } from "./views";
 
 export const STREAM_EVENTS = ["alert", "decision", "position", "price", "vault", "status"] as const;

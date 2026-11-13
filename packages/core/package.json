@@ -1,5 +1,5 @@
 {
-  "name": "@parry/core",
+  "name": "@parryguard/core",
   "version": "0.1.0",
   "description": "Parry's risk model (health, liquidation price, Tremor volatility index, liquidation probability and time, cascade pressure, 0 to 100 score), recovery planner, vault hedge math and proof-of-reserves Merkle tree.",
   "author": "Aliyaan Nasir",
@@ -20,6 +20,27 @@
     "README.md"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aliyaan-Nasir/Parry.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Aliyaan-Nasir/Parry/tree/main/packages/core",
+  "keywords": [
+    "parry",
+    "near",
+    "liquidation",
+    "risk",
+    "defi",
+    "vault",
+    "proof-of-reserves"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RouteComparison as Routes } from "@parry/sdk";
+import type { RouteComparison as Routes } from "@parryguard/sdk";
 import { useMoney } from "@/components/providers/MoneyProvider";
 import { Badge } from "@/components/ui/Badge";
 import { formatNumber, formatPercent } from "@/lib/units";

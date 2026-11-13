@@ -1,6 +1,6 @@
 import { p256 } from "@noble/curves/nist.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { compressedPasskey, toHex } from "@parry/sdk";
+import { compressedPasskey, toHex } from "@parryguard/sdk";
 import { describe, expect, it } from "vitest";
 import { buildCsp } from "./csp";
 import { hyperliquidAddressUrl, nearAccountUrl } from "./explorer";

@@ -5,7 +5,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
-import { reserveProof, reserveRoot, type ReserveLeaf } from "@parry/core";
+import { reserveProof, reserveRoot, type ReserveLeaf } from "@parryguard/core";
 import {
   certificateDigest,
   createParry,
@@ -20,7 +20,7 @@ import {
   type Network,
   type Parry,
   type Reserves,
-} from "@parry/sdk";
+} from "@parryguard/sdk";
 
 export const API = "https://api.parry.example";
 const concat = (...p: Uint8Array[]) => {

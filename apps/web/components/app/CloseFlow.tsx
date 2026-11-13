@@ -1,6 +1,6 @@
 "use client";
 
-import { closeFromWalletActions, closePerpAction, closeRheaRounds, unwindAction, type AccountSummary, type CloseRound, type Position } from "@parry/sdk";
+import { closeFromWalletActions, closePerpAction, closeRheaRounds, unwindAction, type AccountSummary, type CloseRound, type Position } from "@parryguard/sdk";
 import { useState } from "react";
 import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Button } from "@/components/ui/Button";

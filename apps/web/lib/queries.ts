@@ -1,10 +1,10 @@
 "use client";
 
-// React Query hooks over @parry/sdk: one query key per resource, polled at the pace its data
+// React Query hooks over @parryguard/sdk: one query key per resource, polled at the pace its data
 // changes (positions 10 s, status 15 s, vault 30 s).
 
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import type { AccountSummary, Alert, DecisionPage, HistoryPoint, Market, MandateView, Position, Rates, Reserves, RouteComparison } from "@parry/sdk";
+import type { AccountSummary, Alert, DecisionPage, HistoryPoint, Market, MandateView, Position, Rates, Reserves, RouteComparison } from "@parryguard/sdk";
 import { api, chain, parry } from "./parry";
 import { apiUrl } from "./env";
 

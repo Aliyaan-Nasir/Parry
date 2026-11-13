@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { VaultPoint } from "@parry/sdk";
+import type { VaultPoint } from "@parryguard/sdk";
 import { Segmented } from "@/components/app/bits";
 import { SeriesChart, type Series } from "@/components/instrument/SeriesChart";
 import { useMoney } from "@/components/providers/MoneyProvider";

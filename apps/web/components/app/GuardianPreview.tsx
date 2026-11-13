@@ -1,7 +1,7 @@
 "use client";
 
-import { buildStrategy, plan, type PlanLimits, type StepKind } from "@parry/core";
-import type { Position } from "@parry/sdk";
+import { buildStrategy, plan, type PlanLimits, type StepKind } from "@parryguard/core";
+import type { Position } from "@parryguard/sdk";
 import { ACTION_LABEL, POWER_LABEL } from "@/components/app/labels";
 import { formatHealth, formatNumber } from "@/lib/units";
 

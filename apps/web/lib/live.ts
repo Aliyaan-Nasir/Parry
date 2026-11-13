@@ -18,8 +18,8 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T | 
   return (await res.json()) as T;
 }
 
-export type { Certificate as CertificateLive, Heatmap as HeatmapLive, Incident as IncidentLive, Prices as PricesLive, Rates as RatesLive, Replay as ReplayLive, ReplayCrash, RouteSavings as SavingsLive, Stats as StatsLive, VaultInsurance as InsuranceLive, VerifyResult as VerifyLive } from "@parry/sdk";
-import type { Certificate, DecisionPage, Heatmap, Incident, Prices, Rates, Replay, RouteSavings, Stats, VaultInsurance, VaultPoint, VaultState, VerifyResult } from "@parry/sdk";
+export type { Certificate as CertificateLive, Heatmap as HeatmapLive, Incident as IncidentLive, Prices as PricesLive, Rates as RatesLive, Replay as ReplayLive, ReplayCrash, RouteSavings as SavingsLive, Stats as StatsLive, VaultInsurance as InsuranceLive, VerifyResult as VerifyLive } from "@parryguard/sdk";
+import type { Certificate, DecisionPage, Heatmap, Incident, Prices, Rates, Replay, RouteSavings, Stats, VaultInsurance, VaultPoint, VaultState, VerifyResult } from "@parryguard/sdk";
 
 export type Check = VerifyResult["checks"][number];
 

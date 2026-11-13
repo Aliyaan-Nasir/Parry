@@ -14,6 +14,8 @@
   <a href="JUDGES.md#technical-implementation"><img alt="275 contract tests" src="https://img.shields.io/badge/contract_tests-275_passing-24663A?style=flat-square&labelColor=141614"></a>
   <a href="JUDGES.md#technical-implementation"><img alt="283 browser tests" src="https://img.shields.io/badge/browser_tests-283_passing-24663A?style=flat-square&labelColor=141614"></a>
   <a href="SECURITY.md"><img alt="Security reviewed" src="https://img.shields.io/badge/security-reviewed-24663A?style=flat-square&labelColor=141614"></a>
+  <a href="https://www.npmjs.com/package/@parryguard/sdk"><img alt="npm @parryguard/sdk" src="https://img.shields.io/npm/v/@parryguard/sdk?label=%40parryguard%2Fsdk&style=flat-square&color=C99A45&labelColor=141614"></a>
+  <a href="https://www.npmjs.com/package/@parryguard/mcp"><img alt="npm @parryguard/mcp" src="https://img.shields.io/npm/v/@parryguard/mcp?label=%40parryguard%2Fmcp&style=flat-square&color=C99A45&labelColor=141614"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5A5D55?style=flat-square&labelColor=141614"></a>
 </p>
 <p>
@@ -279,8 +281,12 @@ pnpm verify                       # this README's claims, against the live deplo
 
 ## Use it from code
 
+```bash
+npm install @parryguard/sdk
+```
+
 ```ts
-import { createParry } from "@parry/sdk";
+import { createParry } from "@parryguard/sdk";
 
 const parry = createParry({ network: "testnet", apiUrl: "https://api.parry.market" }); // or http://localhost:4000 from pnpm dev
 const { position } = await parry.riskCheck("alice.testnet");
@@ -296,7 +302,7 @@ The MCP server reads the Parry API at `PARRY_API_URL`: the hosted one at `https:
 With `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_KEY` (a testnet account's own key) it also gets capped write tools, scoped to that agent's own account.
 
 ```bash
-claude mcp add parry -e PARRY_API_URL=https://api.parry.market -- npx -y @parry/mcp
+claude mcp add parry -e PARRY_API_URL=https://api.parry.market -- npx -y @parryguard/mcp
 ```
 
 <details>
@@ -307,17 +313,17 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.parry]
 command = "npx"
-args = ["-y", "@parry/mcp"]
+args = ["-y", "@parryguard/mcp"]
 env = { PARRY_API_URL = "https://api.parry.market" }
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
 
 ```json
-{ "mcpServers": { "parry": { "command": "npx", "args": ["-y", "@parry/mcp"], "env": { "PARRY_API_URL": "https://api.parry.market" } } } }
+{ "mcpServers": { "parry": { "command": "npx", "args": ["-y", "@parryguard/mcp"], "env": { "PARRY_API_URL": "https://api.parry.market" } } } }
 ```
 
-From a clone, the same server runs with `pnpm -F @parry/mcp build && node packages/mcp/dist/bin.js`, and the API serves it over Streamable HTTP at `/mcp`.
+From a clone, the same server runs with `pnpm -F @parryguard/mcp build && node packages/mcp/dist/bin.js`, and the API serves it over Streamable HTTP at `/mcp`.
 
 </details>
 

@@ -1,6 +1,6 @@
 // The guardian's standing on an account, from the contract's `mandate()` view.
 
-import type { MandateView, Strategy } from "@parry/sdk";
+import type { MandateView, Strategy } from "@parryguard/sdk";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/units";
 

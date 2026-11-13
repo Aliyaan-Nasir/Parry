@@ -1,5 +1,5 @@
 {
-  "name": "@parry/services",
+  "name": "@parryguard/services",
   "version": "0.1.0",
   "private": true,
   "description": "Parry's services: monitor, risk engine, guardian relay, keeper, relayer, indexer, alerts and top-up.",
@@ -21,7 +21,7 @@
     "@near-intents-agent-api/sdk": "0.8.2",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@parry/core": "workspace:*",
+    "@parryguard/core": "workspace:*",
     "near-kit": "0.20.2",
     "postgres": "3.4.9",
     "web-push": "3.6.7"

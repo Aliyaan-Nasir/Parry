@@ -1,6 +1,6 @@
 "use client";
 
-import type { Rates } from "@parry/sdk";
+import type { Rates } from "@parryguard/sdk";
 import Link from "next/link";
 import { QueryError } from "@/components/app/bits";
 import { Skeleton } from "@/components/ui/Skeleton";

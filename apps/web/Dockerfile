@@ -7,13 +7,13 @@ ENV PARRY_SKIP_PACKAGE_BUILD=1
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/web ./apps/web
-RUN pnpm install --frozen-lockfile --filter "@parry/web..."
+RUN pnpm install --frozen-lockfile --filter "@parryguard/web..."
 # The workspace packages resolve to their built dist, which the build context leaves out.
-RUN pnpm -F @parry/core -F @parry/sdk build
+RUN pnpm -F @parryguard/core -F @parryguard/sdk build
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_PARRY_NETWORK=testnet
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL NEXT_PUBLIC_PARRY_NETWORK=$NEXT_PUBLIC_PARRY_NETWORK NEXT_TELEMETRY_DISABLED=1
-RUN pnpm -F @parry/web build
+RUN pnpm -F @parryguard/web build
 
 FROM node:22.21.1-alpine
 WORKDIR /app

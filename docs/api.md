@@ -1,6 +1,6 @@
 # Parry API
 
-The API (`apps/api`) serves the app, the SDK (`@parry/sdk`) and the MCP server (`@parry/mcp`).
+The API (`apps/api`) serves the app, the SDK (`@parryguard/sdk`) and the MCP server (`@parryguard/mcp`).
 The hosted testnet API is at `https://api.parry.market`; base path `/v1`.
 JSON everywhere.
 Amounts are decimal strings in the token's smallest unit (yoctoNEAR for `depositCapNear` and `minDepositNear`); numbers ending in `Usd` are dollars, numbers ending in `Near` are NEAR, and the other numbers are ratios, prices or counts.
@@ -131,7 +131,7 @@ interface Position {
 interface AccountSummary {
   account: string;
   owner: { kind: "passkey" | "near"; id: string };
-  mandate: MandateView | null;        // the contract's `mandate()` view (types in `@parry/sdk`)
+  mandate: MandateView | null;        // the contract's `mandate()` view (types in `@parryguard/sdk`)
   positions: Position[];
   hyperliquidAddress: string | null;  // the account's Chain Signatures address on Hyperliquid
   evmAddress: string | null;          // and on EVM chains

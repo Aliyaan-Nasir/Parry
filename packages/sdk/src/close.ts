@@ -8,7 +8,7 @@
  */
 
 import { keccak_256 } from "@noble/hashes/sha3.js";
-import { formatPrice, formatSize } from "@parry/core";
+import { formatPrice, formatSize } from "@parryguard/core";
 import { contractCall, ONE_YOCTO, type ContractCall } from "./calls.js";
 import { concatBytes, fromHex, toHex, u128 } from "./encoding.js";
 import { ownerActions, retryCloseAction, type OwnerAction } from "./owner.js";
