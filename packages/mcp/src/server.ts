@@ -3,6 +3,7 @@
  * tools for an agent's own NEAR account, each with a per-call cap and a count per UTC day.
  */
 
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -25,7 +26,8 @@ import { z } from "zod";
 import { createUsageLedger, resolveCaps, type McpCaps, type UsageLedger } from "./caps.js";
 
 export const SERVER_NAME = "parry";
-export const SERVER_VERSION = "0.1.0";
+/** The version of this package as published, read from its own package.json. */
+export const SERVER_VERSION: string = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
 export interface ParryMcpOptions {
   parry: Parry;
