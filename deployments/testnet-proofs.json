@@ -230,20 +230,16 @@
     "8": {
       "title": "A Hyperliquid order signed by the protected account through Chain Signatures",
       "ok": true,
-      "at": "2026-11-11T17:52:07.019Z",
+      "at": "2026-11-13T13:04:49.636Z",
       "steps": [
         {
-          "step": "relayer creates 0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg for perp507472.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/RZhSNxT6D37wonqQwKyDVhaDQPLTRBRdQPDwKmQjT8f"
+          "step": "0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg's Hyperliquid address 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 holds 0.0 USDC in Perps"
         },
         {
-          "step": "the owner moves the account to the published code J8WBqZSvj9hqbASGLDSJGgs3a4maEdE5nPgWFadeUoxF (upgrade)",
-          "tx": "https://testnet.nearblocks.io/txns/CWa2WKkyicMjAqurV26uT4WuTGui4sqKLvsWytF8vZsD"
-        },
-        {
-          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.6558) through Chain Signatures",
-          "tx": "https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR",
-          "digest": "63ff1f9c7dbdd90d637c80d13b33a34ab0e83a760d024230b15952cfa4cfcd1d"
+          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.4188) through Chain Signatures",
+          "tx": "https://testnet.nearblocks.io/txns/GSPrwi682NwFhJjmaeMKZoiktaht6L6oNwxJCwEoq8F",
+          "digest": "a818e3f24d422ad34eeda3abb0ad22d17dd4575608c3d265ae9f2b23f4d5acb4",
+          "owner": "perp507472.parry.testnet"
         },
         {
           "step": "the MPC signature recovers to the account's derived Hyperliquid address",
@@ -306,27 +302,56 @@
       ]
     },
     "10": {
-      "title": "Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin)",
+      "title": "Vault deposit, hedge, withdrawal through the queue, proof of reserves",
       "ok": true,
-      "at": "2026-11-12T06:47:25.310Z",
+      "at": "2026-11-13T12:57:21.140Z",
       "steps": [
         {
-          "step": "deposit 50 NEAR into the vault (staked into LiNEAR, EARN minted at NAV)",
-          "tx": "https://testnet.nearblocks.io/txns/EuuRjEkLx11FRx6m1pzcZTtipRX76kvsxdnmEfXsd7jN"
+          "step": "deposit 1 NEAR into the vault (staked into LiNEAR, EARN minted at NAV)",
+          "tx": "https://testnet.nearblocks.io/txns/7pXiu85L7k1NNRHgUnNd3PeKNba5o3LmM9yPE2soAoii"
         },
         {
-          "step": "EARN balance 179.636215",
-          "totalSharesBefore": "3420783304014817981165718"
+          "step": "EARN balance 3.600072",
+          "totalSharesBefore": "549507386727129064871591496"
         },
         {
           "step": "the keeper rebalances: a Chain Signatures order shorts NEAR on Hyperliquid",
           "hedge": {
-            "pending": "the hedge account 0x33aacfd7ed3dd010f659455155e820bfcddf1af1 holds no Hyperliquid margin yet; the keeper signs the short once it does"
+            "targetNear": 138.55500461,
+            "currentNear": 136.3,
+            "entry": 3.52313,
+            "mark": 3.53725,
+            "liquidation": 10.57199236,
+            "leverage": 0.49,
+            "maxLeverage": 3,
+            "hedgeRatio": 0.9,
+            "needsMargin": false,
+            "accountValueUsd": 994.729962,
+            "fundingUsd": 0,
+            "address": "0x33aacfd7ed3dd010f659455155e820bfcddf1af1",
+            "lastOrder": {
+              "tx": "C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5",
+              "side": "sell",
+              "size": "136.3",
+              "price": "3.4605",
+              "status": "ok",
+              "at": "2026-11-13T12:22:12.558Z"
+            },
+            "marginRoute": {
+              "amountUsd": 100,
+              "outUsd": 99.6784,
+              "unavailable": null,
+              "at": "2026-11-13T12:04:05.215Z"
+            }
           }
         },
         {
+          "step": "the order's signing transaction",
+          "tx": "https://testnet.nearblocks.io/txns/C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5"
+        },
+        {
           "step": "request a withdrawal of half the shares",
-          "tx": "https://testnet.nearblocks.io/txns/FD7C7FXSYyt5MGo3fWoQXxCTMSMCAFHCFq4sytQfQoaT"
+          "tx": "https://testnet.nearblocks.io/txns/2fH4nkuJvsvRkPBn77NtyRk9BE12LcnAKE1waLpXBK8r"
         },
         {
           "step": "the keeper processes the queue and pays out in kind",
@@ -335,7 +360,7 @@
         {
           "step": "proof of reserves: every leaf's proof and the root on chain",
           "ok": true,
-          "root": "0a9b2999a0a5bad0eb48e66d2258e2352a709f4d7d42807f42147c04b8d4ad52"
+          "root": "19fbc10029402218a9492e1e45d5ac7d47be68a93b52a0edb220e81e36ec3f0d"
         }
       ]
     },
@@ -753,5 +778,8 @@
   },
   "evm": {
     "decision": "a973d08fbcf8e606e3527623a7385417e5e9d8e57d1839059968bc6919acc484"
+  },
+  "hedge": {
+    "tx": "C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5"
   }
 }

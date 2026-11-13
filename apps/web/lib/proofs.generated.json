@@ -17,7 +17,11 @@
       "links": [
         {
           "label": "account's Hyperliquid order",
-          "url": "https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR"
+          "url": "https://testnet.nearblocks.io/txns/GSPrwi682NwFhJjmaeMKZoiktaht6L6oNwxJCwEoq8F"
+        },
+        {
+          "label": "vault hedge",
+          "url": "https://testnet.nearblocks.io/txns/C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5"
         },
         {
           "label": "Aave repay",

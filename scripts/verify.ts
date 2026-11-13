@@ -307,7 +307,9 @@ async function main() {
   const hlTx = stepTx(8, /signs a Hyperliquid order/);
   if (hlTx) {
     await check("A protected account signs a Hyperliquid order through Chain Signatures, for its own derived address", async () => {
-      const owner = proofs.scenarios!["8"]!.steps[0]!.step!.match(/ for (\S+),/)?.[1] ?? "";
+      // The signing step names its owner; a record from before that names it in the creation step.
+      const steps = proofs.scenarios!["8"]!.steps as { step?: string; owner?: string }[];
+      const owner = steps.find((s) => s.owner)?.owner ?? steps[0]?.step?.match(/ for (\S+),/)?.[1] ?? "";
       const o = await txOutcome(hlTx, owner);
       const ev = events(o).find((e) => e.event === "hyperliquid_signed");
       const sv = (o.status as { SuccessValue?: string }).SuccessValue;

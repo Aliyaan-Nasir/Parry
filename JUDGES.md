@@ -26,9 +26,9 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 | 5 | The market shock moves the price | passes | [tx 1](https://testnet.nearblocks.io/txns/GpKMSb98yEbDeVj7eJn3k7D8oj1VA6UoD3HCzFRGeL52) |
 | 6 | Alert, AI review, rescue and recovery | passes | [tx 1](https://testnet.nearblocks.io/txns/2NguU3SnRDAMKPPh5ouMMQhjbV58v6HZDabQmx2Veoz5), [tx 2](https://testnet.nearblocks.io/txns/4ngnbLWwjLmEB2eD74moGNTbuz9RJnBEKgZ8tQFQtuZK), [tx 3](https://testnet.nearblocks.io/txns/ESthDF8jpH9iHkjLMd8guQpQRT7ex6i7Mhb8ffdJi8Kg) |
 | 7 | Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/HgtLPYxuBKij8pgT3bzen9aEvrsUAycKKSiwApRpZJj9), [tx 2](https://testnet.nearblocks.io/txns/JDDgC76kZZeu6gG4WRrg3XV8awU6WZ34ooj5Cyksvrzb), [tx 3](https://testnet.nearblocks.io/txns/AxuDmGWjtDg7qBFNppEXSwc3Dsnv2tj8Wg34gxCY2cQb) |
-| 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/RZhSNxT6D37wonqQwKyDVhaDQPLTRBRdQPDwKmQjT8f), [tx 2](https://testnet.nearblocks.io/txns/CWa2WKkyicMjAqurV26uT4WuTGui4sqKLvsWytF8vZsD), [tx 3](https://testnet.nearblocks.io/txns/FhQW3d1FpBEo86anKmkRcDhgXZhPhvbzveXQUwEFjcHR) |
+| 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/GSPrwi682NwFhJjmaeMKZoiktaht6L6oNwxJCwEoq8F) |
 | 9 | An Aave position on Base Sepolia rescued through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/ARQorS56hvsJnGhQ9WMjHeT2Qr2SmawnXHAAWWyUy3Ah), [tx 2](https://testnet.nearblocks.io/txns/7PB7R7H991Y1YMohZauyhdiPWcmoRhpcp7LdjLeZssbT), [tx 3](https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a) |
-| 10 | Vault deposit, withdrawal through the queue, proof of reserves (the hedge waits for margin) | passes | [tx 1](https://testnet.nearblocks.io/txns/EuuRjEkLx11FRx6m1pzcZTtipRX76kvsxdnmEfXsd7jN), [tx 2](https://testnet.nearblocks.io/txns/FD7C7FXSYyt5MGo3fWoQXxCTMSMCAFHCFq4sytQfQoaT) |
+| 10 | Vault deposit, hedge, withdrawal through the queue, proof of reserves | passes | [tx 1](https://testnet.nearblocks.io/txns/7pXiu85L7k1NNRHgUnNd3PeKNba5o3LmM9yPE2soAoii), [tx 2](https://testnet.nearblocks.io/txns/C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5), [tx 3](https://testnet.nearblocks.io/txns/2fH4nkuJvsvRkPBn77NtyRk9BE12LcnAKE1waLpXBK8r) |
 | 11 | The vault pauses deposits from its risk score | passes |  |
 | 12 | A paid risk check over x402 on NEAR | passes | [tx 1](https://testnet.nearblocks.io/txns/7HiVRqxDKGfywuh2maTLjFHteRMU3euseNiF5L9mbofR), [tx 2](https://testnet.nearblocks.io/txns/EWEDSQkWTjJNuUCsSf9w1Zbegh49FmSJb6v7oAJQTyVf) |
 | 13 | Core flows through the SDK and the MCP server | passes |  |
@@ -124,7 +124,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 - Mainnet is real code with a dry-run plan and exact costs: [`MAINNET.md`](MAINNET.md), `bun scripts/deploy.ts --network mainnet`, and a sandbox rehearsal on mainnet's own contract code ([`contracts/tests/tests/mainnet.rs`](contracts/tests/tests/mainnet.rs)).
 - Revenue paths are built in: paid risk checks over x402 ([`apps/api/src/x402.ts`](apps/api/src/x402.ts)) and the vault.
 - Running costs are small and measured: a guardian review costs well under a tenth of a cent, an enclave run at most 0.01 NEAR (MAINNET.md, "Costs").
-- Gas keys with parallel nonce lanes let the services send many transactions at once from one account: [`Sender`](services/src/lib/near.ts#L166).
+- Gas keys with parallel nonce lanes let the services send many transactions at once from one account: [`Sender`](services/src/lib/near.ts#L168).
 
 ## Completeness
 

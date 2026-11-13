@@ -21,7 +21,9 @@
  * owner through the relayer), 15 closing from the wallet, 16 unwinding accounts, 17 a health
  * certificate issued, anchored and verified, 18 an insurance inflow into the vault's fund.
  * Scenario 1 (sign-in) runs in a browser; filling 8's order and the vault's hedge need
- * Hyperliquid testnet USDC at the derived addresses, and 9 needs Base Sepolia ETH.
+ * Hyperliquid testnet USDC in the derived addresses' Perps balances, and 9 needs Base Sepolia ETH.
+ * SCENARIO_PERP_OWNER runs 8 with an earlier owner's protected account (key in the keychain), so
+ * the one Hyperliquid address that holds USDC is reused.
  *
  * Proofs go to deployments/testnet-proofs.json (deployments/sandbox-proofs.json with --sandbox).
  * Each scenario account is a fresh subaccount of the deployment root, funded from it. A full run
@@ -252,6 +254,15 @@ async function person(tag: string, fundNear: number): Promise<Person> {
   return p;
 }
 
+/** An earlier scenario's owner (its key in the keychain) with the protected account it already has. */
+async function existingPerson(owner: string): Promise<Person> {
+  const key = (JSON.parse(readFileSync(join(homedir(), ".near-credentials", "testnet", `${owner}.json`), "utf8")) as { private_key: string }).private_key;
+  const p: Person = { owner, key, n: client(owner, key), account: await parry.protectedAccountId({ nearAccount: owner }), steps: [] };
+  if (!(await view<{ owner: string } | null>(p.account, "owner").catch(() => null))) throw new Error(`${owner} has no protected account yet`);
+  await upgraded(p);
+  return p;
+}
+
 /** `owner_call` with the gas its actions need (900 Tgas for a close, 600 or more for an unwind). */
 const ownerCall = (p: Person, actions: unknown[], deposit = 1n) => call(p.n, p.owner, p.account, "owner_call", { actions }, deposit, ownerActionsTgas(actions as OwnerAction[]));
 
@@ -468,7 +479,11 @@ async function vault() {
   steps.push({ step: `deposit ${amount} NEAR into the vault (staked into LiNEAR, EARN minted at NAV)`, tx: explorer(dep1.hash) });
   const refund = dep1.o ? (eventsOf(dep1.o).find((e) => e.event === "deposit_refunded")?.data as { reason?: string } | undefined) : undefined;
   if (refund) return save(10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", false, [...steps, { step: "the vault refused the deposit and refunded it", reason: refund.reason }]);
-  const shares = await view<string>(c("vault"), "ft_balance_of", { account_id: p.owner });
+  // Reads are final, a block or two behind the deposit's last receipt: wait for the minted shares.
+  const shares = await until("the minted shares", 60_000, async () => {
+    const b = await view<string>(c("vault"), "ft_balance_of", { account_id: p.owner });
+    return BigInt(b) > 0n ? b : null;
+  });
   steps.push({ step: `EARN balance ${Number(BigInt(shares) / 10n ** 18n) / 1e6}`, totalSharesBefore: before?.total_shares });
   // The short needs margin in the vault's Hyperliquid account: until it has some, the hedge target
   // is capped at zero and there is nothing to wait for.
@@ -621,9 +636,12 @@ async function evmRescue() {
  */
 async function hlOrder() {
   const title = "A Hyperliquid order signed by the protected account through Chain Signatures";
+  const reuse = process.env.SCENARIO_PERP_OWNER;
   // A 300 Tgas call is checked against the pessimistic gas price, so the owner needs about 0.35 NEAR up front.
-  const p = await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.6));
+  const p = reuse ? await existingPerson(reuse) : await person("perp", Number(process.env.SCENARIO_PERP_NEAR ?? 0.6));
   const { hyperliquidAddress } = await api<{ hyperliquidAddress: string }>(`/v1/accounts/${p.account}`);
+  const state = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "clearinghouseState", user: hyperliquidAddress }) })).json()) as { marginSummary: { accountValue: string } };
+  p.steps.push({ step: `${p.account}'s Hyperliquid address ${hyperliquidAddress} holds ${state.marginSummary.accountValue} USDC in Perps` });
   const mids = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) })).json()) as Record<string, string>;
   const mark = Number(mids.NEAR);
   // A short of 3 NEAR (over Hyperliquid's $10 minimum), immediate-or-cancel, 3 % under the mark.
@@ -634,7 +652,7 @@ async function hlOrder() {
   const digest = (ev?.data as { digest?: string } | undefined)?.digest;
   const value = (o.o?.status as { SuccessValue?: string } | undefined)?.SuccessValue;
   const sig = value ? (JSON.parse(Buffer.from(value, "base64").toString()) as { r: string; s: string; v: number }) : null;
-  p.steps.push({ step: `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`, tx: explorer(o.hash), digest });
+  p.steps.push({ step: `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`, tx: explorer(o.hash), digest, owner: p.owner });
   if (!sig || !digest) return save(8, title, false, [...p.steps, { step: "no signature came back", status: o.o?.status }]);
   const signer = `0x${recoverAddress(Buffer.from(digest, "hex"), sig).replace(/^0x/, "")}`;
   const ok = signer.toLowerCase() === hyperliquidAddress.toLowerCase();
