@@ -66,7 +66,10 @@ function bs58(s: string): Uint8Array {
 export async function verify(sql: Sql, p: Proof): Promise<string> {
   const [c] = await sql<{ message: string }[]>`DELETE FROM auth_challenges WHERE nonce = ${p.nonce} AND account = ${p.accountId} AND expires_at > now() RETURNING message`;
   if (!c) throw new Error("unknown or expired challenge");
-  const owner = await view<Owner>(p.accountId, "owner");
+  // An account the factory has not created yet has no owner to check: say so, not the RPC's code.
+  const owner = await view<Owner>(p.accountId, "owner").catch((e: Error) => {
+    throw /UNKNOWN_ACCOUNT|NoContractCode|CodeDoesNotExist/.test(e.message) ? new Error(`${p.accountId} is not created yet: create the protected account first`) : e;
+  });
   if (owner.near && p.nep413) {
     // The key must be a full-access key of the owning NEAR account right now.
     const key = await rpc<{ permission: unknown }>("query", { request_type: "view_access_key", finality: "optimistic", account_id: owner.near.account_id, public_key: p.nep413.publicKey }).catch(() => null);

@@ -100,6 +100,19 @@ describe.skipIf(!url)("routes on a database", () => {
     expect((await app.request("/v1/auth/challenge", { method: "POST", body: "not json" })).status).toBe(400);
     expect((await app.request("/v1/auth/challenge", { method: "POST", body: "{}" })).status).toBe(400);
   });
+
+  test("signing in to a protected account that is not created yet says so", async () => {
+    const { nonce } = (await (await app.request("/v1/auth/challenge", { method: "POST", body: JSON.stringify({ accountId: "0unew.testnet" }) })).json()) as { nonce: string };
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({ jsonrpc: "2.0", id: "parry", error: { code: -32000, message: "Server error", cause: { name: "UNKNOWN_ACCOUNT" } } })) as unknown as typeof fetch;
+    try {
+      const r = await app.request("/v1/auth/verify", { method: "POST", body: JSON.stringify({ accountId: "0unew.testnet", nonce }) });
+      expect(r.status).toBe(401);
+      expect(((await r.json()) as { error: string }).error).toBe("0unew.testnet is not created yet: create the protected account first");
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
 });
 
 describe("client address", () => {
