@@ -161,6 +161,7 @@ export interface SenderOptions {
 }
 
 const SEND_TIMEOUT_MS = Number(process.env.SEND_TIMEOUT_MS ?? 60_000);
+const LOOKUP_PAUSE_MS = Number(process.env.LOOKUP_PAUSE_MS ?? 2000);
 
 export class Sender {
   readonly accountId: string;
@@ -272,15 +273,26 @@ export class Sender {
     return p;
   }
 
-  private async lookup(hash: string): Promise<FinalExecutionOutcome | null> {
+  /**
+   * A transaction whose send failed: its outcome if it landed, null if the chain never saw it.
+   * One the chain included is never sent again, even while its outcome is slow (an OutLayer run
+   * waits on the worker, and a second request would pay for a second run): when the outcome does
+   * not come, this send fails with the hash instead.
+   */
+  async lookup(hash: string, pauseMs = LOOKUP_PAUSE_MS): Promise<FinalExecutionOutcome | null> {
+    const status = (wait_until: string) => rpc<FinalExecutionOutcome>("tx", { tx_hash: hash, sender_account_id: this.accountId, wait_until });
+    const pause = () => new Promise((r) => setTimeout(r, pauseMs));
+    let included = false;
+    for (let i = 0; i < 3 && !included; i++) included = await status("INCLUDED").then(() => true, async () => (await pause(), false));
+    if (!included) return null;
     for (let i = 0; i < 3; i++) {
       try {
-        return await rpc<FinalExecutionOutcome>("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: this.accountId, wait_until: "EXECUTED_OPTIMISTIC" });
+        return await status("EXECUTED_OPTIMISTIC");
       } catch {
-        await new Promise((r) => setTimeout(r, 2000));
+        await pause();
       }
     }
-    return null;
+    throw new TxError("the transaction landed but its outcome did not arrive in time", hash);
   }
 
   call(c: Call): Promise<FinalExecutionOutcome> {

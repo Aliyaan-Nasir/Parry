@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { migrate, useQuota } from "../src/lib/db";
 import { delegateTgas, ownerRequestTgas, prepaidNear } from "../src/relayer";
-import { spendable } from "../src/lib/near";
+import { Sender, spendable, TxError } from "../src/lib/near";
 import { wallets } from "../src/topup";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -21,6 +21,46 @@ describe("top-up configuration", () => {
     // 5 NEAR with 400 kB of storage (4 NEAR at 10^19 yoctoNEAR a byte) leaves 1 NEAR to spend.
     expect(spendable(5n * 10n ** 24n, 400_000)).toBe(10n ** 24n);
     expect(spendable(10n ** 24n, 400_000)).toBe(0n);
+  });
+});
+
+describe("a send that failed", () => {
+  const sender = new Sender({ accountId: "enclave.parry.testnet", privateKey: "ed25519:3D4YudUahN1nawWogh8pAKSj92sUNMdbZGjn7kERKzYoTy8tnFQuwoGUC51DowKqorvkr2pytJSnwuSbsNVfqygr" });
+  const real = globalThis.fetch;
+  // The RPC answers `tx` by its wait_until: an error name, or the outcome.
+  const answering = (byWait: Record<string, string | object>) => {
+    const asked: string[] = [];
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      const wait = (JSON.parse(init.body) as { params: { wait_until: string } }).params.wait_until;
+      asked.push(wait);
+      const a = byWait[wait];
+      return Response.json(typeof a === "string" ? { jsonrpc: "2.0", id: "parry", error: { code: -32000, message: "Server error", cause: { name: a } } } : { jsonrpc: "2.0", id: "parry", result: a });
+    }) as unknown as typeof fetch;
+    return asked;
+  };
+  afterAll(() => {
+    globalThis.fetch = real;
+  });
+
+  test("is sent again only when the chain never saw it", async () => {
+    const asked = answering({ INCLUDED: "UNKNOWN_TRANSACTION" });
+    expect(await sender.lookup("h1", 0)).toBeNull();
+    expect(asked).toEqual(["INCLUDED", "INCLUDED", "INCLUDED"]);
+  });
+
+  test("that landed returns its outcome", async () => {
+    const outcome = { status: { SuccessValue: "" }, transaction: { hash: "h2" }, receipts_outcome: [] };
+    answering({ INCLUDED: {}, EXECUTED_OPTIMISTIC: outcome });
+    expect(await sender.lookup("h2", 0)).toEqual(outcome as never);
+  });
+
+  test("that landed but is still running is never sent twice", async () => {
+    // An OutLayer request waits on the worker: a second send would pay for a second run.
+    const asked = answering({ INCLUDED: {}, EXECUTED_OPTIMISTIC: "TIMEOUT_ERROR" });
+    const e = await sender.lookup("h3", 0).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(TxError);
+    expect((e as TxError).hash).toBe("h3");
+    expect(asked.filter((w) => w === "INCLUDED")).toHaveLength(1);
   });
 });
 
