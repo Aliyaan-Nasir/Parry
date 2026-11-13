@@ -52,12 +52,11 @@
     },
     "account": {
       "account": "global",
-      "codeHash": "4nNBqyXjsY6nReKRkDc6joBaNuLxPvQPR5sMidTQmEMK",
-      "tx": "GGf33dgQ3GZJ66y4nCm4EuDwYBvwrJ2a7u74Db5SFT73",
-      "commit": "d034b5660ff6e1244400f4ec249cba1de0240f41",
+      "codeHash": "2gpDT76rPg2dtQ33GsXzQL5KU9Qfyz7hrjbFbF4Ajcht",
+      "tx": "6AoEjdXk7ak5FERHk83MiL6siKNedhC353GDHnQbna8Y",
+      "commit": "964cf3724931cb972f41e659b881838f43f64db4",
       "source": "contracts/account",
-      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
-      "verified": "2026-11-12"
+      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a"
     },
     "accounts": {
       "account": "accounts.parry.testnet",
@@ -111,7 +110,7 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-13T13:33:03.313Z",
+  "updatedAt": "2026-11-13T17:50:02.005Z",
   "dexPool": 2939,
   "enclave": {
     "wasmSha256": "0d08aa3330490777dd33278fa4188f82c838932960b083bc23530d80f1175089",

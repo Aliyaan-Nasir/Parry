@@ -224,28 +224,85 @@
     "8": {
       "title": "A Hyperliquid order signed by the protected account through Chain Signatures",
       "ok": true,
-      "at": "2026-11-13T13:04:49.636Z",
+      "at": "2026-11-13T17:50:42.699Z",
       "steps": [
         {
-          "step": "0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg's Hyperliquid address 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 holds 0.0 USDC in Perps"
+          "step": "the owner moves the account to the published code 2gpDT76rPg2dtQ33GsXzQL5KU9Qfyz7hrjbFbF4Ajcht (upgrade)",
+          "tx": "https://testnet.nearblocks.io/txns/7nRZmQ4VBwQSoAoRTsAETX15rnUNRhjH4U9K6zijR4Ez"
         },
         {
-          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.4188) through Chain Signatures",
-          "tx": "https://testnet.nearblocks.io/txns/GSPrwi682NwFhJjmaeMKZoiktaht6L6oNwxJCwEoq8F",
-          "digest": "a818e3f24d422ad34eeda3abb0ad22d17dd4575608c3d265ae9f2b23f4d5acb4",
-          "owner": "perp507472.parry.testnet"
+          "step": "0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg's Hyperliquid address 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 holds 0 USDC in Perps and 50 in Spot"
         },
         {
-          "step": "the MPC signature recovers to the account's derived Hyperliquid address",
+          "step": "the account moves 50 USDC from its Spot balance into Perps (usdClassTransfer)",
+          "tx": "https://testnet.nearblocks.io/txns/Dpg9QdydvGhKFcpSGQxa2jsTzjksxEoB4UvyrLF8jEQX",
+          "digest": "4e2ea46e5337659e422e415deb8072e9eea29a821d6060033f987ce068868037",
+          "owner": "perp507472.parry.testnet",
           "signer": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
-          "hyperliquidAddress": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
-          "ok": true
+          "recovers": true,
+          "response": {
+            "status": "ok",
+            "response": {
+              "type": "default"
+            }
+          }
         },
         {
-          "step": "Hyperliquid's answer (the order fills once the address holds testnet USDC)",
+          "step": "Perps now holds 50 USDC and Spot 0",
+          "arrived": true
+        },
+        {
+          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.4082) through Chain Signatures",
+          "tx": "https://testnet.nearblocks.io/txns/HVJyZvz2rmKfPJ1ztYGx3PtA3x1T68fhAaKWcAbvV7bG",
+          "digest": "a02cd135d9728619b690fc06191f9ca6a09630b7e548adee623244a406b628e6",
+          "owner": "perp507472.parry.testnet",
+          "signer": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
+          "recovers": true,
           "response": {
-            "status": "err",
-            "response": "User or API Wallet 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 does not exist."
+            "status": "ok",
+            "response": {
+              "type": "order",
+              "data": {
+                "statuses": [
+                  {
+                    "filled": {
+                      "totalSz": "3.0",
+                      "avgPx": "3.5068",
+                      "oid": 65242657991
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "step": "the account's NEAR position on Hyperliquid is -3",
+          "filled": true
+        },
+        {
+          "step": "the account signs the reduce-only close of 3 NEAR, as the app's close flow does",
+          "tx": "https://testnet.nearblocks.io/txns/A9ZaxSaTX3EVweofVL37r6vxtfyc8GkfjGMTLJmsDFZN",
+          "digest": "cfca5a1cee4573012e40994bb493c6f750b07441fcfa2b40bb16d8dc2ab4cc89",
+          "owner": "perp507472.parry.testnet",
+          "signer": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
+          "recovers": true,
+          "response": {
+            "status": "ok",
+            "response": {
+              "type": "order",
+              "data": {
+                "statuses": [
+                  {
+                    "filled": {
+                      "totalSz": "3.0",
+                      "avgPx": "3.5164",
+                      "oid": 65242663517
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       ]

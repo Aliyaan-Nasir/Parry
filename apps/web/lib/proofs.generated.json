@@ -13,11 +13,15 @@
     },
     {
       "name": "Chain Signatures",
-      "what": "a protected account signs its Hyperliquid orders and its Aave repay, and the vault its hedge, each for its own derived address",
+      "what": "a protected account signs its Hyperliquid orders, its Spot-to-Perps margin moves and its Aave repay, and the vault its hedge, each for its own derived address",
       "links": [
         {
           "label": "account's Hyperliquid order",
-          "url": "https://testnet.nearblocks.io/txns/GSPrwi682NwFhJjmaeMKZoiktaht6L6oNwxJCwEoq8F"
+          "url": "https://testnet.nearblocks.io/txns/HVJyZvz2rmKfPJ1ztYGx3PtA3x1T68fhAaKWcAbvV7bG"
+        },
+        {
+          "label": "its margin move",
+          "url": "https://testnet.nearblocks.io/txns/Dpg9QdydvGhKFcpSGQxa2jsTzjksxEoB4UvyrLF8jEQX"
         },
         {
           "label": "vault hedge",
