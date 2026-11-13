@@ -490,7 +490,8 @@ async function vault() {
   await call(p.n, p.owner, dep.external?.linear ?? "linear-protocol.testnet", "storage_deposit", { account_id: p.owner, registration_only: true }, 1_250_000_000_000_000_000_000n, 10);
   const w = await call(p.n, p.owner, c("vault"), "request_withdraw", { shares: (BigInt(shares) / 2n).toString() }, 1n, 30);
   steps.push({ step: "request a withdrawal of half the shares", tx: explorer(w.hash) });
-  const paid = await until("the withdrawal to be processed", 10 * 60_000, async () => {
+  // A withdrawal settles against the next vault report, which comes every 5 minutes when OutLayer answers.
+  const paid = await until("the withdrawal to be processed", 20 * 60_000, async () => {
     const q = await view<unknown[]>(c("vault"), "queue", {});
     return q.length === 0 ? true : null;
   }).catch((e) => String(e));

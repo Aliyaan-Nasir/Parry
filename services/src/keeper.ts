@@ -265,7 +265,14 @@ async function withdrawals(): Promise<string> {
   if (!keeper) throw new Error("KEEPER wallet is not configured");
   const state = await view<{ queue_length: number }>(contract("vault"), "vault_state");
   if (state.queue_length === 0) return "queue empty";
-  const o = await keeper.call({ receiverId: contract("vault"), methodName: "process_withdrawals", args: { max: 4 }, tgas: 300 });
+  let o;
+  try {
+    o = await keeper.call({ receiverId: contract("vault"), methodName: "process_withdrawals", args: { max: 4 }, tgas: 300 });
+  } catch (e) {
+    // Withdrawals settle against a report taken after the request: that is waiting, not failing.
+    if (/withdrawals wait for a fresh report/i.test(errorText(e))) return `${state.queue_length} queued, waiting for a fresh vault report`;
+    throw e;
+  }
   return `processed ${returnValue<number>(o) ?? 0}`;
 }
 
