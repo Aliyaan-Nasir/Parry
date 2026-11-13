@@ -474,9 +474,10 @@ function Overview({ v }: { v: Vault }) {
         Overview
       </h2>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center">
-        <div>
+        <div className="@container min-w-0">
           <div className="label">Share price</div>
-          <div className="display mt-2 text-6xl text-fg sm:text-7xl">{format(v.sharePriceUsd, { digits: 4 })}</div>
+          {/* Sized to its column, so the figure never runs into the balance beside it. */}
+          <div className="display mt-2 text-[min(7rem,26cqi)] text-fg">{format(v.sharePriceUsd, { digits: 4 })}</div>
           <p className="mt-3 text-sm text-muted">{v.paused ? "Deposits are paused." : "Open for deposits."} One share was worth one dollar at the first deposit.</p>
           <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-5">
             {[
