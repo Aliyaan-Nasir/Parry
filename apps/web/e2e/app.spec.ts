@@ -29,6 +29,39 @@ test.describe("dashboard", () => {
     expect(problems()).toEqual([]);
   });
 
+  test("moves the account's Hyperliquid Spot USDC into Perps with the passkey", async ({ page }) => {
+    const problems = watchConsole(page);
+    const api = await asPasskeyOwner(page);
+    api.state.hyperliquid.spotUsdc = 49;
+    await page.goto("/app");
+    const card = page.getByRole("region", { name: "Hyperliquid" });
+    await expect(card.getByText("$49.00")).toBeVisible();
+    await expect(card.getByRole("link", { name: /Explorer/ })).toHaveAttribute("href", new RegExp(`/explorer/address/${fx.HL_ADDRESS}`));
+    await card.getByRole("button", { name: "Move 49 USDC to Perps" }).click();
+    await expect.poll(() => api.state.hyperliquid.exchange.length, { timeout: 15_000 }).toBe(1);
+    const signed = (relayedActions(api)[0]![0] as { hl_margin_to_perp: { amount: string; nonce: number } }).hl_margin_to_perp;
+    expect(signed.amount).toBe("49");
+    // Hyperliquid gets the transfer the account hashed: testnet, toward Perps, the same nonce.
+    expect(api.state.hyperliquid.exchange[0]).toEqual({
+      action: { type: "usdClassTransfer", hyperliquidChain: "Testnet", signatureChainId: "0x66eee", amount: "49", toPerp: true, nonce: signed.nonce },
+      nonce: signed.nonce,
+      signature: { r: `0x${fx.MPC_SIGNATURE.r}`, s: `0x${fx.MPC_SIGNATURE.s}`, v: 27 },
+    });
+    await expect(page.getByText("49 USDC moved to Perps")).toBeVisible();
+    await expect(card.getByRole("button", { name: /Move .* to Perps/ })).toBeHidden();
+    expect(problems()).toEqual([]);
+  });
+
+  test("a watched account shows its Hyperliquid balances but cannot move them", async ({ page }) => {
+    const api = await mockApi(page);
+    api.state.hyperliquid.spotUsdc = 12.345;
+    await seedAccount(page, "watch");
+    await page.goto("/app");
+    const card = page.getByRole("region", { name: "Hyperliquid" });
+    await expect(card.getByRole("button", { name: "Move 12.34 USDC to Perps" })).toBeDisabled();
+    await expect(card.getByText("Connect the owner to move it.")).toBeVisible();
+  });
+
   test("without an account, offers a wallet or a passkey account", async ({ page }) => {
     await mockApi(page);
     await page.goto("/app");

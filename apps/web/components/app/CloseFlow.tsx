@@ -5,11 +5,12 @@ import { useState } from "react";
 import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
+import { hyperliquidApi } from "@/lib/env";
+import { sendToHyperliquid } from "@/lib/hyperliquid";
 import { chain } from "@/lib/parry";
 import { useConfig, useMarket } from "@/lib/queries";
 import { cn } from "@/lib/cn";
-
-const HL_API = process.env.NEXT_PUBLIC_HYPERLIQUID_API ?? "https://api.hyperliquid-testnet.xyz";
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -17,7 +18,7 @@ function errorText(e: unknown): string {
 
 /** Reads the account's perp position on Hyperliquid (size and mark) for the close order. */
 async function hlPosition(address: string, coin: string): Promise<{ size: number; mark: number; assetIndex: number; szDecimals: number } | null> {
-  const post = (body: unknown) => fetch(`${HL_API}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+  const post = (body: unknown) => fetch(`${hyperliquidApi}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
   const [state, meta, mids] = (await Promise.all([post({ type: "clearinghouseState", user: address }), post({ type: "meta" }), post({ type: "allMids" })])) as [
     { assetPositions?: { position: { coin: string; szi: string } }[] },
     { universe: { name: string; szDecimals: number }[] },
@@ -37,6 +38,7 @@ async function hlPosition(address: string, coin: string): Promise<{ size: number
  */
 export function CloseFlow({ summary, position, open, onOpenChange, mode }: { summary: AccountSummary; position: Position | null; open: boolean; onOpenChange: (v: boolean) => void; mode: "close" | "unwind" }) {
   const acct = useParryAccount();
+  const { toast } = useToast();
   const config = useConfig();
   const market = useMarket();
   const [how, setHow] = useState<"sell" | "wallet">("sell");
@@ -108,7 +110,16 @@ export function CloseFlow({ summary, position, open, onOpenChange, mode }: { sum
     run(async () => {
       const p = await hlPosition(summary.hyperliquidAddress, "NEAR");
       if (!p || p.size === 0) throw new Error("There is no NEAR perp position to close on Hyperliquid.");
-      return acct.runOwnerActions([closePerpAction({ assetIndex: p.assetIndex, size: p.size, markPrice: p.mark, szDecimals: p.szDecimals, slippageBps: slippage })], { title: "Close order signed" });
+      const action = closePerpAction({ assetIndex: p.assetIndex, size: p.size, markPrice: p.mark, szDecimals: p.szDecimals, slippageBps: slippage });
+      // The account signs the reduce-only order; Hyperliquid acts on it once it is sent there.
+      const { txHash, value } = await acct.runOwnerActionsForValue([action]);
+      try {
+        await sendToHyperliquid(action, value);
+      } catch (e) {
+        throw new Error(`The account signed the close order (transaction ${txHash}), but ${errorText(e)}`);
+      }
+      toast({ title: "Close order sent to Hyperliquid", tone: "success", explorer: { kind: "nearblocks", hash: txHash } });
+      return txHash;
     });
 
   const unwind = () =>

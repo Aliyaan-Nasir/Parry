@@ -82,5 +82,5 @@ export const api = {
    * before paying, so the account travels with the request.
    */
   relayOwner: (account: string, request: string, assertion: PasskeyAssertion) =>
-    parry().api.request<{ txHash: string }>("/v1/relay/owner", { method: "POST", body: { account, request, assertion } }),
+    parry().api.request<{ txHash: string; value?: unknown }>("/v1/relay/owner", { method: "POST", body: { account, request, assertion } }),
 };

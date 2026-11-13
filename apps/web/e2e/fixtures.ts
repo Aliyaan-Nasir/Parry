@@ -58,6 +58,8 @@ export const CONTRACTS = {
 } as const;
 
 export const POSITION_ID = `${ACCOUNT}:rhea:main`;
+/** A Chain Signatures answer as the account returns it (`{ r, s, v }`, hex without 0x). */
+export const MPC_SIGNATURE = { r: "1f".repeat(32), s: "2e".repeat(32), v: 27 };
 export const PERP_POSITION_ID = `${ACCOUNT}:hyperliquid:NEAR`;
 export const POSITION_LABEL = "Rhea wNEAR/USDC";
 

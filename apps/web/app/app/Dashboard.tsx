@@ -15,6 +15,7 @@ import { AccountGate } from "@/components/app/AccountGate";
 import { SIGNER_LABEL } from "@/components/app/AccountButton";
 import { QueryError } from "@/components/app/bits";
 import { AlertRow, DecisionRow, FeedLink, newestFirst } from "@/components/app/Feeds";
+import { HyperliquidCard } from "@/components/app/HyperliquidCard";
 import { MarketStrip } from "@/components/app/MarketStrip";
 import { mandateStatus } from "@/components/app/mandate";
 import { PositionCard } from "@/components/app/PositionCard";
@@ -228,6 +229,8 @@ function AccountDashboard({ account, signer }: { account: string; signer: Signer
           </div>
         )}
       </section>
+
+      {s?.hyperliquidAddress ? <HyperliquidCard account={account} address={s.hyperliquidAddress} /> : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <GuardianCard account={account} />

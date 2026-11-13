@@ -118,6 +118,37 @@ test.describe("close and unwind", () => {
     expect(relayedActions(api)[0]).toEqual([{ close_rhea: { slippage_bps: 100, pool_id: 2939 } }]);
   });
 
+  test("closing the perp signs a reduce-only order and sends it to Hyperliquid", async ({ page }) => {
+    const api = await asPasskeyOwner(page);
+    api.state.hyperliquid.perps = 120.5;
+    api.state.hyperliquid.nearSize = -42.1;
+    await page.goto(`/app/positions/${encodeURIComponent(fx.PERP_POSITION_ID)}`);
+    await page.getByRole("button", { name: "Close the position" }).click();
+    const dialog = page.getByRole("dialog", { name: /Close Hyperliquid NEAR perp/ });
+    await dialog.getByRole("button", { name: "Close the perp" }).click();
+    await expect.poll(() => api.state.hyperliquid.exchange.length, { timeout: 15_000 }).toBe(1);
+    const [signed] = relayedActions(api);
+    const order = (signed![0] as { hl_order: { order: unknown; nonce: number } }).hl_order;
+    expect(order.order).toEqual({ asset_index: 54, is_buy: true, price: "2.8886", size: "42.1", reduce_only: true, tif: "Ioc" });
+    // Hyperliquid gets the same order and nonce the account signed, with the account's signature.
+    const sent = api.state.hyperliquid.exchange[0]!;
+    expect(sent.action).toEqual({ type: "order", orders: [{ a: 54, b: true, p: "2.8886", s: "42.1", r: true, t: { limit: { tif: "Ioc" } } }], grouping: "na" });
+    expect(sent.nonce).toBe(order.nonce);
+    expect(sent.signature).toEqual({ r: `0x${fx.MPC_SIGNATURE.r}`, s: `0x${fx.MPC_SIGNATURE.s}`, v: 27 });
+    await expect(page.getByText("Close order sent to Hyperliquid")).toBeVisible();
+  });
+
+  test("a close order Hyperliquid rejects says so", async ({ page }) => {
+    const api = await asPasskeyOwner(page);
+    api.state.hyperliquid.nearSize = -42.1;
+    api.state.hyperliquid.reject = "Insufficient margin to place order. asset=54";
+    await page.goto(`/app/positions/${encodeURIComponent(fx.PERP_POSITION_ID)}`);
+    await page.getByRole("button", { name: "Close the position" }).click();
+    const dialog = page.getByRole("dialog", { name: /Close Hyperliquid NEAR perp/ });
+    await dialog.getByRole("button", { name: "Close the perp" }).click();
+    await expect(dialog.getByText(/The account signed the close order \(transaction .+\), but Hyperliquid rejected the order: Insufficient margin/)).toBeVisible();
+  });
+
   test("unwinding sends everything to the NEAR account the owner names", async ({ page }) => {
     const api = await asPasskeyOwner(page);
     await page.goto("/app?action=unwind");

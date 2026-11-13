@@ -29,4 +29,7 @@ export const repoUrl = trimUrl(process.env.NEXT_PUBLIC_REPO_URL);
 /** Public site URL for absolute metadata links. */
 export const siteUrl = trimUrl(process.env.NEXT_PUBLIC_SITE_URL) ?? "http://localhost:3000";
 
+/** Hyperliquid's API for this network (NEXT_PUBLIC_HYPERLIQUID_API overrides it). */
+export const hyperliquidApi = trimUrl(process.env.NEXT_PUBLIC_HYPERLIQUID_API) ?? (network === "mainnet" ? "https://api.hyperliquid.xyz" : "https://api.hyperliquid-testnet.xyz");
+
 export const networkLabel = network === "mainnet" ? "Mainnet" : "Testnet";

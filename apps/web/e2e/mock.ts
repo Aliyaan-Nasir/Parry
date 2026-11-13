@@ -69,6 +69,8 @@ export type MockState = {
   rheaClosed: boolean;
   /** Certificates issued through the API, newest first. */
   certificates: ReturnType<typeof fx.certificate>[];
+  /** The account's Hyperliquid address: Perps value, Spot USDC, its NEAR perp size, and every `/exchange` body it received. */
+  hyperliquid: { perps: number; spotUsdc: number; nearSize: number; exchange: { action: { type: string; [k: string]: unknown }; nonce: number; signature: unknown }[]; reject: string | null };
 };
 
 export type MockHandle = {
@@ -414,8 +416,11 @@ const ROUTES: RouteDef[] = [
       if (problem) return error(`Smart contract panicked: ${problem}`, 400);
     }
     c.state.ownerNonce.set(b.account, request.nonce);
-    if (((request as { actions?: unknown[] }).actions ?? []).some((a) => typeof a === "object" && a !== null && "close_rhea" in a)) c.state.rheaClosed = true;
-    return json({ txHash: fx.txHash(`owner:${b.account}:${request.nonce}`) });
+    const actions = (request as { actions?: unknown[] }).actions ?? [];
+    if (actions.some((a) => typeof a === "object" && a !== null && "close_rhea" in a)) c.state.rheaClosed = true;
+    // A signing action returns the MPC signature, as the account contract does.
+    const signs = actions.some((a) => typeof a === "object" && a !== null && ("hl_order" in a || "hl_margin_to_perp" in a || "mpc_sign" in a));
+    return json({ txHash: fx.txHash(`owner:${b.account}:${request.nonce}`), value: signs ? fx.MPC_SIGNATURE : null });
   }),
   route("POST /v1/relay/delegate", (c) => json({ txHash: fx.txHash(`delegate:${c.state.tokens.size}`) })),
 
@@ -560,6 +565,7 @@ export function freshState(options: MockOptions, now: number): MockState {
     watch: new Map(),
     rheaClosed: false,
     certificates: [],
+    hyperliquid: { perps: 0, spotUsdc: 0, nearSize: 0, exchange: [], reject: null },
   };
 }
 
@@ -632,6 +638,41 @@ export async function mockApi(page: Page, options: MockOptions = {}): Promise<Mo
   await page.route(
     (url) => url.hostname.endsWith("fastnear.com") || url.hostname === "rpc.testnet.near.org",
     (r, request) => answerRpc(r, request, state, now, options.rpc, handle.rpcCalls),
+  );
+
+  // Hyperliquid's API, which the app calls from the browser.
+  await page.route(
+    (url) => url.hostname === "api.hyperliquid-testnet.xyz",
+    async (r, request) => {
+      if (request.method() === "OPTIONS") return r.fulfill({ status: 204, headers: CORS });
+      const hl = state.hyperliquid;
+      const body = JSON.parse(request.postData() ?? "{}") as { type?: string; action?: { type: string; amount?: string; orders?: { r: boolean }[] }; nonce?: number; signature?: unknown };
+      const reply = (v: unknown) => r.fulfill({ status: 200, headers: CORS, contentType: "application/json", body: JSON.stringify(v) });
+      if (new URL(request.url()).pathname === "/exchange") {
+        hl.exchange.push(body as MockState["hyperliquid"]["exchange"][number]);
+        if (body.action?.type === "usdClassTransfer") {
+          const amount = Number(body.action.amount);
+          hl.spotUsdc -= amount;
+          hl.perps += amount;
+          return reply({ status: "ok", response: { type: "default" } });
+        }
+        if (hl.reject) return reply({ status: "ok", response: { type: "order", data: { statuses: [{ error: hl.reject }] } } });
+        if (body.action?.orders?.[0]?.r) hl.nearSize = 0;
+        return reply({ status: "ok", response: { type: "order", data: { statuses: [{ filled: { totalSz: "1", avgPx: "2.86", oid: 1 } }] } } });
+      }
+      switch (body.type) {
+        case "clearinghouseState":
+          return reply({ marginSummary: { accountValue: String(hl.perps) }, assetPositions: hl.nearSize ? [{ position: { coin: "NEAR", szi: String(hl.nearSize) } }] : [] });
+        case "spotClearinghouseState":
+          return reply({ balances: hl.spotUsdc > 0 ? [{ coin: "USDC", token: 0, total: String(hl.spotUsdc), hold: "0" }] : [] });
+        case "meta":
+          return reply({ universe: Array.from({ length: 55 }, (_, i) => (i === 54 ? { name: "NEAR", szDecimals: 1 } : { name: `C${i}`, szDecimals: 2 })) });
+        case "allMids":
+          return reply({ NEAR: "2.86" });
+        default:
+          return reply(null);
+      }
+    },
   );
 
   // Wallet manifests: an empty list, so nothing loads from the network.

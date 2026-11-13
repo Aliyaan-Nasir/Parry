@@ -62,14 +62,30 @@ export function outcomeFailure(outcome: unknown): string | null {
   return panic?.[1] ?? text.slice(0, 240);
 }
 
-/** Signs and sends one SDK call with the wallet; returns the transaction hash. */
-export async function sendWithWallet(wallet: NearWalletBase, signerId: string, call: Pick<ContractCall, "receiverId" | "actions">): Promise<string> {
+/** The call's JSON return value from a wallet's outcome (`status.SuccessValue`), or null. */
+export function outcomeValue(outcome: unknown): unknown {
+  const v = (outcome as { status?: { SuccessValue?: unknown } } | null)?.status?.SuccessValue;
+  if (typeof v !== "string" || !v) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(v), (c) => c.charCodeAt(0))));
+  } catch {
+    return null;
+  }
+}
+
+/** Signs and sends one SDK call with the wallet; returns the transaction hash and the call's return value. */
+export async function sendWithWalletOutcome(wallet: NearWalletBase, signerId: string, call: Pick<ContractCall, "receiverId" | "actions">): Promise<{ txHash: string; value: unknown }> {
   const outcome = await wallet.signAndSendTransaction({ signerId, receiverId: call.receiverId, actions: call.actions, network });
   const failure = outcomeFailure(outcome);
   const hash = outcomeHash(outcome);
   if (failure) throw Object.assign(new Error(`The transaction failed: ${failure}`), { txHash: hash });
   if (!hash) throw new Error("The wallet returned no transaction hash.");
-  return hash;
+  return { txHash: hash, value: outcomeValue(outcome) };
+}
+
+/** Signs and sends one SDK call with the wallet; returns the transaction hash. */
+export async function sendWithWallet(wallet: NearWalletBase, signerId: string, call: Pick<ContractCall, "receiverId" | "actions">): Promise<string> {
+  return (await sendWithWalletOutcome(wallet, signerId, call)).txHash;
 }
 
 /** Sends NEAR from the wallet account to `receiverId` (yoctoNEAR). */

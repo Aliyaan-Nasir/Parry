@@ -8,7 +8,7 @@ import { api, chain, parry } from "@/lib/parry";
 import { createPasskey, discoverPasskey, isStoredPasskey, PASSKEY_STORAGE_KEY, passkeySupported, signWithPasskey, type StoredPasskey } from "@/lib/passkey";
 import { useOwnedAccounts } from "@/lib/queries";
 import { isString, storedValue } from "@/lib/stored";
-import { getConnector, isStoredWallet, sendWithWallet, transferWithWallet, WALLET_STORAGE_KEY, type StoredWallet } from "@/lib/wallet";
+import { getConnector, isStoredWallet, sendWithWallet, sendWithWalletOutcome, transferWithWallet, WALLET_STORAGE_KEY, type StoredWallet } from "@/lib/wallet";
 import { network } from "@/lib/env";
 
 const walletStore = storedValue<StoredWallet>(WALLET_STORAGE_KEY, isStoredWallet);
@@ -56,6 +56,8 @@ export type ParryAccount = {
   stopWatching: () => void;
   /** Runs owner actions on the selected account; returns the transaction hash and toasts it. */
   runOwnerActions: (actions: OwnerAction[], opts: { title: string; quiet?: boolean }) => Promise<string>;
+  /** Runs owner actions and also returns the account's answer (a signing action's `{ r, s, v }`). Toasts nothing. */
+  runOwnerActionsForValue: (actions: OwnerAction[]) => Promise<{ txHash: string; value: unknown }>;
   /** Sends NEAR from the connected wallet to the selected account (yoctoNEAR). */
   fundFromWallet: (amountYocto: bigint) => Promise<string>;
   /** Signs and sends one contract call from the connected wallet (for example a token transfer to the account). */
@@ -213,30 +215,39 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
   const stopWatching = useCallback(() => watchStore.write(null), []);
 
-  const runOwnerActions = useCallback(
-    async (actions: OwnerAction[], opts: { title: string; quiet?: boolean }) => {
+  const runOwnerActionsForValue = useCallback(
+    async (actions: OwnerAction[]): Promise<{ txHash: string; value: unknown }> => {
       if (!account || !signer) throw new Error("Connect an account first.");
-      let txHash: string;
+      let sent: { txHash: string; value: unknown };
       if (signer === "wallet") {
         if (!wallet) throw new Error("Connect the owner's NEAR wallet first.");
         const connector = await getConnector();
         const w = await connector.wallet();
-        txHash = await sendWithWallet(w, wallet.accountId, ownerCallAction(account, actions));
+        sent = await sendWithWalletOutcome(w, wallet.accountId, ownerCallAction(account, actions));
       } else if (signer === "passkey") {
         if (!passkey) throw new Error("This browser does not hold the account's passkey.");
         const c = await chain();
         const { owner } = await c.nonces(account);
         const request = c.ownerRequest({ account, nonce: owner + 1, actions });
         const assertion = await signWithPasskey(request.challenge, passkey.credentialId);
-        ({ txHash } = await api.relayOwner(account, request.text, assertion));
+        const r = await api.relayOwner(account, request.text, assertion);
+        sent = { txHash: r.txHash, value: r.value ?? null };
       } else {
         throw new Error("This account is only being watched: connect its owner's wallet or passkey to act.");
       }
       refreshAccount(account);
+      return sent;
+    },
+    [account, signer, wallet, passkey, refreshAccount],
+  );
+
+  const runOwnerActions = useCallback(
+    async (actions: OwnerAction[], opts: { title: string; quiet?: boolean }) => {
+      const { txHash } = await runOwnerActionsForValue(actions);
       if (!opts.quiet) toast({ title: opts.title, tone: "success", explorer: { kind: "nearblocks", hash: txHash } });
       return txHash;
     },
-    [account, signer, wallet, passkey, refreshAccount, toast],
+    [runOwnerActionsForValue, toast],
   );
 
   const fundFromWallet = useCallback(
@@ -329,6 +340,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       watchAccount,
       stopWatching,
       runOwnerActions,
+      runOwnerActionsForValue,
       fundFromWallet,
       sendFromWallet,
       withSignIn,
@@ -357,6 +369,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       watchAccount,
       stopWatching,
       runOwnerActions,
+      runOwnerActionsForValue,
       fundFromWallet,
       sendFromWallet,
       withSignIn,
