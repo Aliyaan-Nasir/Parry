@@ -146,6 +146,19 @@ test.describe("open a position", () => {
     expect(problems()).toEqual([]);
   });
 
+  test("steps sent back to back never reuse a nonce, even when the RPC answers from before the last one", async ({ page }) => {
+    const api = await asPasskeyOwner(page);
+    api.state.staleNonces = true;
+    api.override("GET /v1/accounts/:id", { body: fx.accountSummary(Date.now(), { ownerKind: "passkey", empty: true }) });
+    await page.goto("/app/open");
+    await page.getByLabel("NEAR to deposit").fill("10");
+    await page.getByRole("button", { name: "Open position" }).click();
+    const steps = page.getByRole("list", { name: "Opening steps" });
+    await expect(steps.getByText("Set the default mandate: Done")).toBeAttached({ timeout: 20_000 });
+    const nonces = api.calls("POST", "/v1/relay/owner").map((r) => (JSON.parse((r.body as { request: string }).request) as { nonce: number }).nonce);
+    expect(nonces).toEqual([4, 5, 6, 7]);
+  });
+
   test("a watched account cannot open", async ({ page }) => {
     await mockApi(page);
     await seedAccount(page, "watch");

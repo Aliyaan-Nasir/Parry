@@ -215,6 +215,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
   const stopWatching = useCallback(() => watchStore.write(null), []);
 
+  const usedNonces = useRef(new Map<string, number>());
   const runOwnerActionsForValue = useCallback(
     async (actions: OwnerAction[]): Promise<{ txHash: string; value: unknown }> => {
       if (!account || !signer) throw new Error("Connect an account first.");
@@ -227,10 +228,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       } else if (signer === "passkey") {
         if (!passkey) throw new Error("This browser does not hold the account's passkey.");
         const c = await chain();
+        // The RPC answers views a block or two behind a transaction that just landed, so a request sent
+        // right after another (the steps of opening a position) would read the old nonce and be refused
+        // as "request nonce already used". The last nonce this browser used for the account is the floor.
         const { owner } = await c.nonces(account);
-        const request = c.ownerRequest({ account, nonce: owner + 1, actions });
+        const nonce = Math.max(owner, usedNonces.current.get(account) ?? 0) + 1;
+        const request = c.ownerRequest({ account, nonce, actions });
         const assertion = await signWithPasskey(request.challenge, passkey.credentialId);
         const r = await api.relayOwner(account, request.text, assertion);
+        usedNonces.current.set(account, nonce);
         sent = { txHash: r.txHash, value: r.value ?? null };
       } else {
         throw new Error("This account is only being watched: connect its owner's wallet or passkey to act.");

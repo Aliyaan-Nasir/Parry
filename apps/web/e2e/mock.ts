@@ -55,6 +55,8 @@ export type MockState = {
   lastShockAt: number | null;
   /** The last owner request nonce used, per account (`nonces()` answers [owner, guardian]). */
   ownerNonce: Map<string, number>;
+  /** An RPC that answers views from before the latest transactions: `nonces()` keeps its first answer. */
+  staleNonces: boolean;
   /** Accounts created through the relay: owner (NEAR account or passkey hex) to account. */
   created: Map<string, string>;
   /** Passkey owners' compressed P-256 keys, per account, to check relayed signatures. */
@@ -489,7 +491,7 @@ function view(state: MockState, now: number, accountId: string, method: string, 
   const known = accountId === fx.ACCOUNT || state.passkeys.has(accountId) || [...state.created.values()].includes(accountId);
   if (known) {
     if (method === "mandate") return accountId === fx.ACCOUNT && !isEmpty ? fx.mandateView(now) : null;
-    if (method === "nonces") return [state.ownerNonce.get(accountId) ?? 3, 7];
+    if (method === "nonces") return [state.staleNonces ? 3 : (state.ownerNonce.get(accountId) ?? 3), 7];
     if (method === "stats") return accountId === fx.ACCOUNT && !isEmpty ? { guardian_actions: 2, deleverages: 0 } : { guardian_actions: 0, deleverages: 0 };
     if (method === "owner") {
       const key = passkeyOf(state, accountId);
@@ -558,6 +560,7 @@ export function freshState(options: MockOptions, now: number): MockState {
     shockBps: -2000,
     lastShockAt: null,
     ownerNonce: new Map(),
+    staleNonces: false,
     created: new Map(),
     passkeys: new Map(),
     balances: new Map(),
