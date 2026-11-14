@@ -42,6 +42,9 @@ function caller(): Sender {
   return enclaveSender;
 }
 
+/** What OutLayer holds per byte of input while a request waits (0.21 NEAR for 54 kB measured on testnet), with a margin. */
+const INPUT_HOLD_PER_BYTE = 4_000_000_000_000_000_000n;
+
 /** Runs a mode; `fields` replace the account list for modes with their own input (certificate). */
 export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = [], fields?: Record<string, unknown>): Promise<EnclaveRun<T>> {
   const input = JSON.stringify(fields ? { mode, ...fields } : { mode, accounts });
@@ -53,7 +56,11 @@ export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = [], 
   if (!url || !hash) throw new Error("ENCLAVE_WASM_URL and ENCLAVE_WASM_SHA256 must name the enclave build");
   const outlayer = contract("outlayer");
   const limits = { max_instructions: 50_000_000_000, max_memory_mb: 256, max_execution_seconds: Number(process.env.ENCLAVE_MAX_SECONDS ?? 90) };
-  const deposit = await view<string>(outlayer, "estimate_execution_cost", { resource_limits: limits });
+  const compute = BigInt(await view<string>(outlayer, "estimate_execution_cost", { resource_limits: limits }));
+  // OutLayer also holds storage for the input while the request waits (about 0.0039 NEAR a byte,
+  // returned with the result): only large inputs, such as the attestation evidence, notice it.
+  const bytes = new TextEncoder().encode(input).length;
+  const deposit = compute + (bytes > 4096 ? BigInt(bytes + 512) * INPUT_HOLD_PER_BYTE : 0n);
   const secretsProfile = process.env.ENCLAVE_SECRETS_PROFILE;
   const o = await sender.call({
     receiverId: outlayer,
@@ -67,7 +74,7 @@ export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = [], 
       payer_account_id: null,
       params: null,
     },
-    deposit: BigInt(deposit),
+    deposit,
     tgas: 300,
   });
   const value = returnValue<T & { error?: string }>(o);

@@ -163,6 +163,24 @@ pub fn ft_balance(io: &dyn Io, token: &str, account: &str) -> Result<u128> {
 }
 
 /// The account's mandate view (`mandate()` on the protected account), or None.
+/// A block's time (Unix seconds), by its hash.
+pub fn block_time(io: &dyn Io, block_hash: &str) -> Result<u64> {
+    let body = json!({ "jsonrpc": "2.0", "id": "parry", "method": "block", "params": { "block_id": block_hash } });
+    let raw = io.post(
+        config::RPC,
+        &[("content-type", "application/json")],
+        body.to_string().as_bytes(),
+    )?;
+    let v: Value = serde_json::from_slice(&raw).map_err(|e| format!("rpc block: {e}"))?;
+    let ns = &v["result"]["header"]["timestamp_nanosec"];
+    let ns: u64 = ns
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .or_else(|| v["result"]["header"]["timestamp"].as_u64())
+        .ok_or_else(|| format!("no block {block_hash}"))?;
+    Ok(ns / 1_000_000_000)
+}
+
 pub fn mandate(io: &dyn Io, account: &str) -> Result<Option<Value>> {
     view(io, account, "mandate", &json!({}))
 }

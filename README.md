@@ -183,7 +183,7 @@ Regime thresholds are chosen out of sample, on hours at least 72 hours away from
 
 1. **Watch.** The monitor reads each position (Rhea every 10 seconds, Hyperliquid every 15, Aave every 60); the risk engine scores it with the model in [`docs/risk-model.md`](docs/risk-model.md).
 2. **Plan.** At caution or worse, or under health 1.5 (the highest trigger an owner may seal), the guardian runs in the OutLayer TEE: it opens the sealed policy, plans one step inside the mandate, and asks a NEAR AI Cloud verifiable model to review it.
-3. **Review.** The model's TEE signs the exact request and response; the enclave checks that signature, checks that the signing key is one it attested itself and pinned on the risk board (an Intel TDX quote binding the key to the enclave's nonce, and NVIDIA's signed GPU verdict), and signs an envelope with its own key, which OutLayer derives from the enclave's build.
+3. **Review.** The model's TEE signs the exact request and response; the enclave checks that signature, checks that the signing key is one whose attestation it verified itself and pinned on the risk board (an Intel TDX quote binding the key to a fresh, chain-derived nonce, and NVIDIA's signed GPU verdict), and signs an envelope with its own key, which OutLayer derives from the enclave's build.
 4. **Act.** The account contract checks the envelope's key, nonce, age, powers and caps, acts, and emits the review's hash with the action; the risk board records the decision.
 5. **Verify.** Anyone can re-check a decision: the app's **Verify**, `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server, and `pnpm verify`.
 
@@ -358,7 +358,7 @@ Before the mainnet launch ([`MAINNET.md`](MAINNET.md) has the steps and costs):
 
 - **Hedge settlement on chain.** A Chain Signatures withdrawal from Hyperliquid and a 1Click route home, so a leaver's hedge profit never waits on the operator's USDC buffer.
 - **An outside audit** of the contracts and the enclave, beyond the in-house review in [`SECURITY.md`](SECURITY.md).
-- **Deeper attestation.** Check NVIDIA's key set against its certificate chain inside the enclave, and pin the review model's TDX measurements and compose hash, not only its quote.
+- **Deeper attestation.** Chain NVIDIA's token certificates to NVIDIA's root rather than to its pinned intermediates, and pin the review model's TDX measurements and compose hash, not only its quote.
 - **Mainnet services.** The real Chain Signatures signer and Rhea's mainnet oracle in place of the rehearsal's stand-ins, a mainnet enclave build, and the `parryguard.near` accounts funded.
 - **A margin backstop for the hedge.** The rally replays show the insurance fund (10 % of yield) covers funding but not a margin call of hundreds of dollars: a margin reserve sized to the short, or an automatic partial unwind, before mainnet deposits grow.
 - **Decision details for the owner only.** Encrypt each decision's full plan to a view key sealed in the owner's policy, so the API operator stores it without reading it.

@@ -11,6 +11,7 @@
 import { contract, intEnv, network, NEAR_USD, USDC_USD } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
 import { runEnclave } from "./lib/enclave";
+import { attestationEvidence } from "./lib/attestation";
 import { every, serveHealth } from "./lib/health";
 import { latest, PRICE_SOURCE } from "./lib/prices";
 import { spotUsdc, submitClassTransfer, submitOrder, type HlOrder } from "./lib/hyperliquid";
@@ -284,7 +285,11 @@ async function modelSigners(): Promise<string> {
     return `current: ${pin.signers.length} attested key(s) until ${new Date(pin.expires_at * 1000).toISOString()}`;
   }
   type Attest = { report_json: string; signature: string; failed: string[] };
-  const run = await runEnclave<Attest>("attest");
+  const key = process.env.NEARAI_API_KEY;
+  if (!key) throw new Error("NEARAI_API_KEY is not set: the keeper gathers the model's attestation evidence with it");
+  // The keeper only carries the evidence; the enclave checks every signature in it.
+  const evidence = await attestationEvidence(REVIEW_MODEL, key);
+  const run = await runEnclave<Attest>("attest", [], evidence);
   if ((run.output as unknown as { error?: string }).error) throw new Error((run.output as unknown as { error: string }).error);
   const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 50 });
   const pinned = (JSON.parse(run.output.report_json) as { signers: unknown[] }).signers.length;

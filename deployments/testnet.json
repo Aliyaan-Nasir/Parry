@@ -109,18 +109,18 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-14T16:15:41.882Z",
+  "updatedAt": "2026-11-14T17:01:41.288Z",
   "dexPool": 2939,
   "enclave": {
-    "wasmSha256": "4f1dde9a2f16274fdee9b74260b4a2a5045f16bb301db38fe8b74d63a31d1756",
-    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/4f1dde9a2f16274fdee9b74260b4a2a5045f16bb301db38fe8b74d63a31d1756.wasm",
+    "wasmSha256": "8e27400d4cba2072be2b5c1eff1e77421bc1237055450b8fa548ecd653442116",
+    "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/8e27400d4cba2072be2b5c1eff1e77421bc1237055450b8fa548ecd653442116.wasm",
     "secretsProfile": "parry",
     "secretsOwner": "enclave.parry.testnet",
     "publicKey": "ed25519:24unfs16EB8vXH1WUEdfcABFJiXfrnNfx5kmKJeVqVTV",
     "sealingPublicKey": "66db84f528378425599a40128a8b8d74802c73417beb8a991fc3a9631aa0b463",
-    "keysRun": "BsiRcya7WAR2WoPVWULyByii8f4SPjk99qvVimS8S8F2",
-    "sealingReport": "{\"kind\":\"sealing_key\",\"run_id\":1794674863000,\"at\":1794674863,\"public_key\":\"66db84f528378425599a40128a8b8d74802c73417beb8a991fc3a9631aa0b463\"}",
-    "sealingSignature": "Z8nihH/x0Jh6Vd4ho54uiscOiIr5ZnU0lPACjNJBHGwVc0ePQ7f+7w1sOrn78rVQZUr/KJqXn79csDSHhRZ+Bg==",
+    "keysRun": "8Av8yu8rhK4ZLPsNvQFY6TRs97XXnrQ2dCTBNvNRQXpe",
+    "sealingReport": "{\"kind\":\"sealing_key\",\"run_id\":1794675686000,\"at\":1794675686,\"public_key\":\"66db84f528378425599a40128a8b8d74802c73417beb8a991fc3a9631aa0b463\"}",
+    "sealingSignature": "H/qTBZlO6jK4B4pNw0mH5msNXyUWn6pTkRnMjO32/MmSELni+eqdZsGwbXtmA1EzjDj/bg1Jvq46MB8CRxqiAA==",
     "modes": [
       "keys",
       "risk_update",
@@ -129,8 +129,8 @@
       "certificate",
       "attest"
     ],
-    "setEnclaveTx": "76i3VmLdXw7Mh66bLeSBvB5XswP8ii4yxcR4Qaiksmz3",
-    "sealingTx": "GQGMSyzJr8qxpHbf8B4W9JqkF7uaQkARBWF2RKYKgvsq"
+    "setEnclaveTx": "FXmRefDY7ExmR7d5X6xQiR2dtg5oBqHhE1ivuUoEyg2q",
+    "sealingTx": "BVZrtzsAEURchtV8zy2m7XAaETwSLHztDyqtjpHTRjLs"
   },
   "site": "https://parry.market",
   "api": "https://api.parry.market"

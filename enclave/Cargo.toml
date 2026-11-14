@@ -38,6 +38,9 @@ base64 = "0.22"
 # attestation tokens, for pinning the review model's keys (src/attest.rs).
 dcap-qvl = { version = "0.7.1", default-features = false, features = ["std", "rustcrypto", "default-x509"] }
 p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+x509-cert = { version = "0.3", default-features = false }
+# NVIDIA signs some token certificates with an RSA intermediate: signature verification only.
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
 ureq = { version = "2", optional = true, features = ["json"] }
 ed25519-dalek = { version = "2", optional = true }
 

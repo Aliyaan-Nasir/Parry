@@ -99,7 +99,7 @@ pub fn run(io: &dyn Io, input: &Value) -> Result<Value> {
         "guardian" => guardian(io, input),
         "vault_report" => vault_report(io),
         "certificate" => certificate(io, input),
-        "attest" => attest(io),
+        "attest" => attest(io, input),
         other => Err(format!("unknown mode {other:?}")),
     }
 }
@@ -117,8 +117,8 @@ fn keys(io: &dyn Io) -> Result<Value> {
 }
 
 /// Attests the review model's keys and signs the `model_signers` report for the risk board.
-fn attest(io: &dyn Io) -> Result<Value> {
-    let mut out = crate::attest::attest(io, run_id(io))?;
+fn attest(io: &dyn Io, input: &Value) -> Result<Value> {
+    let mut out = crate::attest::attest(io, input, run_id(io))?;
     let report = out["report_json"].as_str().unwrap_or_default().to_string();
     out["signature"] = json!(signed(io, RISK_DOMAIN, &report)?);
     Ok(out)

@@ -36,7 +36,9 @@ if [ -f "$dep" ]; then
 fi
 unset RUSTUP_TOOLCHAIN CARGO_TARGET_DIR CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_RUSTFLAGS
 cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-RUSTFLAGS="--remap-path-prefix=$(pwd)=/build --remap-path-prefix=$cargo_home=/cargo" \
+# An 8 MiB stack (wasm's default is 1 MiB): Intel quote verification in the attest mode nests
+# certificate parsing and big-number arithmetic deeply.
+RUSTFLAGS="--remap-path-prefix=$(pwd)=/build --remap-path-prefix=$cargo_home=/cargo -C link-arg=-zstack-size=8388608" \
   cargo build --locked --release --target wasm32-wasip2 --bin parry-enclave
 echo "toolchain: $(rustc -V), $(cargo -V), target wasm32-wasip2"
 env | grep '^PARRY_' | grep -v SEED | sort
