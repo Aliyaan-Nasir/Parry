@@ -253,3 +253,45 @@ test("live updates arrive over the event stream and show on the status page", as
   const before = api.calls("GET", "/v1/alerts").length;
   await expect.poll(() => api.calls("GET", "/v1/alerts").length, { timeout: 15_000 }).toBeGreaterThan(before);
 });
+
+test("an OutLayer outage shows as waiting on OutLayer, with the notice, not as Parry down", async ({ page }) => {
+  await mockApi(page);
+  await page.route(/\/v1\/status(\?.*)?$/, async (route) => {
+    const s = fx.status(Date.now());
+    const services = s.services.map((x) =>
+      x.name === "guardian"
+        ? { ...x, ok: false, external: "outlayer", detail: "OutLayer did not answer this run in time (request abc); it was refunded and the service tries again on its own." }
+        : { ...x, ok: true, external: null },
+    );
+    await route.fulfill({
+      json: {
+        ...s,
+        services,
+        notice: {
+          source: "OutLayer",
+          message: "OutLayer, the TEE network that runs Parry's guardian enclave, is not answering every request right now. This is an OutLayer availability issue, not a fault in Parry: each affected service retries on its own, positions keep their on-chain mandate limits, and owners can act directly at any time.",
+        },
+      },
+    });
+  });
+  await page.goto("/app/status");
+  const services = page.getByRole("region", { name: "Services" });
+  await expect(services.getByText("1 waiting on OutLayer")).toBeVisible();
+  await expect(services.getByRole("status")).toContainText("not a fault in Parry");
+  await expect(services.getByText("Waiting on OutLayer", { exact: true })).toBeVisible();
+  await expect(services.getByText(/\d+ down$/)).toHaveCount(0);
+});
+
+test("a real failure still counts as down next to an OutLayer one", async ({ page }) => {
+  await mockApi(page);
+  await page.route(/\/v1\/status(\?.*)?$/, async (route) => {
+    const s = fx.status(Date.now());
+    const services = s.services.map((x) => (x.name === "guardian" ? { ...x, ok: false, external: "outlayer", detail: "OutLayer did not answer this run in time (request abc)." } : { ...x, external: null }));
+    await route.fulfill({ json: { ...s, services, notice: { source: "OutLayer", message: "OutLayer is not answering every request right now. This is an OutLayer availability issue, not a fault in Parry." } } });
+  });
+  await page.goto("/app/status");
+  const services = page.getByRole("region", { name: "Services" });
+  // The fixture's top-up wallet is low: a Parry-side issue, still reported as down.
+  await expect(services.getByText("1 down", { exact: true })).toBeVisible();
+  await expect(services.getByText("Waiting on OutLayer", { exact: true })).toBeVisible();
+});

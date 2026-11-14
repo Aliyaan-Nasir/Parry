@@ -32,9 +32,10 @@ const SERVICE_LABEL: Record<string, string> = {
   stream: "Live stream",
 };
 
-function Up({ ok, yes = "Up", no = "Down", external = false }: { ok: boolean; yes?: string; no?: string; external?: boolean }) {
-  if (!ok && external) return <span className="text-[13px] text-caution">Waiting on OutLayer</span>;
-  return <span className={cn("text-[13px]", ok ? "text-fg" : "text-critical")}>{ok ? yes : no}</span>;
+/** Up or down; a failure that is OutLayer not answering (`external`) reads as waiting on it, in amber. */
+function Up({ ok, yes = "Up", no, external = false }: { ok: boolean; yes?: string; no?: string; external?: boolean }) {
+  const label = ok ? yes : (no ?? (external ? "Waiting on OutLayer" : "Down"));
+  return <span className={cn("whitespace-nowrap text-[13px]", ok ? "text-fg" : external ? "text-caution" : "text-critical")}>{label}</span>;
 }
 
 type Hour = { hour: string; checks: number; ok: number };
@@ -137,7 +138,7 @@ export function StatusBoard() {
             {s.services.map((x) => {
               const up = s.uptime?.find((u) => u.name === x.name);
               return (
-                <li key={x.name} className="grid gap-x-6 gap-y-1.5 px-5 py-3 sm:grid-cols-[10rem_auto_4rem_minmax(0,1fr)_5rem] sm:items-center sm:px-6">
+                <li key={x.name} className="grid gap-x-6 gap-y-1.5 px-5 py-3 sm:grid-cols-[10rem_auto_4rem_minmax(0,1fr)_8.5rem] sm:items-center sm:px-6">
                   <span className="flex items-center justify-between gap-3 sm:contents">
                     <span className="text-sm text-fg">{SERVICE_LABEL[x.name] ?? x.name}</span>
                     <span className="sm:order-5 sm:text-right">

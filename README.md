@@ -12,7 +12,7 @@
   <a href="https://parry.market/app"><img alt="Live on NEAR testnet" src="https://img.shields.io/badge/NEAR_testnet-live-C99A45?style=flat-square&labelColor=141614"></a>
   <a href="MAINNET.md"><img alt="Mainnet ready" src="https://img.shields.io/badge/mainnet-ready-C99A45?style=flat-square&labelColor=141614"></a>
   <a href="JUDGES.md#technical-implementation"><img alt="288 contract tests" src="https://img.shields.io/badge/contract_tests-288_passing-24663A?style=flat-square&labelColor=141614"></a>
-  <a href="JUDGES.md#technical-implementation"><img alt="295 browser tests" src="https://img.shields.io/badge/browser_tests-295_passing-24663A?style=flat-square&labelColor=141614"></a>
+  <a href="JUDGES.md#technical-implementation"><img alt="297 browser tests" src="https://img.shields.io/badge/browser_tests-297_passing-24663A?style=flat-square&labelColor=141614"></a>
   <a href="SECURITY.md"><img alt="Security: in-house review" src="https://img.shields.io/badge/security-in--house_review-24663A?style=flat-square&labelColor=141614"></a>
   <a href="https://www.npmjs.com/package/@parryguard/sdk"><img alt="npm @parryguard/sdk" src="https://img.shields.io/npm/v/@parryguard/sdk?label=%40parryguard%2Fsdk&style=flat-square&color=C99A45&labelColor=141614"></a>
   <a href="https://www.npmjs.com/package/@parryguard/mcp"><img alt="npm @parryguard/mcp" src="https://img.shields.io/npm/v/@parryguard/mcp?label=%40parryguard%2Fmcp&style=flat-square&color=C99A45&labelColor=141614"></a>
@@ -296,7 +296,7 @@ pnpm verify                       # this README's claims, against the live deplo
 
 | Contract unit tests | Sandbox flows | Enclave tests | TypeScript tests | Browser tests |
 | :---: | :---: | :---: | :---: | :---: |
-| **288** | **21** | **44** + 2 cross-language vectors | **292** (with the database) | **295** at three widths, both themes |
+| **288** | **21** | **44** + 2 cross-language vectors | **297** (with the database) | **297** at three widths, both themes |
 
 ## Use it from code
 
