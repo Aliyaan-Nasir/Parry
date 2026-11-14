@@ -69,7 +69,10 @@ fn a_policy_sealed_by_the_sdk_opens_here() {
         f["plaintext"].as_str().unwrap()
     );
 
-    // Same inputs, same bytes.
+    // The SDK pads the plaintext with spaces to a multiple of 512 bytes, so every policy seals to
+    // the same length; the header (32-byte ephemeral key, 12-byte nonce) and tag add 60.
+    assert_eq!((sealed.len() - 60) % 512, 0);
+    // Sealed here from the same inputs (unpadded), it opens to the same policy.
     let again = seal::seal(
         &want,
         account,
@@ -77,7 +80,7 @@ fn a_policy_sealed_by_the_sdk_opens_here() {
         bytes(&f["ephemeral_secret"]),
         bytes(&f["nonce"]),
     );
-    assert_eq!(STANDARD.encode(again), f["sealed"].as_str().unwrap());
+    assert_eq!(seal::open(&io, &again, account).unwrap(), want);
 
     // Bound to the account and to this enclave's key.
     assert!(seal::open(&io, &sealed, "0uanother.testnet").is_err());

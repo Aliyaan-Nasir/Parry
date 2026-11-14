@@ -297,7 +297,7 @@ export function verifyDecision(
     if (record.account !== decision.account) wrong.push(`account ${record.account}`);
     if (record.action !== decision.action) wrong.push(`action ${record.action}`);
     if (record.review.review_hash !== stated) wrong.push(`review hash ${record.review.review_hash}`);
-    if (signedRecord && opts.onChainRecord && !sameJson(signedRecord, opts.onChainRecord)) wrong.push("the board's copy on chain differs from the signed record");
+    if (signedRecord && opts.onChainRecord && !sameJson(boardShape(signedRecord), opts.onChainRecord)) wrong.push("the board's copy on chain differs from the signed record");
     if (decision.publicPlan && isPublicRecordPlan(record.plan) && record.plan !== decision.publicPlan) wrong.push("its plan is not this decision's public plan");
     if (wrong.length) add("decision_record", "fail", `${where} differs: ${wrong.join("; ")}`);
     else add("decision_record", "pass", `${where} names this decision, account, action and review hash${signedRecord && opts.onChainRecord ? ", and the board's copy on chain is the same" : ""}`);
@@ -349,6 +349,15 @@ export interface ReservesVerification {
   onChainMatches: boolean | null;
   leaves: { asset: string; venue: string; amount: string; usdE6: string; hash: string; proofOk: boolean }[];
   totalUsdE6: string;
+}
+
+/**
+ * The signed record as the risk board stores it: the board reads the report through its `kind`
+ * tag and keeps the rest, so the tag is not in its copy. A record of any other kind never matches.
+ */
+function boardShape(signed: object): object {
+  const { kind, ...rest } = signed as { kind?: unknown };
+  return kind === undefined || kind === "decision" ? rest : { kind, ...rest };
 }
 
 /** Checks every reserve leaf's Merkle proof against the published root (and the chain's root). */

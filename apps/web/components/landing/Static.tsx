@@ -43,7 +43,7 @@ export function Primitives() {
 /** What the guardian can and cannot do, as a two-column ledger. */
 export function Ledger() {
   const can = ["Repay your loan from your reserve", "Add collateral from your reserve", "Deleverage atomically, all or nothing", "Reduce or hedge a Hyperliquid position", "Repay your Aave loan on Base"];
-  const cannot = ["Move money out of your account", "Act outside your mandate", "Swap its own signing key", "Stop you from revoking or overriding it", "Act without a reviewed, signed plan"];
+  const cannot = ["Move money out of your account", "Act outside your mandate", "Swap its own signing key", "Stop you from revoking or overriding it", "Act without its enclave's signature"];
   return (
     <section className="py-24 sm:py-32">
       <div className="mx-auto max-w-[1180px] px-4 sm:px-6">

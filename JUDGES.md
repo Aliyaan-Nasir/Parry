@@ -2,6 +2,7 @@
 
 Each criterion, with the evidence for it and where to find it.
 Links go to the exact code; `pnpm verify` re-checks the live claims and prints pass or fail per claim.
+The demo video is on X: [https://x.com/ParryMarkets/status/2121729561096302896](https://x.com/ParryMarkets/status/2121729561096302896).
 
 ## Verify it yourself in five minutes
 
@@ -25,7 +26,7 @@ Each scenario of the test matrix, run end to end by `bun scripts/scenarios.ts` a
 | 4 | A mandate with a sealed policy | passes | [tx 1](https://testnet.nearblocks.io/txns/EhZrfn6NVfoioCEKdRNdvn5eePEba5yS1yADBiUxGDth), [tx 2](https://testnet.nearblocks.io/txns/DZCn5VLPNuWYVTPMA9aeSqvrwn3rM8jhqPvn1f8kvbZo), [tx 3](https://testnet.nearblocks.io/txns/G6ryHFnuB3eT7YBoDicmT3jd6Z2JAjL69WZ18bYVKBDP) |
 | 5 | The market shock moves the price | passes | [tx 1](https://testnet.nearblocks.io/txns/DxgvcwDTZuVUCaPnLkJ6jPkFkddhcxRr85W2XLWPaETN) |
 | 6 | Alert, AI review, rescue and recovery | passes | [tx 1](https://testnet.nearblocks.io/txns/8zqCZ7Uz2GGqVvypTLHGdsR1UjmeCLGw2ZgVT2epCF73), [tx 2](https://testnet.nearblocks.io/txns/J4Dq9ih1dVP5kMP6gRqMnqcW5AUEqpPT3KrRLw4Xcdju), [tx 3](https://testnet.nearblocks.io/txns/EUP5BpXzbh3Vg4TEhMUR4L1SdbwuSaUDWvemXhzhXP8F) |
-| 7 | Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused | passes | [tx 1](https://testnet.nearblocks.io/txns/HxSZbNx88z8QrJiYEYugyRsAXo5z1eHKxc4PLeRsuL42), [tx 2](https://testnet.nearblocks.io/txns/G9rgVGZm84DNaGeBGs82tLPgBtiAqtZrT4in4sF5tkCm), [tx 3](https://testnet.nearblocks.io/txns/C3Mb7WvyeJBZ1GoBaczn3JFQJfKpDM1JujS9voRJt7ya) |
+| 7 | Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused (each linked transaction is a refusal, so NearBlocks shows it as failed: that is the proof) | passes | [tx 1](https://testnet.nearblocks.io/txns/HxSZbNx88z8QrJiYEYugyRsAXo5z1eHKxc4PLeRsuL42), [tx 2](https://testnet.nearblocks.io/txns/G9rgVGZm84DNaGeBGs82tLPgBtiAqtZrT4in4sF5tkCm), [tx 3](https://testnet.nearblocks.io/txns/C3Mb7WvyeJBZ1GoBaczn3JFQJfKpDM1JujS9voRJt7ya) |
 | 8 | A Hyperliquid order signed by the protected account through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/Dpg9QdydvGhKFcpSGQxa2jsTzjksxEoB4UvyrLF8jEQX), [tx 2](https://testnet.nearblocks.io/txns/7hFqwoU9G4Uei8UB6iLDy3vxXoGLd9f4mGnHh1kfsnUW), [tx 3](https://testnet.nearblocks.io/txns/CYoA6HXu2ZQcoHdCgT7WizZcknrM2uxBkztUW17in5rU) |
 | 9 | An Aave position on Base Sepolia rescued through Chain Signatures | passes | [tx 1](https://testnet.nearblocks.io/txns/GAuPxLK2A9m54CeKTvCsCvp7H3v8eqtNhXvHcnVvoLfd), [tx 2](https://testnet.nearblocks.io/txns/6QH7NDnskgmdmcCaonV3GXQHSFcFTDJuowSXz6chKA4a) |
 | 10 | Vault deposit, hedge, withdrawal through the queue, proof of reserves | passes | [tx 1](https://testnet.nearblocks.io/txns/AeY1iEuAdMQ5f834kR2wdYefbgfEUHHSPsZSX2YHjtX2), [tx 2](https://testnet.nearblocks.io/txns/4TXPDCo1C3etPRTZtWaYWzyRfWR5AGD5fPQWkzD32D2R), [tx 3](https://testnet.nearblocks.io/txns/5BTQVqWh2QtQ6niejgCQNWU6hrbw96zMEdfsCbiwWgLj) |
@@ -107,7 +108,7 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
   The owner can close a Rhea position by selling collateral in rounds that each keep health above 1, or unwind the whole account, with every failed step rolled back ([`contracts/account/src/close.rs`](contracts/account/src/close.rs)).
   The enclave signs private health certificates: "health is at least X" for one named reader at one block, with no amounts, optionally anchored on the risk board, checkable on `/verify`, in the SDK and over MCP.
 - **Tests.**
-  288 contract unit tests (each review fix names a regression test that fails without it), 21 sandbox flows on real protocol code including a mainnet rehearsal, 44 enclave tests and 2 cross-language vectors, 297 TypeScript tests (the database ones need `TEST_DATABASE_URL`), and 297 browser tests that open every page at three widths in both themes; the risk model is one fixture file both languages pass: [`packages/core/fixtures/risk-cases.json`](packages/core/fixtures/risk-cases.json).
+  288 contract unit tests (each review fix names a regression test that fails without it), 21 sandbox flows on real protocol code including a mainnet rehearsal, 43 enclave tests and 2 cross-language vectors, 297 TypeScript tests (the database ones need `TEST_DATABASE_URL`), and 297 browser tests that open every page at three widths in both themes; the risk model is one fixture file both languages pass: [`packages/core/fixtures/risk-cases.json`](packages/core/fixtures/risk-cases.json).
   The test matrix's scenarios run end to end with recorded transactions: [`scripts/scenarios.ts`](scripts/scenarios.ts), [`deployments/testnet-proofs.json`](deployments/testnet-proofs.json).
 
 ## Design
@@ -143,5 +144,5 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 
 - Contracts, enclave, services, API, app, SDK, MCP server and agent skill all work together, live on testnet and mainnet-ready ([`MAINNET.md`](MAINNET.md)); `deployments/testnet.json` records every account, code hash and transaction.
 - Every contract is a reproducible build; `near contract verify deployed-at <account>` matches each one, and `pnpm verify` checks it.
-- `pnpm verify` checks the README's claims against testnet, each recorded transaction included, and would name any claim still waiting for a recorded proof (at the last run, 29 of 29 claims passed and none waited); `pnpm security` runs Clippy, cargo audit, cargo deny and pnpm audit; [`SECURITY.md`](SECURITY.md) lists every review finding and its status.
+- `pnpm verify` checks the README's claims against testnet, each recorded transaction included, and would name any claim still waiting for a recorded proof (at the last run every claim passed and none waited: 29 in the full run, 28 with `--quick`); `pnpm security` runs Clippy, cargo audit, cargo deny and pnpm audit; [`SECURITY.md`](SECURITY.md) lists every review finding and its status.
 - Agents can run everything: [`AGENTS.md`](AGENTS.md), [`skills/parry/SKILL.md`](skills/parry/SKILL.md), [`llms.txt`](apps/web/public/llms.txt), and `docker compose up` for the whole stack.

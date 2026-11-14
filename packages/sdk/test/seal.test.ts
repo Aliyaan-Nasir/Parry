@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { openPolicy, policyJson, rustFloat, sealPolicy, type Policy } from "../src/index.js";
+import { openPolicy, policyJson, rustFloat, SEAL_PAD_BYTES, sealPolicy, type Policy } from "../src/index.js";
 import { fromBase64, fromHex, toBase64, utf8 } from "../src/encoding.js";
 import { sealedVector } from "./fixtures/vectors.js";
 
@@ -14,9 +14,17 @@ const policy: Policy = { triggerScore: 60, triggerHealth: 1.15, targetHealth: 1.
 describe("sealed policies", () => {
   test("round trip", () => {
     const sealed = sealPolicy(policy, { account: "0uabc.testnet", sealingPublicKey: enclavePk });
-    expect(sealed.length).toBe(32 + 12 + policyJson(policy).length + 16);
+    expect(sealed.length).toBe(32 + 12 + SEAL_PAD_BYTES + 16);
     expect(openPolicy(sealed, { account: "0uabc.testnet", secret })).toEqual({ ...policy, hlReduceFraction: 0.25, evmTriggerHealth: 1.2 });
     expect(openPolicy(toBase64(sealed), { account: "0uabc.testnet", secret }).strategy).toBe("repay-first");
+  });
+
+  test("every strategy seals to the same length, so the chain cannot tell them apart", () => {
+    const lengths = (["repay-first", "keep-exposure", "deleverage-only"] as const).map(
+      (strategy) => sealPolicy({ ...policy, strategy, steps: strategy === "keep-exposure" ? ["hl_reduce", "repay"] : undefined }, { account: "0uabc.testnet", sealingPublicKey: enclavePk }).length,
+    );
+    expect(new Set(lengths).size).toBe(1);
+    expect(policyJson(policy).length).toBeLessThan(SEAL_PAD_BYTES);
   });
 
   test("random ephemeral key and nonce per seal", () => {

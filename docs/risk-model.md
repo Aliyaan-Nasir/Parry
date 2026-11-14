@@ -45,10 +45,10 @@ Stressed is the 80th percentile of Tremor over the ordinary hours, so one ordina
 On the hours they were chosen on, panic flags 24.7 % of crash hours and 4.8 % of ordinary ones, and stressed or worse 55 % of crash hours.
 Tested on the scored episodes they never saw, panic flags 39.4 % of the six crashes' hours and stressed or worse 72.4 %; panic flags 42.2 % of the six spikes' hours and stressed or worse 73.2 %.
 Choosing the thresholds on the scored crashes themselves would have given 135 % and 230 %; `calibration.inSample` keeps those figures for comparison only.
-The calibration reads Tremor from hourly closes, where the 1-hour window holds a single return; the live index samples every 10 seconds, so its short windows are steadier, and a live reading is at least as well behaved as the calibration's.
+The calibration reads Tremor from hourly closes, where the 1-hour window holds a single return; the live index samples every 15 seconds, so its short windows are steadier, and a live reading is at least as well behaved as the calibration's.
 `pnpm replay` recomputes the thresholds and says when they differ from the code's, and a test pins the code's to the committed `deployments/replay.json`.
 
-The monitor samples the oracle price every 10 seconds; the enclave reads Hyperliquid's 5-minute closes, rescaled to the oracle's level, so the volatility is the market's while the level is the one lending uses.
+The monitor samples the oracle price every 15 seconds; the enclave reads Hyperliquid's 5-minute closes, rescaled to the oracle's level, so the volatility is the market's while the level is the one lending uses.
 
 ## 3. The trend
 

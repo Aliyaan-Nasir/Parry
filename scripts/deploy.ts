@@ -509,7 +509,7 @@ async function shared(ids: Record<string, string>, wallets: Record<string, strin
   step("protected-account code (global, by hash) and the factory");
   const acctCode = wanted("account") ? wasm("account") : null;
   const acctHash = acctCode ? codeHash(acctCode) : dep.contracts.account!.codeHash!;
-  // Publishing burns ten times the storage price (about 36 NEAR for this code): never twice for
+  // Publishing burns ten times the storage price (about 44 NEAR for this code): never twice for
   // the same hash, so the recorded deployment is the check.
   if (acctCode && dep.contracts.account?.codeHash !== acctHash) {
     const o = (await client(ROOT).transaction(ROOT).publishContract(acctCode, { identifiedBy: "hash" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as FinalExecutionOutcome;

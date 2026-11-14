@@ -108,7 +108,7 @@ function HeroProduct() {
             <div className="flex items-end justify-between gap-4">
               <div>
                 <div className="text-[15px] text-fg">Rhea wNEAR / USDC</div>
-                <div className="text-[12.5px] text-muted">alice.near, guarding, trigger sealed</div>
+                <div className="text-[12.5px] text-muted">Example: alice.near, guarding, trigger sealed</div>
               </div>
               <span className="num text-[12.5px] text-muted">NEAR $3.62</span>
             </div>

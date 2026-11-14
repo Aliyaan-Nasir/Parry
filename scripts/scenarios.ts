@@ -482,7 +482,7 @@ async function limits() {
   const m = await view<{ expired: boolean } | null>(e.account, "mandate");
   ok &&= m?.expired === true;
   steps.push({ step: "a mandate set to expire in 75 s reads expired after 90 s", expired: m?.expired, tx: e.steps.at(-1) });
-  save(7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused", ok, steps);
+  save(7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused (each linked transaction is a refusal, so NearBlocks shows it as failed: that is the proof)", ok, steps);
 }
 
 async function vault() {

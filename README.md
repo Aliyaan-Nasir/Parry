@@ -88,6 +88,8 @@ Any NEAR account's liquidation risk, free for people and paid per call for agent
 
 ---
 
+**Demo video:** [the walkthrough on X](https://x.com/ParryMarkets/status/2121729561096302896): a live 20% crash on testnet, the rescue, and everything around it.
+
 ## Try it in two minutes
 
 | Step | Where | What happens |
@@ -181,7 +183,7 @@ Regime thresholds are chosen out of sample, on hours at least 72 hours away from
 
 <img src="assets/readme/rescue.png" alt="Anatomy of a rescue: health falls toward the liquidation line at 1.00 as NEAR drops; when it crosses the owner's sealed trigger at 1.15, the monitor has scored it, the enclave plans one step, a NEAR AI Cloud model reviews it inside its TEE, and the account contract checks the envelope and acts; health steps back up to the 1.45 target and the review's hash goes on record, where without the rescue it would have reached liquidation" width="960">
 
-1. **Watch.** The monitor reads each position (Rhea every 10 seconds, Hyperliquid every 15, Aave every 60); the risk engine scores it with the model in [`docs/risk-model.md`](docs/risk-model.md).
+1. **Watch.** The monitor reads each position (Rhea and Hyperliquid every 15 seconds, Aave every 60); the risk engine scores it with the model in [`docs/risk-model.md`](docs/risk-model.md).
 2. **Plan.** At caution or worse, or under health 1.5 (the highest trigger an owner may seal), the guardian runs in the OutLayer TEE: it opens the sealed policy, plans one step inside the mandate, and asks a NEAR AI Cloud verifiable model to review it.
 3. **Review.** The model's TEE signs the exact request and response; the enclave checks that signature, checks that the signing key is one whose attestation it verified itself and pinned on the risk board (an Intel TDX quote binding the key to a fresh, chain-derived nonce, and NVIDIA's signed GPU verdict), and signs an envelope with its own key, which OutLayer derives from the enclave's build.
 4. **Act.** The account contract checks the envelope's key, nonce, age, powers and caps, acts, and emits the review's hash with the action; the risk board records the decision.
@@ -195,7 +197,7 @@ Regime thresholds are chosen out of sample, on hours at least 72 hours away from
 | --- | --- |
 | **Acts on** | Repay debt from your reserve, add collateral from your reserve, sell some collateral through the exchange to repay (restoring everything if any step fails), reduce or hedge your perp inside a size cap and a price band, approve or repay your Aave loan for your own address. |
 | **Bounded by** | Your mandate: its powers, each token's total and daily caps, per-order, daily and total hedge caps on the perp, per-action, daily and total caps on the Aave repay, the daily action count and the expiry; and a fresh envelope (120 seconds) at the next nonce. |
-| **Gated by** | An approving review signed by a model key the enclave attested; no review, no action. |
+| **Gated by** | The enclave signs an action only after an approving review from a model key it attested itself, and the account records that review's hash with the action. The contract checks the enclave's signature and the mandate; the review is enforced by the enclave. |
 | **Pays out to** | Nobody. No guardian action has a recipient, so funds never leave your account through it. |
 | **Answers to** | You: revoke the mandate, pause the guardian or act directly at any time. |
 
@@ -296,7 +298,7 @@ pnpm verify                       # this README's claims, against the live deplo
 
 | Contract unit tests | Sandbox flows | Enclave tests | TypeScript tests | Browser tests |
 | :---: | :---: | :---: | :---: | :---: |
-| **288** | **21** | **44** + 2 cross-language vectors | **297** (with the database) | **297** at three widths, both themes |
+| **288** | **21** | **43** + 2 cross-language vectors | **297** (with the database) | **297** at three widths, both themes |
 
 ## Use it from code
 

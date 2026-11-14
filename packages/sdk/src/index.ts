@@ -32,6 +32,7 @@ export {
   POLICY_DEFAULTS,
   POLICY_STEPS,
   rustFloat,
+  SEAL_PAD_BYTES,
   sealPolicy,
   STRATEGIES,
   STRATEGY_STEPS,

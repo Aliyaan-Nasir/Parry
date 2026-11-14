@@ -147,7 +147,7 @@ const SCENARIOS: [number, string, string][] = [
   [4, "A mandate with a sealed policy", ""],
   [5, "The market shock moves the price", ""],
   [6, "Alert, AI review, rescue and recovery", "waits for the NEAR AI Cloud key"],
-  [7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused", ""],
+  [7, "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused (each linked transaction is a refusal, so NearBlocks shows it as failed: that is the proof)", ""],
   [8, "A Hyperliquid order signed by the protected account through Chain Signatures", ""],
   [9, "An Aave loan on Base Sepolia rescued through Chain Signatures and verified by the MPC network", "waits for Base Sepolia ETH at the account's derived address"],
   [10, "Vault deposit, hedge, withdrawal through the queue, proof of reserves", ""],

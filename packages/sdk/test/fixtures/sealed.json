@@ -10,9 +10,9 @@
     "trigger_health": 1.15,
     "target_health": 2,
     "strategy": "keep-exposure",
-    "hl_reduce_fraction": 0.000001,
+    "hl_reduce_fraction": 1e-06,
     "evm_trigger_health": 1.3
   },
   "plaintext": "{\"trigger_score\":55,\"trigger_health\":1.15,\"target_health\":2.0,\"strategy\":\"keep-exposure\",\"hl_reduce_fraction\":1e-6,\"evm_trigger_health\":1.3}",
-  "sealed": "AvpTGGCeaF+jkuR8rC8ouNA7xvpXAxvHBnp+QgRU7mR+o5ei0ks4G31mrQ93vPJegUeQp7km28bru2UY8Ug22uOxkcIatkXWCX9s8/y8rWknxagaMfJIx7bRHc4IfR42AwwUQDnGvKamLwYQBhFt9O3ul65piDMwaxcdKMdsJXb5JzlNt6N5nhXIKmkDAMfH08fsCl66KvavmHYasUVow/Amq3+E4sVQ6ylSBHEiWQKdKVlyeDdLEHZdhK25REQ4kT9zOHN6cLc="
+  "sealed": "AvpTGGCeaF+jkuR8rC8ouNA7xvpXAxvHBnp+QgRU7mR+o5ei0ks4G31mrQ93vPJegUeQp7km28bru2UY8Ug22uOxkcIatkXWCX9s8/y8rWknxagaMfJIx7bRHc4IfR42AwwUQDnGvKamLwYQBhFt9O3ul65piDMwaxcdKMdsJXb5JzlNt6N5nhXIKmkDAMfH08fsCl66KvavmHYasUVow/Amq3+E4sVQ6ylSBHEiWQKdKVlyeDdLEJ2RgqJaD7eD8YLiY9jxpWmJd4ljTmP8rMa6q2TpjDDBcZGLAHGd3b0d1JzivYPFKyHM45zAf2E+gTTFiQW7QACVRwwdSrnBnL3MjduW94HQSAJADJfNRUuC1M15o4W5y+ZRmowqWw/h1R7YO+pbugUVUTt++cAKhP5g4pshuOrVt5+lLqoJ/Vqs2ySjF7Br5GolQ4vi7fFYQfqJXoKfYe1Wv0XQthmrU4gTM4FiYJUpq2PXNvi8CDMRst/UcnXqAR2axDfru13yumXHRp/dVTf6vGqXWcdWy4STJlEsFp9QKwgEFpcm9bPjYXGPip5nAuh/NlYgEJbj4AS01E+mkRIcpfB85NMvqlkto4XUrBZRPKIy9cSYUbdBr3ejFBI/YWUNnGKkTYIl1z3OqM/2pDZriQ0OBew6phrqWnTr6DHwyPocathOGyeTl05bdAmrXpG5ocNcaGIM6lB4Lc0x8C8+f/ozW+mm9MdWenrBiKNBR6i8WgZQQMex6up5HALX5Gl+EH4="
 }

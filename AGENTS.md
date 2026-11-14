@@ -121,7 +121,7 @@ bun scripts/deploy.ts --network mainnet   # the mainnet plan and its cost; sends
 - `execute_with_pyth` does not return its inner promise; the account withdraws with `simple_withdraw`, which resolves to true only once the tokens arrived.
 - Ref's `withdraw` resolves to the amount, or 0 when the transfer failed and it re-credited the deposit.
 - OutLayer derives the enclave keys from the build and the calling account: every service calls it from the deployment's `enclave` account.
-- Publishing the account code as global code burns about 36 NEAR; `scripts/deploy.ts` never republishes the same hash.
+- Publishing the account code as global code burns about 44 NEAR; `scripts/deploy.ts` never republishes the same hash.
 - The account refuses an envelope relayed with less gas than its whole chain needs: a deleverage takes at least 650 + 30 per priced token Tgas (the guardian sends 900), a perp order 140, `retry_deleverage` 260 + 30 per token.
   Owner exits too: `close_rhea` 750 + 30 per protocol token (send 900), `retry_close` 360, `unwind` 160 + 130 per protocol token + 25 per listed token; a call may carry up to 1 PGas, and `ownerCallAction` and the relayer size each call.
 - A close round sells at most what keeps health at 1.02 (the lending contract's floor), so a position under about 1.5 health closes over several `close_rhea` calls (`closeRheaRounds` drives them).

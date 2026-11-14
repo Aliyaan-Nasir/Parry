@@ -14,6 +14,7 @@ import {
   verifyDecision,
   verifyReserves,
   type Decision,
+  type DecisionRecord,
   type Reserves,
   type ReviewRecord,
 } from "../src/index.js";
@@ -83,6 +84,12 @@ function makeDecision(): Decision {
 }
 
 /** The decision with the enclave-signed risk-board record and the review's facts, as the owner reads it. */
+/** The risk board's copy of a signed record: the board keeps the report without its `kind` tag. */
+function boardCopy(d: Decision): DecisionRecord {
+  const { kind: _kind, ...rest } = JSON.parse(d.decisionJson!) as DecisionRecord & { kind?: string };
+  return rest;
+}
+
 function withRecord(d: Decision): Decision {
   const plan = "Repay 60.00 USDC from the reserve: health 0.830 to 1.450 (target 1.45). Chose repay: the first step in the order repay, deleverage that the mandate allows and that moves health toward 1.45.";
   const record = JSON.stringify({
@@ -132,7 +139,7 @@ describe("verifyDecision", () => {
   test("the public record (no reasoning, no facts) verifies what is public and says what it skipped", () => {
     const owner = withRecord(makeDecision());
     const pub = publicView(owner);
-    const v = verifyDecision(pub, { enclavePublicKey: enclaveKey, onChainRecord: JSON.parse(owner.decisionJson!) });
+    const v = verifyDecision(pub, { enclavePublicKey: enclaveKey, onChainRecord: boardCopy(owner) });
     expect(v.scope).toBe("public");
     expect(v.checks.map((c) => [c.name, c.status])).toEqual([
       ["review_hash", "skip"],
@@ -150,9 +157,17 @@ describe("verifyDecision", () => {
     expect(JSON.stringify(v)).not.toContain("1.45");
   });
 
+  test("the board's copy must match the signed record in everything but its kind tag", () => {
+    const owner = withRecord(makeDecision());
+    const tampered: DecisionRecord = { ...boardCopy(owner), plan: "Repay 1.00 USDC from the reserve." };
+    const v = verifyDecision(owner, { enclavePublicKey: enclaveKey, onChainRecord: tampered });
+    expect(v.checks.find((c) => c.name === "decision_record")?.status).toBe("fail");
+    expect(v.ok).toBe(false);
+  });
+
   test("the owner's full record runs every check", () => {
     const owner = withRecord(makeDecision());
-    const v = verifyDecision(owner, { enclavePublicKey: enclaveKey, onChainRecord: JSON.parse(owner.decisionJson!) });
+    const v = verifyDecision(owner, { enclavePublicKey: enclaveKey, onChainRecord: boardCopy(owner) });
     expect(v.checks.every((c) => c.status === "pass")).toBe(true);
     expect(v.scope).toBe("owner");
     expect(v.ok).toBe(true);

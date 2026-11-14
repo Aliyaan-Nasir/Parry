@@ -152,6 +152,20 @@ export interface SealOptions {
   nonce?: Uint8Array;
 }
 
+/**
+ * Sealed policies are padded with trailing spaces (which JSON allows) to a multiple of
+ * `SEAL_PAD_BYTES`, so the ciphertext's length on chain does not tell which strategy or steps a
+ * policy holds.
+ */
+export const SEAL_PAD_BYTES = 512;
+
+function padded(json: string): Uint8Array {
+  const bytes = utf8(json);
+  const size = Math.ceil(Math.max(bytes.length, 1) / SEAL_PAD_BYTES) * SEAL_PAD_BYTES;
+  const out = new Uint8Array(size).fill(0x20);
+  out.set(bytes);
+  return out;
+}
 /** Encrypts `policy` to the enclave for `account`. Returns the bytes the mandate's `sealed` carries. */
 export function sealPolicy(policy: Policy, opts: SealOptions): Uint8Array {
   const enclave = key32(opts.sealingPublicKey, "sealing public key");
@@ -160,7 +174,7 @@ export function sealPolicy(policy: Policy, opts: SealOptions): Uint8Array {
   if (ephSecret.length !== 32 || nonce.length !== 12) throw new Error("ephemeral secret is 32 bytes and nonce 12 bytes");
   const eph = x25519.getPublicKey(ephSecret);
   const k = sealKey(x25519.getSharedSecret(ephSecret, enclave), eph, enclave);
-  const ct = chacha20poly1305(k, nonce, utf8(opts.account)).encrypt(utf8(policyJson(policy)));
+  const ct = chacha20poly1305(k, nonce, utf8(opts.account)).encrypt(padded(policyJson(policy)));
   const sealed = concatBytes(eph, nonce, ct);
   if (sealed.length > MAX_SEALED_BYTES) throw new Error("sealed policy is larger than the contract's 2 KiB limit");
   return sealed;
