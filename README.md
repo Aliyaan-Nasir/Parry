@@ -189,6 +189,10 @@ Regime thresholds are chosen out of sample, on hours at least 72 hours away from
 4. **Act.** The account contract checks the envelope's key, nonce, age, powers and caps, acts, and emits the review's hash with the action; the risk board records the decision.
 5. **Verify.** Anyone can re-check a decision: the app's **Verify**, `parry.verifyDecision` in the SDK, `verify_guardian_decision` in the MCP server, and `pnpm verify`.
 
+**The live record, read plainly.** Of the last 100 guardian decisions on testnet, 56 executed, and about four in ten deleverages executed; the rest were refused or rolled back by the account's own checks, as designed, with nothing lost.
+Two causes sit outside Parry's code. OutLayer, the TEE network every rescue runs on, answered only 55 to 77 % of runs over the 48 hours before submission (the status page marks those runs as OutLayer's), and the testnet exchange pool is Parry's own and tiny, so its price drifts from the oracle when nobody trades it, and a sale that would break the slippage bound is refused.
+On mainnet the guardian sells into Rhea's real pools, which are far deeper; the roadmap below has the fixes for testnet and for OutLayer misses.
+
 ## The guardian's scope
 
 <img src="assets/readme/guard.png" alt="Who can do what: services (monitor, relayer, keeper) can delay a rescue but never redirect funds; the guardian enclave signs envelopes with a key bound to its build; the AI review can approve or block and holds no key that moves funds; at the core the account contract enforces the mandate (powers, per-token and daily caps, a daily action count and expiry) and no guardian action has a recipient; the owner, outside every layer, can revoke, pause or act directly at any time" width="960">
@@ -298,7 +302,7 @@ pnpm verify                       # this README's claims, against the live deplo
 
 | Contract unit tests | Sandbox flows | Enclave tests | TypeScript tests | Browser tests |
 | :---: | :---: | :---: | :---: | :---: |
-| **288** | **21** | **43** + 2 cross-language vectors | **297** (with the database) | **297** at three widths, both themes |
+| **288** | **21** | **43** + 2 cross-language vectors | **299** (with the database) | **297** at three widths, both themes |
 
 ## Use it from code
 
@@ -364,6 +368,9 @@ Before the mainnet launch ([`MAINNET.md`](MAINNET.md) has the steps and costs):
 - **Mainnet services.** The real Chain Signatures signer and Rhea's mainnet oracle in place of the rehearsal's stand-ins, a mainnet enclave build, and the `parryguard.near` accounts funded.
 - **A margin backstop for the hedge.** The rally replays show the insurance fund (10 % of yield) covers funding but not a margin call of hundreds of dollars: a margin reserve sized to the short, or an automatic partial unwind, before mainnet deposits grow.
 - **Decision details for the owner only.** Encrypt each decision's full plan to a view key sealed in the owner's policy, so the API operator stores it without reading it.
+- **Rescues that land more often.** A keeper task that realigns the testnet exchange pool with the oracle on its own (what `bun scripts/scenarios.ts --align-pool` does by hand), a planner that sizes each sale to the pool's real depth as well as to the slippage bound, and a fallback for runs OutLayer does not answer. The planner change is an enclave build, so it comes with a key rotation and mandates set again.
+- **The review checked on chain.** Today the enclave refuses to sign without an approving review from a model key it attested, and the account checks the enclave's signature and the mandate. Next, the account verifies the model's own secp256k1 signature on chain against the attested keys on the risk board, with the verdict and the action inside the signed bytes, so even a compromised enclave key could not act without a review. It changes what the model signs, the account code (published again and every account upgraded) and the enclave.
+- **A replay with real execution.** Model the mandate's per-token daily caps, the slippage the replayed hours would have paid, and a measured failure rate (OutLayer misses and rollbacks) in the crash replay, and publish the result next to today's idealised one.
 
 After it:
 

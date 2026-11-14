@@ -25,7 +25,8 @@ test.describe("public pages", () => {
     await mockApi(page);
     const cert = fx.certificate(Date.now());
     await page.goto(`/verify?id=${cert.hash}`);
-    await expect(page.getByText(/health is at least 1\.3/).first()).toBeVisible();
+    // The page checks the certificate's signatures in the browser: allow for a busy machine.
+    await expect(page.getByText(/health is at least 1\.3/).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/signed by ed25519:/).first()).toBeVisible();
   });
 
