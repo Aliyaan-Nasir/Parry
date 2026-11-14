@@ -24,11 +24,11 @@ fn mandate(s: &Stack, key: &SigningKey) -> Value {
         "max_actions_per_day": 10,
         "min_health_after_bps": 10_500,
         "max_slippage_bps": 300,
-        "hl": { "asset": "NEAR", "asset_index": 54, "max_size_e8": (50u128 * 100_000_000).to_string(), "band_bps": 200, "hedge_is_buy": false },
+        "hl": { "asset": "NEAR", "asset_index": 54, "max_size_e8": (50u128 * 100_000_000).to_string(), "daily_size_e8": (100u128 * 100_000_000).to_string(), "max_hedge_e8": (50u128 * 100_000_000).to_string(), "band_bps": 200, "hedge_is_buy": false },
         "evm": {
             "chain_id": 84_532, "pool": "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27",
             "asset": "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f", "address": "0x2222222222222222222222222222222222222222",
-            "max_amount": (100 * USDC).to_string(),
+            "max_amount": (100 * USDC).to_string(), "daily_amount": (100 * USDC).to_string(), "total_amount": (300 * USDC).to_string(),
         },
         "sealed": "c2VhbGVk",
         "expires_at": now_secs() + 7 * 86_400,
@@ -429,7 +429,12 @@ async fn hyperliquid_and_evm_orders_are_signed_inside_the_guards() -> Result<()>
     // The owner moves the account's own Hyperliquid Spot USDC into Perps margin: the transfer
     // digest is built on chain and signed for the same Hyperliquid path the orders use.
     let r = s
-        .owner(&owner, &acct, json!([{ "hl_margin_to_perp": { "amount": "48.5", "nonce": 1_800_000_000_000u64 } }]), 120)
+        .owner(
+            &owner,
+            &acct,
+            json!([{ "hl_margin_to_perp": { "amount": "48.5", "nonce": 1_800_000_000_000u64 } }]),
+            120,
+        )
         .await?;
     let moved = r.events("hyperliquid_margin_to_perp");
     assert_eq!(moved.len(), 1, "logs: {:#?}", r.logs());

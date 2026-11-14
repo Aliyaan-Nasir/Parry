@@ -119,6 +119,8 @@ fn roll_day(rt: &mut Runtime, now: u64) {
         rt.day = today;
         rt.moved_today.clear();
         rt.actions_today = 0;
+        rt.hl_size_today = 0;
+        rt.evm_repaid_today = 0;
     }
 }
 
@@ -229,17 +231,36 @@ impl Account {
                 require!(order.tif == "Ioc", "a guardian order must be immediate-or-cancel (Ioc)");
                 let size = parse_e8(&order.size).unwrap_or_else(|| env::panic_str("bad order size"));
                 require!(size <= g.max_size_e8.0, "order larger than the guard's size cap");
+                rt.hl_size_today += size;
+                require!(
+                    rt.hl_size_today <= g.daily_size_e8.0,
+                    "the guard's daily order size cap is reached"
+                );
                 match &e.action {
                     Action::HlReduce { .. } => {
                         require!(order.reduce_only, "a reduce order must be reduce-only")
                     }
-                    _ => require!(order.is_buy == g.hedge_is_buy, "a hedge must take the guard's side"),
+                    _ => {
+                        require!(order.is_buy == g.hedge_is_buy, "a hedge must take the guard's side");
+                        rt.hl_hedged += size;
+                        require!(rt.hl_hedged <= g.max_hedge_e8.0, "the guard's total hedge cap is reached");
+                    }
                 }
                 (None, Some(U128(size)))
             }
             Action::EvmApprove { amount, params } | Action::EvmRepay { amount, params } => {
                 let g = m.evm.as_ref().unwrap_or_else(|| env::panic_str("no EVM guard"));
                 require!(amount.0 > 0 && amount.0 <= g.max_amount.0, "amount outside the EVM guard");
+                // An approval moves nothing; a repay counts against the daily and total caps.
+                if let Action::EvmRepay { .. } = &e.action {
+                    rt.evm_repaid_today += amount.0;
+                    require!(
+                        rt.evm_repaid_today <= g.daily_amount.0,
+                        "the EVM guard's daily repay cap is reached"
+                    );
+                    rt.evm_repaid += amount.0;
+                    require!(rt.evm_repaid <= g.total_amount.0, "the EVM guard's total repay cap is reached");
+                }
                 assert_guardian_fees(params);
                 (None, Some(*amount))
             }

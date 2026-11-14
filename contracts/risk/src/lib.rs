@@ -3,7 +3,7 @@
 //! The on-chain record of what Parry's enclave sees and decides. The enclave (a program in a
 //! TEE whose ed25519 key never leaves it) signs each report; anyone may relay it with `submit`,
 //! and the board accepts it only if the signature verifies against the current enclave key, its
-//! run id is new for its kind, and its observation time is recent. Five kinds exist:
+//! run id is new for its kind, and its observation time is recent. Six kinds exist:
 //!
 //! - `risk_update`: the latest risk of every monitored position, and the marks behind it.
 //! - `vault_report`: the vault's risk score, hedge and proof-of-reserves summary. A report for
@@ -13,6 +13,9 @@
 //! - `sealing_key`: the enclave's X25519 key that sealed mandates are encrypted to.
 //! - `certificate`: the anchor of a health certificate (its hash, reader and expiry), so anyone
 //!   handed the certificate can check on chain that the enclave issued it.
+//! - `model_signers`: the review model's signing keys the enclave attested itself (Intel TDX
+//!   quote binding each key to the enclave's nonce, NVIDIA GPU evidence), with an expiry. The
+//!   guardian accepts a model review only from a key pinned here.
 //!
 //! Every history is bounded and evicts its oldest entries (storage included), so the board's
 //! storage cost has a ceiling: that includes the accounts with stored positions, of which the
@@ -75,6 +78,35 @@ enum StorageKey {
 
 /// Raw storage key holding the state layout version, written by `migrate`.
 const LAYOUT_KEY: &[u8] = b"layout";
+/// Raw storage keys of the model-signer pins (kept outside the state struct, so adding them
+/// needed no migration): the last accepted run id, and per model `ms:<model>` its latest pin.
+const MODEL_SIGNERS_RUN_KEY: &[u8] = b"run:model_signers";
+const MODEL_SIGNERS_PREFIX: &[u8] = b"ms:";
+
+fn model_signers_run_id() -> u64 {
+    env::storage_read(MODEL_SIGNERS_RUN_KEY)
+        .and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
+        .map(u64::from_le_bytes)
+        .unwrap_or(0)
+}
+
+fn model_signers_key(model: &str) -> Vec<u8> {
+    [MODEL_SIGNERS_PREFIX, model.as_bytes()].concat()
+}
+
+/// The review model's keys pinned by the enclave, as `model_signers(model)` returns them.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelSignersView {
+    pub model: String,
+    pub signers: Vec<ModelSigner>,
+    pub nonce: Hex32,
+    pub run_id: u64,
+    pub at: u64,
+    pub expires_at: u64,
+    /// The enclave key that attested them.
+    pub key_index: u32,
+}
 const LAYOUT_VERSION: u8 = 2;
 
 /// What the vault exposes to the board.
@@ -157,6 +189,7 @@ pub struct LastRunIds {
 impl LastRunIds {
     fn get(&self, kind: Kind) -> u64 {
         match kind {
+            Kind::ModelSigners => model_signers_run_id(),
             Kind::RiskUpdate => self.risk_update,
             Kind::VaultReport => self.vault_report,
             Kind::Decision => self.decision,
@@ -167,6 +200,10 @@ impl LastRunIds {
 
     fn set(&mut self, kind: Kind, run_id: u64) {
         let slot = match kind {
+            Kind::ModelSigners => {
+                env::storage_write(MODEL_SIGNERS_RUN_KEY, &run_id.to_le_bytes());
+                return;
+            }
             Kind::RiskUpdate => &mut self.risk_update,
             Kind::VaultReport => &mut self.vault_report,
             Kind::Decision => &mut self.decision,
@@ -249,6 +286,8 @@ pub enum Event {
     EnclaveChanged { index: u32, public_key: String, wasm_sha256: Hex32 },
     #[event_version("1.0.0")]
     CertificateAnchored { hash: Hex32, reader: String, expires_at: u64 },
+    #[event_version("1.0.0")]
+    ModelSignersPinned { run_id: u64, model: String, signers: u32, expires_at: u64 },
 }
 
 #[near(contract_state)]
@@ -455,6 +494,26 @@ impl Contract {
                     Some(SealingKey { public_key: r.public_key, run_id: r.run_id, at: r.at, key_index });
             }
             Report::Certificate(r) => self.apply_certificate(r, key_index),
+            Report::ModelSigners(r) => {
+                Event::ModelSignersPinned {
+                    run_id: r.run_id,
+                    model: r.model.clone(),
+                    signers: r.signers.len() as u32,
+                    expires_at: r.expires_at,
+                }
+                .emit();
+                let view = ModelSignersView {
+                    model: r.model,
+                    signers: r.signers,
+                    nonce: r.nonce,
+                    run_id: r.run_id,
+                    at: r.at,
+                    expires_at: r.expires_at,
+                    key_index,
+                };
+                let bytes = near_sdk::borsh::to_vec(&view).unwrap_or_else(|_| env::abort());
+                env::storage_write(&model_signers_key(&view.model), &bytes);
+            }
         }
     }
 
@@ -556,6 +615,12 @@ impl Contract {
 
     pub fn sealing_key(&self) -> Option<SealingKey> {
         self.sealing_key.clone()
+    }
+
+    /// The review model's keys the enclave last attested for `model` (expired pins included:
+    /// check `expires_at`).
+    pub fn model_signers(&self, model: String) -> Option<ModelSignersView> {
+        env::storage_read(&model_signers_key(&model)).and_then(|b| near_sdk::borsh::from_slice(&b).ok())
     }
 
     pub fn last_run_ids(&self) -> LastRunIds {

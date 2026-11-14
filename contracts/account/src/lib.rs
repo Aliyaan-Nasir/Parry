@@ -23,6 +23,7 @@
 
 pub mod close;
 mod guardian;
+mod migrate;
 pub mod passkey;
 #[cfg(test)]
 mod tests;
@@ -222,6 +223,14 @@ pub struct MandateView {
     /// Amount moved per token today (UTC).
     pub moved_today: Vec<(AccountId, U128)>,
     pub actions_today: u32,
+    /// Size of the guardian's Hyperliquid orders today (UTC), scaled by 1e8.
+    pub hl_size_today: U128,
+    /// Hedge size the guardian opened since the mandate was set, scaled by 1e8.
+    pub hl_hedged: U128,
+    /// What the guardian repaid on the EVM chain today (UTC).
+    pub evm_repaid_today: U128,
+    /// What the guardian repaid on the EVM chain since the mandate was set.
+    pub evm_repaid: U128,
 }
 
 #[near(serializers = [json])]
@@ -252,19 +261,35 @@ pub struct Runtime {
     pub pending: Option<Pending>,
     pub deleverages: u64,
     pub guardian_actions: u64,
+    /// Size of the guardian's Hyperliquid orders on `day`, scaled by 1e8.
+    pub hl_size_today: u128,
+    /// Hedge size the guardian opened since the mandate was set, scaled by 1e8.
+    pub hl_hedged: u128,
+    /// What the guardian repaid on the EVM chain on `day`, in the guard asset's units.
+    pub evm_repaid_today: u128,
+    /// What the guardian repaid on the EVM chain since the mandate was set.
+    pub evm_repaid: u128,
 }
 
-const RUNTIME_KEY: &[u8] = b"rt";
+/// Where `Runtime` lives. Code before the Hyperliquid and EVM daily caps kept a shorter layout
+/// under `RUNTIME_V1_KEY`; it is read once, converted (`migrate.rs`) and moved here on the next
+/// write.
+const RUNTIME_KEY: &[u8] = b"rt2";
+const RUNTIME_V1_KEY: &[u8] = b"rt";
 
 fn load_runtime() -> Runtime {
-    env::storage_read(RUNTIME_KEY)
-        .map(|b| near_sdk::borsh::from_slice(&b).unwrap_or_else(|_| env::panic_str("bad runtime state")))
-        .unwrap_or_default()
+    if let Some(b) = env::storage_read(RUNTIME_KEY) {
+        return near_sdk::borsh::from_slice(&b).unwrap_or_else(|_| env::panic_str("bad runtime state"));
+    }
+    env::storage_read(RUNTIME_V1_KEY).map(|b| migrate::runtime_from_v1(&b)).unwrap_or_default()
 }
 
 fn save_runtime(r: &Runtime) {
     let bytes = near_sdk::borsh::to_vec(r).unwrap_or_else(|_| env::panic_str("runtime encoding failed"));
     env::storage_write(RUNTIME_KEY, &bytes);
+    if env::storage_has_key(RUNTIME_V1_KEY) {
+        env::storage_remove(RUNTIME_V1_KEY);
+    }
 }
 
 #[near(event_json(standard = "parry-account"))]
@@ -434,6 +459,10 @@ impl Account {
                 rt.spent.clear();
                 rt.moved_today.clear();
                 rt.actions_today = 0;
+                rt.hl_size_today = 0;
+                rt.hl_hedged = 0;
+                rt.evm_repaid_today = 0;
+                rt.evm_repaid = 0;
                 save_runtime(&rt);
                 None
             }
@@ -627,6 +656,10 @@ impl Account {
             spent: pairs(&rt.spent),
             moved_today: if current { pairs(&rt.moved_today) } else { vec![] },
             actions_today: if current { rt.actions_today } else { 0 },
+            hl_size_today: U128(if current { rt.hl_size_today } else { 0 }),
+            hl_hedged: U128(rt.hl_hedged),
+            evm_repaid_today: U128(if current { rt.evm_repaid_today } else { 0 }),
+            evm_repaid: U128(rt.evm_repaid),
         })
     }
 

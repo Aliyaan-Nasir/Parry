@@ -1145,3 +1145,67 @@ fn a_fresh_board_needs_no_migration() {
     ctx("owner.testnet", T0, 0);
     Contract::migrate();
 }
+
+fn model_signers(run_id: u64, addresses: &[&str], expires_at: u64) -> Value {
+    json!({
+        "kind": "model_signers", "run_id": run_id, "at": T0, "model": "z-ai/glm-5.3-flash",
+        "signers": addresses.iter().map(|a| json!({ "address": a, "tcb_status": "UpToDate", "gpus": 8 })).collect::<Vec<_>>(),
+        "nonce": id_hex(0xa77e), "expires_at": expires_at,
+    })
+}
+
+const SIGNER_A: &str = "0x3b753b4406613c5e70ae640508632b600424fa0c";
+const SIGNER_B: &str = "0x00000000000000000000000000000000000000b2";
+
+#[test]
+fn model_signers_are_pinned_per_model_and_replaced_by_newer_runs() {
+    let mut c = deploy();
+    assert_eq!(c.model_signers("z-ai/glm-5.3-flash".into()), None);
+    submit(&mut c, &model_signers(1, &[SIGNER_A], T0 + 86_400));
+    let pin = c.model_signers("z-ai/glm-5.3-flash".into()).unwrap();
+    assert_eq!(pin.signers.len(), 1);
+    assert_eq!(pin.signers[0].address, SIGNER_A);
+    assert_eq!(pin.expires_at, T0 + 86_400);
+    assert_eq!(pin.key_index, 0);
+    assert_eq!(
+        last_event(),
+        json!({
+            "standard": "parry-risk",
+            "version": "1.0.0",
+            "event": "model_signers_pinned",
+            "data": { "run_id": 1, "model": "z-ai/glm-5.3-flash", "signers": 1, "expires_at": T0 + 86_400 },
+        })
+    );
+    submit(&mut c, &model_signers(2, &[SIGNER_A, SIGNER_B], T0 + 3_600));
+    assert_eq!(c.model_signers("z-ai/glm-5.3-flash".into()).unwrap().signers.len(), 2);
+    assert_eq!(c.model_signers("other/model".into()), None);
+}
+
+#[test]
+#[should_panic(expected = "is not greater than the last accepted model_signers run_id 2")]
+fn model_signer_runs_cannot_replay() {
+    let mut c = deploy();
+    submit(&mut c, &model_signers(2, &[SIGNER_A], T0 + 3_600));
+    submit(&mut c, &model_signers(2, &[SIGNER_B], T0 + 3_600));
+}
+
+#[test]
+#[should_panic(expected = "a pin lasts at most")]
+fn a_model_signer_pin_cannot_outlast_two_days() {
+    let mut c = deploy();
+    submit(&mut c, &model_signers(1, &[SIGNER_A], T0 + 3 * 86_400));
+}
+
+#[test]
+#[should_panic(expected = "a model signer must be a lowercase 0x address")]
+fn a_model_signer_must_be_an_address() {
+    let mut c = deploy();
+    submit(&mut c, &model_signers(1, &["0x3B753B4406613C5E70AE640508632B600424FA0C"], T0 + 3_600));
+}
+
+#[test]
+#[should_panic(expected = "signature does not verify against the enclave key")]
+fn only_the_enclave_can_pin_model_signers() {
+    let mut c = deploy();
+    relay(&mut c, &Enclave::new(2), &model_signers(1, &[SIGNER_A], T0 + 3_600), T0);
+}

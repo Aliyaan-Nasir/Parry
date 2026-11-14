@@ -29,6 +29,10 @@ pub const MAX_BPS: u32 = 10_000;
 pub const MAX_REASON_CHARS: usize = 280;
 /// Longest a health certificate may stay valid (30 days).
 pub const MAX_CERTIFICATE_TTL_SECS: u64 = 30 * 86_400;
+/// Most review-model keys one attestation pins (one per serving node).
+pub const MAX_MODEL_SIGNERS: usize = 16;
+/// Longest a pinned review-model key stays trusted without a new attestation (2 days).
+pub const MAX_PIN_SECS: u64 = 2 * 86_400;
 
 /// The digest the enclave signs for `report_json`.
 pub fn report_digest(report_json: &str) -> [u8; 32] {
@@ -96,6 +100,7 @@ pub enum Report {
     Decision(Decision),
     SealingKey(SealingKeyReport),
     Certificate(CertificateReport),
+    ModelSigners(ModelSignersReport),
 }
 
 /// The report kinds; each has its own strictly increasing run id.
@@ -108,6 +113,7 @@ pub enum Kind {
     Decision,
     SealingKey,
     Certificate,
+    ModelSigners,
 }
 
 impl fmt::Display for Kind {
@@ -118,6 +124,7 @@ impl fmt::Display for Kind {
             Kind::Decision => "decision",
             Kind::SealingKey => "sealing_key",
             Kind::Certificate => "certificate",
+            Kind::ModelSigners => "model_signers",
         })
     }
 }
@@ -131,6 +138,7 @@ impl Report {
             Report::Decision(r) => (Kind::Decision, r.run_id, r.at),
             Report::SealingKey(r) => (Kind::SealingKey, r.run_id, r.at),
             Report::Certificate(r) => (Kind::Certificate, r.run_id, r.at),
+            Report::ModelSigners(r) => (Kind::ModelSigners, r.run_id, r.at),
         }
     }
 
@@ -142,6 +150,7 @@ impl Report {
             Report::Decision(r) => r.validate(),
             Report::SealingKey(_) => {}
             Report::Certificate(r) => r.validate(),
+            Report::ModelSigners(r) => r.validate(),
         }
     }
 }
@@ -428,4 +437,60 @@ pub struct SealingKeyReport {
     pub run_id: u64,
     pub at: u64,
     pub public_key: Hex32,
+}
+
+// ----- model signers ----------------------------------------------------------------------------
+
+/// One review-model key the enclave attested: the node's signing address (EIP-191 signer of its
+/// reviews), the Intel TDX TCB status of its quote, and how many NVIDIA GPUs passed.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelSigner {
+    pub address: String,
+    pub tcb_status: String,
+    pub gpus: u32,
+}
+
+/// The review model's keys the enclave attested itself (Intel TDX quote binding each address to
+/// the enclave's nonce, NVIDIA GPU evidence for the same nonce), valid until `expires_at`. The
+/// guardian accepts a review only from a key pinned here.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelSignersReport {
+    pub run_id: u64,
+    pub at: u64,
+    pub model: String,
+    pub signers: Vec<ModelSigner>,
+    pub nonce: Hex32,
+    pub expires_at: u64,
+}
+
+/// `0x` and 40 lowercase hex characters.
+pub fn is_evm_address(s: &str) -> bool {
+    s.len() == 42 && s.starts_with("0x") && s[2..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+impl ModelSignersReport {
+    fn validate(&self) {
+        assert_label("model", &self.model, MAX_LABEL_LEN);
+        require!(
+            !self.signers.is_empty() && self.signers.len() <= MAX_MODEL_SIGNERS,
+            format!("1 to {MAX_MODEL_SIGNERS} model signers")
+        );
+        for (i, signer) in self.signers.iter().enumerate() {
+            require!(is_evm_address(&signer.address), "a model signer must be a lowercase 0x address");
+            require!(
+                !self.signers[..i].iter().any(|o| o.address == signer.address),
+                "duplicate model signer"
+            );
+            assert_label("tcb_status", &signer.tcb_status, 64);
+            require!(signer.gpus >= 1 && signer.gpus <= 64, "a model signer needs 1 to 64 attested GPUs");
+        }
+        require!(
+            self.expires_at > self.at && self.expires_at <= self.at + MAX_PIN_SECS,
+            format!("a pin lasts at most {MAX_PIN_SECS} s")
+        );
+    }
 }

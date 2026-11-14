@@ -46,6 +46,11 @@ pub struct HlGuard {
     pub asset_index: u32,
     /// Largest order size, scaled by 1e8.
     pub max_size_e8: U128,
+    /// Most the guardian's orders may add up to per UTC day (reduce and hedge), scaled by 1e8.
+    pub daily_size_e8: U128,
+    /// Most hedge size the guardian may open over the mandate's life, scaled by 1e8 (0 when
+    /// the hedge power is not granted).
+    pub max_hedge_e8: U128,
     /// Largest distance of the order price from the mark, in bps (at most 300).
     pub band_bps: u32,
     /// Side a hedge may take: false = sell (a short against a long collateral position).
@@ -65,6 +70,11 @@ pub struct EvmGuard {
     pub address: String,
     /// Largest repay (or approval) per action, in the asset's units.
     pub max_amount: U128,
+    /// Most the guardian may repay per UTC day, in the asset's units (approvals move nothing
+    /// and do not count).
+    pub daily_amount: U128,
+    /// Most the guardian may repay over the mandate's life, in the asset's units.
+    pub total_amount: U128,
 }
 
 /// What the owner allows.
@@ -114,6 +124,14 @@ impl Mandate {
         if let Some(hl) = &self.hl {
             require!(hl.band_bps > 0 && hl.band_bps <= MAX_BAND_BPS, "price band is 1 to 300 bps");
             require!(hl.max_size_e8.0 > 0, "Hyperliquid size cap must be positive");
+            require!(
+                hl.daily_size_e8.0 >= hl.max_size_e8.0,
+                "the Hyperliquid daily size cap must be at least the per-order cap"
+            );
+            require!(
+                !self.powers.contains(&Power::HlHedge) || hl.max_hedge_e8.0 > 0,
+                "the hedge power needs a positive total hedge cap"
+            );
         }
         let hl_power = self.powers.iter().any(|p| matches!(p, Power::HlReduce | Power::HlHedge));
         require!(!hl_power || self.hl.is_some(), "Hyperliquid powers need a Hyperliquid guard");
@@ -122,6 +140,14 @@ impl Mandate {
                 require!(crate::evm::parse_address(a).is_some(), "bad EVM address in the guard");
             }
             require!(evm.max_amount.0 > 0, "EVM repay cap must be positive");
+            require!(
+                evm.daily_amount.0 >= evm.max_amount.0,
+                "the EVM daily repay cap must be at least the per-action cap"
+            );
+            require!(
+                evm.total_amount.0 >= evm.daily_amount.0,
+                "the EVM total repay cap must be at least the daily cap"
+            );
         }
         require!(
             !self.powers.contains(&Power::EvmRepay) || self.evm.is_some(),

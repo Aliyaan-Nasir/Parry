@@ -181,6 +181,8 @@ fn mandate(g: &Guardian) -> Mandate {
             asset: "NEAR".into(),
             asset_index: 54,
             max_size_e8: U128(100 * 100_000_000),
+            daily_size_e8: U128(150 * 100_000_000),
+            max_hedge_e8: U128(120 * 100_000_000),
             band_bps: 200,
             hedge_is_buy: false,
         }),
@@ -190,6 +192,8 @@ fn mandate(g: &Guardian) -> Mandate {
             asset: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f".into(),
             address: "0x1111111111111111111111111111111111111111".into(),
             max_amount: U128(50 * USDC),
+            daily_amount: U128(60 * USDC),
+            total_amount: U128(100 * USDC),
         }),
         sealed: Some(Base64VecU8(vec![1, 2, 3])),
         expires_at: NOW + 7 * 86_400,
@@ -200,6 +204,7 @@ fn near_owned() -> Account {
     set("factory.testnet", 0, NOW);
     // The mocked chain keeps storage across contracts in one test: start every account clean.
     near_sdk::env::storage_remove(b"rt");
+    near_sdk::env::storage_remove(b"rt2");
     Account::new(Owner::Near { account_id: id("alice.testnet") }, "testnet".into(), protocol())
 }
 
@@ -1094,6 +1099,7 @@ fn audit_deleverage_prices_a_staked_token_with_its_rate() {
     let g = Guardian::new(1);
     set("factory.testnet", 0, NOW);
     near_sdk::env::storage_remove(b"rt");
+    near_sdk::env::storage_remove(b"rt2");
     let mut a = Account::new(
         Owner::Near { account_id: id("alice.testnet") },
         "testnet".into(),
@@ -1694,6 +1700,7 @@ fn unwind_target_and_limits() {
     let pk = Passkey::new();
     set("factory.testnet", 0, NOW);
     near_sdk::env::storage_remove(b"rt");
+    near_sdk::env::storage_remove(b"rt2");
     let mut a = Account::new(Owner::Passkey { key: pk.public() }, "testnet".into(), protocol());
     let request = |nonce: u64, actions: Vec<OwnerAction>| {
         serde_json::to_string(&OwnerRequest {
@@ -1730,4 +1737,164 @@ fn unwind_target_and_limits() {
         a.owner_call(unwind(vec![id("wrap.testnet")]));
     });
     assert!(msg.contains(&format!("attach at least {need} TGas")), "{msg}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Daily and total caps for Hyperliquid and EVM guardian actions
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn audit_hyperliquid_orders_count_against_daily_and_total_caps() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    // 100 NEAR hedge (per-order cap), then a 60 NEAR reduce would take the day to 160 > 150.
+    run_guardian(
+        &mut a,
+        &g,
+        1,
+        GuardianAction::HlHedge { order: order(false, false, "3.60", "100"), nonce: 9 },
+    );
+    let e = envelope(2, GuardianAction::HlReduce { order: order(true, true, "3.60", "60"), nonce: 10 });
+    assert!(refused(&mut a, &e, g.sign(&e), NOW + 5).contains("daily order size cap"));
+    run_guardian(
+        &mut a,
+        &g,
+        2,
+        GuardianAction::HlReduce { order: order(true, true, "3.60", "50"), nonce: 10 },
+    );
+    let v = a.mandate().unwrap();
+    assert_eq!(v.hl_size_today, U128(150 * 100_000_000));
+    assert_eq!(v.hl_hedged, U128(100 * 100_000_000));
+    // The next day the daily cap is fresh, but only 20 NEAR of the 120 NEAR hedge cap is left.
+    let day = NOW + 86_400;
+    let e = envelope(3, GuardianAction::HlHedge { order: order(false, false, "3.60", "30"), nonce: 11 });
+    set("relayer.parry.testnet", 0, day);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut ee: serde_json::Value = serde_json::from_str(&e).unwrap();
+        ee["issued_at"] = json!(day);
+        let e = ee.to_string();
+        a.guardian_execute(e.clone(), g.sign(&e));
+    }));
+    let msg = r.err().and_then(|e| e.downcast_ref::<String>().cloned()).unwrap_or_default();
+    assert!(msg.contains("total hedge cap"), "{msg}");
+}
+
+#[test]
+fn audit_evm_repays_count_against_daily_and_total_caps() {
+    let g = Guardian::new(1);
+    let mut a = with_mandate(&g);
+    let params = EvmTxParams {
+        nonce: 3,
+        max_priority_fee_per_gas: "1000000000".into(),
+        max_fee_per_gas: "30000000000".into(),
+        gas_limit: 300_000,
+    };
+    run_guardian(
+        &mut a,
+        &g,
+        1,
+        GuardianAction::EvmApprove { params: params.clone(), amount: U128(50 * USDC) },
+    );
+    run_guardian(&mut a, &g, 2, GuardianAction::EvmRepay { params: params.clone(), amount: U128(50 * USDC) });
+    let e = envelope(3, GuardianAction::EvmRepay { params: params.clone(), amount: U128(20 * USDC) });
+    assert!(refused(&mut a, &e, g.sign(&e), NOW + 5).contains("daily repay cap"));
+    run_guardian(&mut a, &g, 3, GuardianAction::EvmRepay { params: params.clone(), amount: U128(10 * USDC) });
+    let v = a.mandate().unwrap();
+    assert_eq!(v.evm_repaid_today, U128(60 * USDC));
+    assert_eq!(v.evm_repaid, U128(60 * USDC));
+    // Day two: 50 more would make 110 > the 100 USDC total.
+    let day = NOW + 86_400;
+    let mut ee: serde_json::Value =
+        serde_json::from_str(&envelope(4, GuardianAction::EvmRepay { params, amount: U128(50 * USDC) }))
+            .unwrap();
+    ee["issued_at"] = json!(day);
+    let e = ee.to_string();
+    assert!(refused(&mut a, &e, g.sign(&e), day).contains("total repay cap"));
+}
+
+#[test]
+fn mandate_caps_must_be_consistent() {
+    let g = Guardian::new(1);
+    let mut a = near_owned();
+    let try_set = |a: &mut Account, m: Mandate| -> String {
+        set("alice.testnet", 1, NOW);
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            a.owner_call(vec![OwnerAction::SetMandate { mandate: m }]);
+        }));
+        r.err().and_then(|e| e.downcast_ref::<String>().cloned()).unwrap_or_else(|| "accepted".into())
+    };
+    let mut m = mandate(&g);
+    m.hl.as_mut().unwrap().daily_size_e8 = U128(99 * 100_000_000);
+    assert!(try_set(&mut a, m).contains("daily size cap must be at least"));
+    let mut m = mandate(&g);
+    m.hl.as_mut().unwrap().max_hedge_e8 = U128(0);
+    assert!(try_set(&mut a, m).contains("hedge power needs a positive total hedge cap"));
+    let mut m = mandate(&g);
+    m.evm.as_mut().unwrap().daily_amount = U128(49 * USDC);
+    assert!(try_set(&mut a, m).contains("daily repay cap must be at least"));
+    let mut m = mandate(&g);
+    m.evm.as_mut().unwrap().total_amount = U128(59 * USDC);
+    assert!(try_set(&mut a, m).contains("total repay cap must be at least"));
+    assert_eq!(try_set(&mut a, mandate(&g)), "accepted");
+}
+
+#[test]
+fn audit_runtime_from_before_the_caps_is_migrated_on_read() {
+    use crate::migrate::{EvmGuardV1, HlGuardV1, MandateV1, RuntimeV1};
+    let g = Guardian::new(1);
+    let a = near_owned();
+    let m = mandate(&g);
+    let old = RuntimeV1 {
+        owner_nonce: 7,
+        bootstrapped: true,
+        mandate: Some(MandateV1 {
+            guardian_key: m.guardian_key.clone(),
+            powers: m.powers.clone(),
+            limits: m.limits.clone(),
+            max_actions_per_day: m.max_actions_per_day,
+            min_health_after_bps: m.min_health_after_bps,
+            max_slippage_bps: m.max_slippage_bps,
+            hl: Some(HlGuardV1 {
+                asset: "NEAR".into(),
+                asset_index: 54,
+                max_size_e8: U128(100 * 100_000_000),
+                band_bps: 200,
+                hedge_is_buy: false,
+            }),
+            evm: Some(EvmGuardV1 {
+                chain_id: 84_532,
+                pool: "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27".into(),
+                asset: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f".into(),
+                address: "0x1111111111111111111111111111111111111111".into(),
+                max_amount: U128(50 * USDC),
+            }),
+            sealed: m.sealed.clone(),
+            expires_at: m.expires_at,
+        }),
+        mandate_set_at: NOW - 10,
+        guardian_nonce: 4,
+        paused_until: 0,
+        spent: vec![(id("usdc.parry.testnet"), 5 * USDC)],
+        day: NOW / 86_400,
+        moved_today: vec![(id("usdc.parry.testnet"), 5 * USDC)],
+        actions_today: 1,
+        pending: None,
+        deleverages: 2,
+        guardian_actions: 3,
+    };
+    near_sdk::env::storage_write(b"rt", &near_sdk::borsh::to_vec(&old).unwrap());
+    let v = a.mandate().unwrap();
+    let hl = v.mandate.hl.as_ref().unwrap();
+    assert_eq!((hl.daily_size_e8, hl.max_hedge_e8), (U128(100 * 100_000_000), U128(100 * 100_000_000)));
+    let evm = v.mandate.evm.as_ref().unwrap();
+    assert_eq!((evm.daily_amount, evm.total_amount), (U128(50 * USDC), U128(150 * USDC)));
+    assert_eq!(v.spent, vec![(id("usdc.parry.testnet"), U128(5 * USDC))]);
+    assert_eq!(a.nonces(), (7, 4));
+    // The next write moves it under the new key and drops the old one.
+    let mut a = a;
+    run_guardian(&mut a, &g, 5, repay(USDC));
+    assert!(!near_sdk::env::storage_has_key(b"rt"));
+    assert!(near_sdk::env::storage_has_key(b"rt2"));
+    assert_eq!(a.nonces(), (7, 5));
+    assert_eq!(a.mandate().unwrap().actions_today, 2);
 }
