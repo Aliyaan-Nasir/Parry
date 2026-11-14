@@ -16,6 +16,10 @@ import { findModelAttestationsForSignature, InferenceClient } from "@nearai/infe
 import { enclaveKeyAt, envelopeIssuedAt } from "@parryguard/sdk";
 import { contract } from "@parryguard/services/lib/config";
 import { eventsOf, rpc, view } from "@parryguard/services/lib/near";
+import { network } from "@parryguard/services/lib/config";
+
+/** Archival nodes, for transactions the regular nodes have already dropped. */
+const ARCHIVAL_RPC_URLS = (process.env.ARCHIVAL_RPC_URLS ?? (network === "mainnet" ? "https://archival-rpc.mainnet.fastnear.com" : "https://archival-rpc.testnet.fastnear.com")).split(",");
 import type { FinalExecutionOutcome } from "near-kit";
 import type { DecisionRow } from "./views";
 
@@ -152,7 +156,9 @@ export async function verifyDecisionRecord(d: DecisionRow) {
   }
   if (d.txs.action) {
     const sender = process.env.GUARDIAN_ACCOUNT_ID ?? "";
-    const o = await rpc<FinalExecutionOutcome>("tx", { tx_hash: d.txs.action, sender_account_id: sender, wait_until: "NONE" }).catch(() => null);
+    // Regular nodes drop transactions after a few days: an older decision is found on an archival node.
+    const lookup = (urls?: string[]) => rpc<FinalExecutionOutcome>("tx", { tx_hash: d.txs.action, sender_account_id: sender, wait_until: "NONE" }, urls).catch(() => null);
+    const o = (await lookup()) ?? (await lookup(ARCHIVAL_RPC_URLS));
     const acted = o ? eventsOf(o).find((e) => e.event === "guardian_acted") : undefined;
     const onChain = (acted?.data as { review_hash?: string } | undefined)?.review_hash;
     checks.push({ name: "Review hash on chain", ok: onChain === hash, detail: onChain ? `the account emitted ${onChain} in ${d.txs.action}` : "the action transaction was not found" });

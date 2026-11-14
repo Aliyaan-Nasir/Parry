@@ -28,96 +28,96 @@
     "2": {
       "title": "A protected account without gas",
       "ok": true,
-      "at": "2026-11-13T15:22:50.765Z",
+      "at": "2026-11-14T20:02:04.270Z",
       "steps": [
         {
-          "step": "relayer creates 0u3n67bxyeaa6jd6rdkjynfdxwjsq8s02gb1p23xws38cs9cb7my90 for repay295274.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/FYxvwqXmG7E84ifKZB4hQFNh7LEAuUfenaE7nrkjwyzL"
+          "step": "relayer creates 0u1j5mjsbq18kg2rhfpaa0f6ht5dmwgaz9pmhnd1nmj1wr79nggmrg for repay455672.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/EEdKdHZD6FE1ihwhFgfBUYnbx741tKgzbsQn3p7Sowv1"
         },
         {
-          "step": "relayer creates 0uc67wh43zvfezkfg2ymtzdwmg3q57kspx7r4de2pnw17dwg2n45yg for adder324631.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/3W8cwZQwrHi7TCT8HPgxEAA2N2KvJ49PqSVxTBVPhqFe"
+          "step": "relayer creates 0uca9bvreqgg75a0a1b1j09b5x6xm5pnm4vxy35p8k3f0y77w5wgp0 for adder481754.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/6qE4XRzu2nsW4ER8mM5sf6S7t7SCQ7b23ij8HXHwybiD"
         },
         {
-          "step": "relayer creates 0ucpage34baep3rtbj4xfxark26bzh4fg4e9eh9r05peq31fpysh20 for delev347126.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/7GvLod2WmHSbZpRMkqvsXgeWJZvHWvYTzAeEeoFCLbS3"
+          "step": "relayer creates 0uybmhmz40kgh23yshxc5yjs02qsdps8nk9402ppw7bgyb720p5zg0 for delev503009.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/E8bFVr2YiA4RQnXwQnWnMVhPYAb85uAtXGGqriBfGhWs"
         }
       ]
     },
     "3": {
       "title": "A leveraged Rhea position",
       "ok": true,
-      "at": "2026-11-13T15:22:50.766Z",
+      "at": "2026-11-14T20:02:04.274Z",
       "steps": [
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/AVZybr9fiYLxZukzmQA3AoZXMMKEwnzpi5aLXLcWy8kv"
+          "tx": "https://testnet.nearblocks.io/txns/2Ts5619bFb1KGHhaSxbYvQSuuaeEpxA1kcyfZyfiNu32"
         },
         {
           "step": "wrap and supply 3 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/HesapwfgHxDRXfQZGq6JwMRw9q3YZnRTFqfFp58e6tVw"
+          "tx": "https://testnet.nearblocks.io/txns/8tmiM8LxDdGXKEd1t11GT97U8jz5G5YkCBgBKXi2fyKp"
         },
         {
-          "step": "borrow 5.74 USDC (health about 1.300 at $3.497)",
-          "tx": "https://testnet.nearblocks.io/txns/DPyQ9RUwNUBdm7V6y58J2hBmGZyYcgWFyyEKf6mDp1Ty"
+          "step": "borrow 5.08 USDC (health about 1.300 at $3.094)",
+          "tx": "https://testnet.nearblocks.io/txns/As6WkuGASjQvcacybQFV7shRJ29xvbCNUS2CY4fPqrVR"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/Bh7QWCiCBTV4LsKYVmntT4yaFMrNu5sEzfVucp86rp6F"
+          "tx": "https://testnet.nearblocks.io/txns/3Ei8CLhU2ypi4V7KpSp9vftMEKJBpJafbdd37wNSLDNE"
         },
         {
           "step": "wrap and supply 3 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/FTdFHyuSWvLKgDswYszdXq6X8vJbkMCz92L2uc4RTJFY"
+          "tx": "https://testnet.nearblocks.io/txns/6nRM5TabSms1TfbtNwxm2gGjYb7BpyZ4dmgnUYQdW1N9"
         },
         {
-          "step": "borrow 5.74 USDC (health about 1.300 at $3.497)",
-          "tx": "https://testnet.nearblocks.io/txns/3vaNviabsto8iYbwXWrXaN42zBWuoyRnFJVyaCHTULFD"
+          "step": "borrow 5.09 USDC (health about 1.300 at $3.097)",
+          "tx": "https://testnet.nearblocks.io/txns/DSJT5sLTpMiKQNDrEvtjkBF8P2d1G2pxRNWAZ4L4qeRb"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/2AhfV3k4GJZgHea3vwhUF3FgTnC1bMHKvom6y4nASxwh"
+          "tx": "https://testnet.nearblocks.io/txns/28VLoZUvsuvWep1iBKyfqChEBgaYvY4EMjH2WpNMpFQc"
         },
         {
           "step": "wrap and supply 3 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/6ZoJCXcnYZdYzbSNUopPVkVXAwEj2o587EzaqK3VSHE4"
+          "tx": "https://testnet.nearblocks.io/txns/8MP5atcRumBicg1HgMx6Rn2atCQXFSgivLL8tgW6ArN7"
         },
         {
-          "step": "borrow 5.74 USDC (health about 1.300 at $3.497)",
-          "tx": "https://testnet.nearblocks.io/txns/CrdVLdNHzHzwPXYuvAZK2PiQqWyVyB3csAgGP2tFCDhi"
+          "step": "borrow 5.09 USDC (health about 1.300 at $3.097)",
+          "tx": "https://testnet.nearblocks.io/txns/HyXevXjoYkeTnqa7hyEPKPaUQqwbr4BrYdWxBhA6r9BW"
         }
       ]
     },
     "4": {
       "title": "A mandate with a sealed policy",
       "ok": true,
-      "at": "2026-11-13T15:22:50.766Z",
+      "at": "2026-11-14T20:02:04.275Z",
       "steps": [
         {
           "step": "mandate: repay, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/Fj6DamhcS29NDCuxRsJ6cYnCFBmpsThnhgCD9R8Ggp7y"
+          "tx": "https://testnet.nearblocks.io/txns/EhZrfn6NVfoioCEKdRNdvn5eePEba5yS1yADBiUxGDth"
         },
         {
           "step": "mandate: add_collateral, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/6mR6URc6pqZSatuXVdvjGypxUjMu9BfGcYSsgk41Y1ti"
+          "tx": "https://testnet.nearblocks.io/txns/DZCn5VLPNuWYVTPMA9aeSqvrwn3rM8jhqPvn1f8kvbZo"
         },
         {
           "step": "mandate: deleverage, policy sealed to the enclave",
-          "tx": "https://testnet.nearblocks.io/txns/5SAqVSWGN5NdtuU13ZGy2SYGYvx64hD2esCMDGHajfh5"
+          "tx": "https://testnet.nearblocks.io/txns/G6ryHFnuB3eT7YBoDicmT3jd6Z2JAjL69WZ18bYVKBDP"
         }
       ]
     },
     "5": {
       "title": "The market shock moves the price",
       "ok": true,
-      "at": "2026-11-13T15:23:14.294Z",
+      "at": "2026-11-14T20:02:27.025Z",
       "steps": [
         {
           "step": "NEAR -20% on the testnet oracle for 30 minutes",
-          "tx": "https://testnet.nearblocks.io/txns/51LMMmEiAbdMfNLoFYTYVTufYjzFGSaFLnchdePst9bw",
+          "tx": "https://testnet.nearblocks.io/txns/DxgvcwDTZuVUCaPnLkJ6jPkFkddhcxRr85W2XLWPaETN",
           "healthBefore": {
-            "repay": 1.3016020890026132,
-            "add": 1.3016020890026132,
-            "delev": 1.3016020890026132
+            "repay": 1.3034843592519685,
+            "add": 1.3009234862475443,
+            "delev": 1.3009234862475443
           }
         }
       ]
@@ -125,16 +125,16 @@
     "6": {
       "title": "Alert, AI review, rescue and recovery",
       "ok": true,
-      "at": "2026-11-13T15:39:50.357Z",
+      "at": "2026-11-14T20:09:52.451Z",
       "steps": [
         {
-          "step": "repay: Repay 1.51 USDC from the reserve: health 1.032 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "repay: Repay 1.30 USDC from the reserve.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: repay",
-            "Rhea wNEAR/USDC: health 1.03",
-            "Rhea wNEAR/USDC: risk 66 (danger)"
+            "Rhea wNEAR/USDC: health 1.04",
+            "Rhea wNEAR/USDC: risk 73 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -142,20 +142,23 @@
             "ok Model TEE signature",
             "ok Model key attested in TEE hardware",
             "ok Enclave signature on the envelope",
+            "ok Enclave signature on the decision record",
+            "ok Decision record matches",
+            "ok Reasoning hash",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.4020271125410455,
-          "action": "https://testnet.nearblocks.io/txns/Hnwb9p1y8V5Ajxh2kEgWeNdz1qhb5i9BYLcwUD7VqHPS",
-          "record": "https://testnet.nearblocks.io/txns/9mPiVr1sbRnKYXuVhPUz8JmjxTAc4Ap3bjYb4kme41bZ"
+          "healthAfter": 1.3964133319286767,
+          "action": "https://testnet.nearblocks.io/txns/8zqCZ7Uz2GGqVvypTLHGdsR1UjmeCLGw2ZgVT2epCF73",
+          "record": "https://testnet.nearblocks.io/txns/E3YFabv7yeD6tmEEYk35G4rRqNbpULSK6L41QjtWpE6o"
         },
         {
-          "step": "add: Add 1.0000 wNEAR collateral from the reserve: health 1.036 to 1.382 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "add: Add 1.0000 wNEAR collateral from the reserve.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: add collateral",
-            "Rhea wNEAR/USDC: health 1.03",
-            "Rhea wNEAR/USDC: risk 68 (danger)"
+            "Rhea wNEAR/USDC: health 1.04",
+            "Rhea wNEAR/USDC: risk 74 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -163,20 +166,23 @@
             "ok Model TEE signature",
             "ok Model key attested in TEE hardware",
             "ok Enclave signature on the envelope",
+            "ok Enclave signature on the decision record",
+            "ok Decision record matches",
+            "ok Reasoning hash",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.376377411149826,
-          "action": "https://testnet.nearblocks.io/txns/8R1RxbGMXftdjRgZCZXN8UyEiqVawP62bXPY8FFWgkLS",
-          "record": "https://testnet.nearblocks.io/txns/1323X9ATEdoBW3pxQvV2DL7aenuVztR1497TKHhxcrpi"
+          "healthAfter": 1.3836676538310413,
+          "action": "https://testnet.nearblocks.io/txns/J4Dq9ih1dVP5kMP6gRqMnqcW5AUEqpPT3KrRLw4Xcdju",
+          "record": "https://testnet.nearblocks.io/txns/FgfpxBpR39dRBAYW28RqGqUStfvRqBrXvr5jfxLu5LCP"
         },
         {
-          "step": "delev: Sell 0.0761 NEAR of collateral for at least 0.21 USDC and repay: health 1.036 to at least 1.048 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40.",
+          "step": "delev: Sell 0.0749 NEAR of collateral for at least 0.18 USDC and repay.",
           "outcome": "executed",
           "review": "approve",
           "alerts": [
             "Guardian executed: deleverage",
-            "Rhea wNEAR/USDC: health 1.01",
-            "Rhea wNEAR/USDC: risk 79 (critical)"
+            "Rhea wNEAR/USDC: health 1.04",
+            "Rhea wNEAR/USDC: risk 74 (danger)"
           ],
           "verify": [
             "ok Review hash",
@@ -184,43 +190,46 @@
             "ok Model TEE signature",
             "ok Model key attested in TEE hardware",
             "ok Enclave signature on the envelope",
+            "ok Enclave signature on the decision record",
+            "ok Decision record matches",
+            "ok Reasoning hash",
             "ok Review hash on chain"
           ],
-          "healthAfter": 1.084454085273395,
-          "action": "https://testnet.nearblocks.io/txns/54XMKdDUu6dV7ErFg8Pv4pEdS98BfALbBGq9N3LtNGtZ",
-          "record": "https://testnet.nearblocks.io/txns/ENDve5smo3WCisdyauS2NLZRxVhk7Fip2KE4CiyabVSd"
+          "healthAfter": 1.099504410004826,
+          "action": "https://testnet.nearblocks.io/txns/EUP5BpXzbh3Vg4TEhMUR4L1SdbwuSaUDWvemXhzhXP8F",
+          "record": "https://testnet.nearblocks.io/txns/5GFELCyFrvjhjyVbgqqt2CHNucUeQKGEqqBGA87qQ2HT"
         }
       ]
     },
     "7": {
       "title": "Mandate enforcement: replays, forged envelopes, withdrawals and expiry are refused",
       "ok": true,
-      "at": "2026-11-13T13:51:38.427Z",
+      "at": "2026-11-14T19:08:07.002Z",
       "steps": [
         {
           "step": "an envelope signed by another key",
           "refused": true,
           "reason": "Smart contract panicked: guardian signature does not verify",
-          "tx": "https://testnet.nearblocks.io/txns/7ktSsjYp9p1wAG1dh1s3qurLcJFwqjFL9gdzZkSfub8u"
+          "tx": "https://testnet.nearblocks.io/txns/HxSZbNx88z8QrJiYEYugyRsAXo5z1eHKxc4PLeRsuL42"
         },
         {
           "step": "a withdrawal by someone who is not the owner",
           "refused": true,
           "reason": "Smart contract panicked: owner only",
-          "tx": "https://testnet.nearblocks.io/txns/CRDvQLbpcmiPcw821X6J4LECCXkq4zJfp1E1TgsCZFpP"
+          "tx": "https://testnet.nearblocks.io/txns/G9rgVGZm84DNaGeBGs82tLPgBtiAqtZrT4in4sF5tkCm"
         },
         {
           "step": "a forged guardian envelope asking to withdraw (with the enclave's signature it would not parse either: no guardian action withdraws)",
           "refused": true,
           "reason": "Smart contract panicked: guardian signature does not verify",
-          "tx": "https://testnet.nearblocks.io/txns/GpKErYejoLXUi2oFDwJLwQ7nYcUTn61KqEf7q2NKxEmq"
+          "tx": "https://testnet.nearblocks.io/txns/C3Mb7WvyeJBZ1GoBaczn3JFQJfKpDM1JujS9voRJt7ya"
         },
         {
           "step": "a mandate set to expire in 75 s reads expired after 90 s",
           "expired": true,
           "tx": {
             "step": "mandate: repay, policy sealed to the enclave",
-            "tx": "https://testnet.nearblocks.io/txns/AyctDHPzDQTK9nLgQ443GGa8wG8y6b4d9KCwNcW26h3W"
+            "tx": "https://testnet.nearblocks.io/txns/371td8rKPu9hDrm2avhk95APTGeDhC4MMjD1gzgCp4mq"
           }
         }
       ]
@@ -228,14 +237,10 @@
     "8": {
       "title": "A Hyperliquid order signed by the protected account through Chain Signatures",
       "ok": true,
-      "at": "2026-11-13T17:50:42.699Z",
+      "at": "2026-11-14T19:09:06.122Z",
       "steps": [
         {
-          "step": "the owner moves the account to the published code 2gpDT76rPg2dtQ33GsXzQL5KU9Qfyz7hrjbFbF4Ajcht (upgrade)",
-          "tx": "https://testnet.nearblocks.io/txns/7nRZmQ4VBwQSoAoRTsAETX15rnUNRhjH4U9K6zijR4Ez"
-        },
-        {
-          "step": "0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg's Hyperliquid address 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 holds 0 USDC in Perps and 50 in Spot"
+          "step": "0u1gmdtx8f9rsp5fjsa0zkexmvzrsagqsqmjpavt7gnqdtzdx04awg's Hyperliquid address 0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0 holds 49.961719 USDC in Perps and 0 in Spot"
         },
         {
           "step": "the account moves 50 USDC from its Spot balance into Perps (usdClassTransfer)",
@@ -249,16 +254,18 @@
             "response": {
               "type": "default"
             }
-          }
+          },
+          "earlierRun": true
         },
         {
           "step": "Perps now holds 50 USDC and Spot 0",
-          "arrived": true
+          "arrived": true,
+          "earlierRun": true
         },
         {
-          "step": "the account signs a Hyperliquid order (sell 3 NEAR at 3.4082) through Chain Signatures",
-          "tx": "https://testnet.nearblocks.io/txns/HVJyZvz2rmKfPJ1ztYGx3PtA3x1T68fhAaKWcAbvV7bG",
-          "digest": "a02cd135d9728619b690fc06191f9ca6a09630b7e548adee623244a406b628e6",
+          "step": "the account signs a Hyperliquid order (sell 4.1 NEAR at 2.9992) through Chain Signatures",
+          "tx": "https://testnet.nearblocks.io/txns/7hFqwoU9G4Uei8UB6iLDy3vxXoGLd9f4mGnHh1kfsnUW",
+          "digest": "9f520b56b83bdb922ebcab217319c5ddfa13a96d365cab25ffa01969bf68f79f",
           "owner": "perp507472.parry.testnet",
           "signer": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
           "recovers": true,
@@ -270,9 +277,9 @@
                 "statuses": [
                   {
                     "filled": {
-                      "totalSz": "3.0",
-                      "avgPx": "3.5068",
-                      "oid": 65242657991
+                      "totalSz": "4.1",
+                      "avgPx": "3.0933",
+                      "oid": 65311108181
                     }
                   }
                 ]
@@ -281,13 +288,13 @@
           }
         },
         {
-          "step": "the account's NEAR position on Hyperliquid is -3",
+          "step": "the account's NEAR position on Hyperliquid is -4.1",
           "filled": true
         },
         {
-          "step": "the account signs the reduce-only close of 3 NEAR, as the app's close flow does",
-          "tx": "https://testnet.nearblocks.io/txns/A9ZaxSaTX3EVweofVL37r6vxtfyc8GkfjGMTLJmsDFZN",
-          "digest": "cfca5a1cee4573012e40994bb493c6f750b07441fcfa2b40bb16d8dc2ab4cc89",
+          "step": "the account signs the reduce-only close of 4.1 NEAR, as the app's close flow does",
+          "tx": "https://testnet.nearblocks.io/txns/CYoA6HXu2ZQcoHdCgT7WizZcknrM2uxBkztUW17in5rU",
+          "digest": "3164837ef52784e59378b379cb39bdd460cfc1516a5d535ab575f45e3d86a609",
           "owner": "perp507472.parry.testnet",
           "signer": "0x072c0cf6a916a2a047d9b6aa5224e6d9b1f823e0",
           "recovers": true,
@@ -299,9 +306,9 @@
                 "statuses": [
                   {
                     "filled": {
-                      "totalSz": "3.0",
-                      "avgPx": "3.5164",
-                      "oid": 65242663517
+                      "totalSz": "4.1",
+                      "avgPx": "3.09549",
+                      "oid": 65311114130
                     }
                   }
                 ]
@@ -314,38 +321,34 @@
     "9": {
       "title": "An Aave position on Base Sepolia rescued through Chain Signatures",
       "ok": true,
-      "at": "2026-11-11T04:20:26.664Z",
+      "at": "2026-11-14T20:28:27.010Z",
       "steps": [
         {
-          "step": "protected account",
-          "tx": "https://testnet.nearblocks.io/txns/ARQorS56hvsJnGhQ9WMjHeT2Qr2SmawnXHAAWWyUy3Ah"
+          "step": "wrap ETH: https://sepolia.basescan.org/tx/0x57b33a1fc2a3422a49bce935c9975564240b857d7c45075ca536420d17775268 (signed in NEAR CQXxWa6wmNPJUxo3XJJwo9GuPsvVQVWBEiRxHeaZVEhv)"
         },
         {
-          "step": "wrap ETH: https://sepolia.basescan.org/tx/0xcbcba623ab2e2dd3b71e27be99a5af3b6f9407fc970be68018087fae763c8493 (signed in NEAR 6gMdJUoFggManNwFi41fthB4By3ZgjxMk2CqfLan2fpv)"
+          "step": "approve the pool: https://sepolia.basescan.org/tx/0xbeffa9bb8bf6c40138951a58c3654eed333994e05a72fbed10b4c607986b0857 (signed in NEAR Bt7ApjQ9UFnc8CrQVPqp4wv1Q9QjMHjpkrfy899CFR2D)"
         },
         {
-          "step": "approve the pool: https://sepolia.basescan.org/tx/0x7a1bf83ba0449a9d816a1e4aa63dac06ee24036fede9b90f1e2ef28ec1af72da (signed in NEAR 26Rh5ZYDPM7Vybv25ZmvhVXfyF3vqEYrUfeJvvVP1Ci7)"
+          "step": "supply WETH: https://sepolia.basescan.org/tx/0x171fd7161ccd3c9a4c34d103b51fbf45c0d0209ac3002b5558881601a225b062 (signed in NEAR 7KXRMvZeT6BtAsRBRnxiC5zDs8PVC56Ci5raFSmxMrsn)"
         },
         {
-          "step": "supply WETH: https://sepolia.basescan.org/tx/0x1f956a691d37ab45edd2304e5320d210b5350e4712b5d5a2fbe0f9292221c4b2 (signed in NEAR ANwPjs9dzRysXzQk86poFMJBv97V3dscXKd7SHive61Q)"
+          "step": "borrow USDC: https://sepolia.basescan.org/tx/0x7fbfdc64ba08f7967b2a236f9586b8e0344ea1d8bafc07efe5eb3eda3a18c2bc (signed in NEAR DMVKEHSH9z5G4biYjoEy9bTBU6U5CfZ8zzszYxAWsRxL)"
         },
         {
-          "step": "borrow USDC: https://sepolia.basescan.org/tx/0x4c4f9305246c97bb16ecb8f3f338f6f2d9ffce31a6abdcde9ce2e415207a6626 (signed in NEAR 9NqRMNt1g731o6kk3ArTRskw469CY4oKLsdqd6KafUCY)"
-        },
-        {
-          "step": "Aave: 6.18 USD collateral, 4.57 USD debt, health 1.150"
+          "step": "Aave: 10.96 USD collateral, 8.10 USD debt, health 1.150"
         },
         {
           "step": "mandate: evm_repay on the Aave pool for the account's own address",
-          "tx": "https://testnet.nearblocks.io/txns/7PB7R7H991Y1YMohZauyhdiPWcmoRhpcp7LdjLeZssbT"
+          "tx": "https://testnet.nearblocks.io/txns/GAuPxLK2A9m54CeKTvCsCvp7H3v8eqtNhXvHcnVvoLfd"
         },
         {
-          "step": "evm_approve: Approve the Aave pool to take up to 0.82 of the debt asset ($0.82) from the person's own address (the repay plus 1% for interest), so the next run can repay 0.81 ($0.81): health 1.151, target 1.40.",
+          "step": "evm_approve: Approve the Aave pool to take up to 0.82 of the debt asset ($0.82) from the person's own address, for the next repay.",
           "near": "https://testnet.nearblocks.io/txns/b86v2pieo7pxYLjcBsytoW4H2i8wLQzks2A9msgajPa",
           "base": "https://sepolia.basescan.org/tx/0xa41afa51d0b83f3b1e6fdc97c74eb5e73fdd04d17f35eaa13685773f89d1c753"
         },
         {
-          "step": "evm_repay: Repay 0.81 of the Aave debt asset ($0.81) from the person's own address: health 1.151 to 1.400 (target 1.40).",
+          "step": "evm_repay: Repay 0.81 of the Aave debt asset ($0.81) from the person's own address.",
           "near": "https://testnet.nearblocks.io/txns/76HZsxGy3bW2ZS8eEbmYkT8R85hg6pvsgvkGby7eF3kw",
           "base": "https://sepolia.basescan.org/tx/0xfb64cc4ef51659176e741a1d88ff7cd1d2fcd5617f046138b218c77e446409d9"
         },
@@ -359,38 +362,38 @@
     "10": {
       "title": "Vault deposit, hedge, withdrawal through the queue, proof of reserves",
       "ok": true,
-      "at": "2026-11-13T15:15:50.097Z",
+      "at": "2026-11-14T19:51:37.669Z",
       "steps": [
         {
           "step": "deposit 1 NEAR into the vault (staked into LiNEAR, EARN minted at NAV)",
-          "tx": "https://testnet.nearblocks.io/txns/Fht1wfbKSpRvHVMpqQnEtK9yiKXAYxVGxddRpu9yCz9g"
+          "tx": "https://testnet.nearblocks.io/txns/AeY1iEuAdMQ5f834kR2wdYefbgfEUHHSPsZSX2YHjtX2"
         },
         {
-          "step": "EARN balance 3.58337",
-          "totalSharesBefore": "551307423185639331076212765"
+          "step": "EARN balance 3.18211",
+          "totalSharesBefore": "561726977067855596081791376"
         },
         {
           "step": "the keeper rebalances: a Chain Signatures order shorts NEAR on Hyperliquid",
           "hedge": {
-            "targetNear": 139.01744806,
-            "currentNear": 136.3,
-            "entry": 3.52313,
-            "mark": 3.5249,
-            "liquidation": 10.57212242,
-            "leverage": 0.49,
+            "targetNear": 141.72509743,
+            "currentNear": 140.8,
+            "entry": 3.5167,
+            "mark": 3.0734,
+            "liquidation": 10.33889967,
+            "leverage": 0.41,
             "maxLeverage": 3,
             "hedgeRatio": 0.9,
             "needsMargin": false,
-            "accountValueUsd": 996.738113,
-            "fundingUsd": 0.018171,
+            "accountValueUsd": 1059.178159,
+            "fundingUsd": 0.180205,
             "address": "0x33aacfd7ed3dd010f659455155e820bfcddf1af1",
             "lastOrder": {
-              "tx": "C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5",
+              "tx": "4TXPDCo1C3etPRTZtWaYWzyRfWR5AGD5fPQWkzD32D2R",
               "side": "sell",
-              "size": "136.3",
-              "price": "3.4605",
+              "size": "4.5",
+              "price": "3.2494",
               "status": "ok",
-              "at": "2026-11-13T12:22:12.558Z"
+              "at": "2026-11-14T11:45:11.237Z"
             },
             "marginRoute": {
               "amountUsd": 100,
@@ -402,11 +405,11 @@
         },
         {
           "step": "the order's signing transaction",
-          "tx": "https://testnet.nearblocks.io/txns/C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5"
+          "tx": "https://testnet.nearblocks.io/txns/4TXPDCo1C3etPRTZtWaYWzyRfWR5AGD5fPQWkzD32D2R"
         },
         {
           "step": "request a withdrawal of half the shares",
-          "tx": "https://testnet.nearblocks.io/txns/8Uzk1Seyg5Y7HZTFqkUZFXd1gvuLCZoJ7RdGmBSYQF8U"
+          "tx": "https://testnet.nearblocks.io/txns/5BTQVqWh2QtQ6niejgCQNWU6hrbw96zMEdfsCbiwWgLj"
         },
         {
           "step": "the keeper processes the queue and pays out in kind",
@@ -415,7 +418,7 @@
         {
           "step": "proof of reserves: every leaf's proof and the root on chain",
           "ok": true,
-          "root": "5e358bececaca6f50f555e5e9f075f6eaac85ec5079fc1d06aea609ca0c69598"
+          "root": "eab06562b3eccda88fc52e8e9f53a236bba28b700e6ec74250682625ce4eb6f8"
         }
       ]
     },
@@ -433,32 +436,33 @@
     "12": {
       "title": "A paid risk check over x402 on NEAR",
       "ok": true,
-      "at": "2026-11-13T13:51:47.245Z",
+      "at": "2026-11-14T19:03:16.472Z",
       "steps": [
         {
           "step": "the payer takes test USDC from the faucet",
-          "tx": "https://testnet.nearblocks.io/txns/2NWq6offVAhutwAse6pVWT11LFXNhTzh5MiFTQNko2Hu"
+          "tx": "https://testnet.nearblocks.io/txns/DE2ZKWmiHkdt97joDcPxYyHeY3DgRmHrTspXvVg4yZVn"
         },
         {
           "step": "pays per call with a signed delegate ft_transfer, settled before the answer",
           "payment": {
             "success": true,
-            "transaction": "ETZ1TFMQAHRwnkEdC9QAdWJHVhEMxYYi8FBRWLy2UyqT",
-            "network": "near:testnet"
+            "transaction": "BmtyGBg6DcbD5UeRWqoD9gAuXWWfQfFZ9qY4LgAbnR5Z",
+            "network": "near:testnet",
+            "payer": "repay890843.parry.testnet"
           },
-          "tx": "https://testnet.nearblocks.io/txns/ETZ1TFMQAHRwnkEdC9QAdWJHVhEMxYYi8FBRWLy2UyqT",
-          "score": 12
+          "tx": "https://testnet.nearblocks.io/txns/BmtyGBg6DcbD5UeRWqoD9gAuXWWfQfFZ9qY4LgAbnR5Z",
+          "score": 81
         }
       ]
     },
     "13": {
       "title": "Core flows through the SDK and the MCP server",
       "ok": true,
-      "at": "2026-11-13T13:51:49.203Z",
+      "at": "2026-11-14T19:03:18.101Z",
       "steps": [
         {
           "step": "SDK: market()",
-          "price": 2.88375472
+          "price": 3.1071322500000003
         },
         {
           "step": "SDK: account()",
@@ -497,58 +501,54 @@
     "14": {
       "title": "Closing a Rhea position in rounds by selling collateral (a NEAR-wallet owner and a passkey owner through the relayer)",
       "ok": true,
-      "at": "2026-11-13T13:54:48.700Z",
+      "at": "2026-11-14T21:10:46.038Z",
       "steps": [
         {
-          "step": "relayer creates 0u8ehs7wfs851xyqexbc7tq8v7w2phzg6tjdgm0ttfaqhkv17d4t00 for closer909203.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/GB5Z7KZriR3dyYJ3Z5uNY64P2g9n74AJsJg5csECbLoR"
+          "step": "relayer creates 0uprxhqb9eerzn87yxzxgpy13fa1jb2dd0a4xvxh4z1grkps0y5q70 for closer382895.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/DocaHj1kYHseHaaHxZ7wKkkgTTPZ7eiyt6p8MJTTSWWJ"
         },
         {
-          "step": "the owner moves the account to the published code 4nNBqyXjsY6nReKRkDc6joBaNuLxPvQPR5sMidTQmEMK (upgrade)",
-          "tx": "https://testnet.nearblocks.io/txns/BLJHsJiA4jQuEvnabBoTJdmnt7HntjkKFAv8PBgwDoH1"
+          "step": "the owner moves the account to the published code CCBqy4KGrFcEujpLDkkovGoQQPfPchR1Qp1DFBAfhakL (upgrade)",
+          "tx": "https://testnet.nearblocks.io/txns/Ewuk6dxqmgg8yi5b56VzUNuv1hKoDQyus8bbiGTdAhTe"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/GhEAf1N7X4YRy2rhLBFwoVcGWcDvMgK6AKHFe5KUCtKB"
+          "tx": "https://testnet.nearblocks.io/txns/dXfA43iJ8S3eEhBKxC1fQD97TScfgAi8FaQNJpW75zE"
         },
         {
           "step": "wrap and supply 0.6 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/DxwaHrdh4FHHm3Kc712oKDmgHZj9Mac8fspPNGeWRMoG"
+          "tx": "https://testnet.nearblocks.io/txns/BpXdR26tHE1bVHzncJys8TpTQK6hpGfezorCP8k6Wfkk"
         },
         {
-          "step": "borrow 0.86 USDC (health about 1.425 at $2.881)",
-          "tx": "https://testnet.nearblocks.io/txns/GCHU8CCvVExLYq3q4HwgUS26qC56Vy5hhTFvc8pKpjRA"
-        },
-        {
-          "step": "the root brings the exchange pool to the oracle's price",
-          "tx": "https://testnet.nearblocks.io/txns/y9zHLSEL41iBP4ccHWuWwQFKdRpHRBcx4nYqXpmHyJr"
+          "step": "borrow 0.88 USDC (health about 1.425 at $2.959)",
+          "tx": "https://testnet.nearblocks.io/txns/3FJMDTZqedT6F6kN1LgrcdDG6BRyZ2rYijrJCnaFTSBe"
         },
         {
           "step": "wallet owner: close_rhea round 1, progress",
-          "tx": "https://testnet.nearblocks.io/txns/ExQj9Wr7irzcKzxZyhSApjwn1kMSHNFaHBJwbNuB3Zrp",
+          "tx": "https://testnet.nearblocks.io/txns/ATtbacp4hktaHf2JwbZvTFcVixLX7G1sYbiAD5neqiJQ",
           "close_progress": {
-            "id": 277518608,
-            "debt_repaid": "491183",
-            "collateral_sold": "172850357964672353992652",
-            "debt_left": "368818",
-            "collateral_left": "427149642035327646007348"
+            "id": 277710417,
+            "debt_repaid": "509085",
+            "collateral_sold": "173321223264428309290930",
+            "debt_left": "370916",
+            "collateral_left": "426678776735571690709070"
           },
           "after": "open"
         },
         {
           "step": "the root brings the exchange pool back to the oracle's price",
-          "tx": "https://testnet.nearblocks.io/txns/H4GT36Nwta5shTY78j66JV2iwNvwTNonQwip9hQYS6nD"
+          "tx": "https://testnet.nearblocks.io/txns/2FTeE3HzWksEZX15jFznd76GmpJ39duWbSNmxqezi3Sq"
         },
         {
           "step": "wallet owner: close_rhea round 2, position closed",
-          "tx": "https://testnet.nearblocks.io/txns/8AZAFyaVeq5niRTJfcWWJAsCkRQrLXezN1LV5HzHGPqP",
+          "tx": "https://testnet.nearblocks.io/txns/CGrvyzdN89mihDv1AQ7dtP3KSbrZf1DaGELDHP1X91ui",
           "position_closed": {
-            "id": 277518649,
+            "id": 277710459,
             "collateral": "wrap.testnet",
             "debt": "usdc.parry.testnet",
-            "debt_repaid": "368837",
-            "collateral_sold": "134366211554110672099666",
-            "collateral_returned": "292783430481216973907682"
+            "debt_repaid": "370935",
+            "collateral_sold": "131881877041690330384857",
+            "collateral_returned": "294796899693881360324213"
           },
           "after": "closed"
         },
@@ -557,55 +557,51 @@
           "ok": true
         },
         {
-          "step": "relayer creates 0u83cfhxd3vkwrxsdy5ssev9xh41p5p11dart4yhma3t6bzsg5sasg for a passkey, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/ArUqbQuKR2NArKz4yGneCJ3mDySZbHx6DydHxsiNGMqw"
+          "step": "relayer creates 0uf7jfay19j45pejrrqntqgapqnvbb2mq26qymgn53rdfvvgs5789g for a passkey, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/CVtaNoWxQ13AUqGqogZKw9FtCSGivJdE92YPcCNPRzTi"
         },
         {
-          "step": "the owner moves the account to the published code 4nNBqyXjsY6nReKRkDc6joBaNuLxPvQPR5sMidTQmEMK (upgrade)",
-          "tx": "https://testnet.nearblocks.io/txns/DxQ5Leptyojg31HhiujCe2uoVx9gupCAgzJzqpberBjM"
+          "step": "the owner moves the account to the published code CCBqy4KGrFcEujpLDkkovGoQQPfPchR1Qp1DFBAfhakL (upgrade)",
+          "tx": "https://testnet.nearblocks.io/txns/EHXdDRDukpng4QYgtEoCYSosuzk4W7Mkrh6yyVVARuGx"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/2JrTvVwTNvEWW97pPpb1wdDYbbcfVBLcqQCt68UNgrpY"
+          "tx": "https://testnet.nearblocks.io/txns/yrfTfrzSwNuWqr61SNX2tpFpxcpenEhs5p6y6uXABuk"
         },
         {
           "step": "wrap and supply 0.6 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/EKhFyMZgNBGtxxYvVDk4Eps1NRim3SNZLeVZQM3g7WwT"
+          "tx": "https://testnet.nearblocks.io/txns/3nyX9wHJYrinHthm9gZksXQaq9cCoE52xzF9fvunzPQq"
         },
         {
-          "step": "borrow 0.85 USDC (health about 1.425 at $2.856)",
-          "tx": "https://testnet.nearblocks.io/txns/F5otktcun7NyGxaKrNNbTv7tsEFyhb7x3gr1pENuqKFC"
-        },
-        {
-          "step": "the root brings the exchange pool to the oracle's price",
-          "tx": "https://testnet.nearblocks.io/txns/CF8sqUUEPmSh7w4ysaTEENAd2eiTyamhLtHNiRkndeNY"
+          "step": "borrow 0.88 USDC (health about 1.425 at $2.953)",
+          "tx": "https://testnet.nearblocks.io/txns/B6f6KPYuQ6u7swo9Abde524vxQA6feS1rN1xyuSmxH6L"
         },
         {
           "step": "passkey owner: close_rhea round 1, progress",
-          "tx": "https://testnet.nearblocks.io/txns/7GWQ659vMEUfHX1kVi1Yucg4VyWUoGJ6LNTCtB7F7W2T",
+          "tx": "https://testnet.nearblocks.io/txns/13JJFF1BppvE7im2d9r8i2xkeGZQeUwDhM4pu4MnpeN4",
           "close_progress": {
-            "id": 277518733,
-            "debt_repaid": "490244",
-            "collateral_sold": "174098661418504927923016",
-            "debt_left": "359757",
-            "collateral_left": "425901338581495072076984"
+            "id": 277710538,
+            "debt_repaid": "507425",
+            "collateral_sold": "173424427542658056293643",
+            "debt_left": "372576",
+            "collateral_left": "426575572457341943706357"
           },
           "after": "open"
         },
         {
           "step": "the root brings the exchange pool back to the oracle's price",
-          "tx": "https://testnet.nearblocks.io/txns/GLhZvhNwTf2QZdRbDkKxDXUVQuixesUxXNp3jGDHWXwp"
+          "tx": "https://testnet.nearblocks.io/txns/6WeiCVeerRttpEptvbUkmSBZeRvHbc8UWHxyFTmKNQKD"
         },
         {
           "step": "passkey owner: close_rhea round 2, position closed",
-          "tx": "https://testnet.nearblocks.io/txns/AGwpT1GAmEm3L4uWR53mkhYiK5Nvxz5GN6vWCe4Q5J1b",
+          "tx": "https://testnet.nearblocks.io/txns/EijydNyqWtQH1x3L8DxuVqntrZXjT2qLCiTegiDPGV8H",
           "position_closed": {
-            "id": 277518776,
+            "id": 277710577,
             "collateral": "wrap.testnet",
             "debt": "usdc.parry.testnet",
-            "debt_repaid": "359775",
-            "collateral_sold": "132063052527100739340332",
-            "collateral_returned": "293838286054394332736652"
+            "debt_repaid": "372595",
+            "collateral_sold": "133063842056370097240893",
+            "collateral_returned": "293511730400971846465464"
           },
           "after": "closed"
         },
@@ -618,39 +614,39 @@
     "15": {
       "title": "Closing a Rhea position from the wallet (repay with the owner's own USDC, then withdraw the collateral)",
       "ok": true,
-      "at": "2026-11-13T13:55:22.007Z",
+      "at": "2026-11-14T19:34:50.908Z",
       "steps": [
         {
-          "step": "relayer creates 0u1sag99yy48mxqptrrxtqry3q955nfrg9k57g0eqcn6etkmmj2j3g for walletclose88701.parry.testnet, gasless for the owner",
-          "tx": "https://testnet.nearblocks.io/txns/CtgUcoTBJhbSxgacCaZEvHUd9TDEvR8HrBnjJHwjgxFZ"
+          "step": "relayer creates 0u2t51q58r0z21dg02vk9yrxgwjpn3r503w3p5cy8pm1t1f4h67bjg for walletclose856487.parry.testnet, gasless for the owner",
+          "tx": "https://testnet.nearblocks.io/txns/F1FAM1gJ1E4dDhcW3i394as7GVLfLhHxdzEVVeeEskf9"
         },
         {
-          "step": "the owner moves the account to the published code 4nNBqyXjsY6nReKRkDc6joBaNuLxPvQPR5sMidTQmEMK (upgrade)",
-          "tx": "https://testnet.nearblocks.io/txns/EqADQiSWhYndhm23WabgTCjhgwXiP8cGN4fW6ZuX7Bfj"
+          "step": "the owner moves the account to the published code CCBqy4KGrFcEujpLDkkovGoQQPfPchR1Qp1DFBAfhakL (upgrade)",
+          "tx": "https://testnet.nearblocks.io/txns/Fh1ZECzwBTLL4viWfUQ2kYJx5jthPbWAotUhkXfKKxNa"
         },
         {
           "step": "the protected account is funded",
-          "tx": "https://testnet.nearblocks.io/txns/9RUc1cCUxWBDfYFREpFwR6vP1RbrFJWpBT7GDzEfpAwX"
+          "tx": "https://testnet.nearblocks.io/txns/Evq2A4i4ZcPYpdoF2d6voEyD9RGw8qnLPs1xVZLtyAVy"
         },
         {
           "step": "wrap and supply 0.6 NEAR on Rhea",
-          "tx": "https://testnet.nearblocks.io/txns/6ye2rcnaB9D7rsGrhweixUgAYS4QLgNseKdtcMoEtTyx"
+          "tx": "https://testnet.nearblocks.io/txns/GYQveF3FjuT5GwxmnUiX5akdpLyVKJD4zWSJnnTu9Tu"
         },
         {
-          "step": "borrow 0.94 USDC (health about 1.300 at $2.860)",
-          "tx": "https://testnet.nearblocks.io/txns/5mDi4oWK5ZL28YAWwnH8Vhu1UXXWiAghppJDTuxDCnJC"
+          "step": "borrow 1.01 USDC (health about 1.300 at $3.088)",
+          "tx": "https://testnet.nearblocks.io/txns/Gj5NMTKhLPQYnfM5TyrzL49NNK5PMsizhsbFga5xfJir"
         },
         {
           "step": "the owner takes test USDC from the faucet into the wallet",
-          "tx": "https://testnet.nearblocks.io/txns/EnEEJcPZzMS4YaNQuYaa4mRqGATfWgNnHG3uz7QUuv2W"
+          "tx": "https://testnet.nearblocks.io/txns/E92kjoVrHc7FWVVFy6ViNECX3y8kt5JaBKcgUhRvYzDy"
         },
         {
-          "step": "the owner sends 0.950001 USDC to the protected account",
-          "tx": "https://testnet.nearblocks.io/txns/6XMv3TcF4oQuKRqfDvWp67Vd3i3VnLwhrfuAkeDwTuuz"
+          "step": "the owner sends 1.020001 USDC to the protected account",
+          "tx": "https://testnet.nearblocks.io/txns/FyhRvtBNKTLQiwKH33yL5LhFdC73Xnsk5BAVskg3kzAT"
         },
         {
           "step": "repay the whole debt and withdraw all the collateral (one owner call)",
-          "tx": "https://testnet.nearblocks.io/txns/3xy63Zv8N57Sg4whb8M3dLKxds82T6RutyGLhb4grW4h"
+          "tx": "https://testnet.nearblocks.io/txns/9ZpmCKR86T43A3pXZMsrn6bkphgyim8vUpoeA9mtqCny"
         },
         {
           "step": "lending position after: 0 debt line(s), 0 collateral line(s); the cent over the debt stays supplied",
@@ -661,21 +657,21 @@
     "16": {
       "title": "Unwinding a protected account (mandate revoked, lending withdrawn, tokens and NEAR sent to the owner)",
       "ok": true,
-      "at": "2026-11-13T13:55:57.630Z",
+      "at": "2026-11-14T19:35:24.062Z",
       "steps": [
         {
-          "step": "closer909203.parry.testnet (NEAR-wallet owner, owner_call): unwind",
-          "tx": "https://testnet.nearblocks.io/txns/EyDVJzjzAvZfTxWsnChVx7yfXHVnF3Rc8ui5U7Dda3GR",
+          "step": "closer715331.parry.testnet (NEAR-wallet owner, owner_call): unwind",
+          "tx": "https://testnet.nearblocks.io/txns/J1NRjsmaoJogBwoy8KQwC2hxJBqFd561mX2YsaSTHfdN",
           "unwound": {
-            "to": "closer909203.parry.testnet",
+            "to": "closer715331.parry.testnet",
             "tokens": [
               {
                 "token": "usdc.parry.testnet",
-                "amount": "873997"
+                "amount": "801576"
               },
               {
                 "token": "wrap.testnet",
-                "amount": "792783430481216973907682"
+                "amount": "835378862372695279644648"
               }
             ],
             "near": "329399999999999999999989"
@@ -684,41 +680,41 @@
           "ok": true
         },
         {
-          "step": "walletclose88701.parry.testnet (NEAR-wallet owner, owner_call): unwind",
-          "tx": "https://testnet.nearblocks.io/txns/54yJdFD4M6UDmsDBirtapFyBnuzJu8wmVR2wDfbXs9jv",
+          "step": "walletclose856487.parry.testnet (NEAR-wallet owner, owner_call): unwind",
+          "tx": "https://testnet.nearblocks.io/txns/HMKQfwy43YTmfaMWDZwpzifBmwJoZkXojD1QjgETGnxQ",
           "unwound": {
-            "to": "walletclose88701.parry.testnet",
+            "to": "walletclose856487.parry.testnet",
             "tokens": [
               {
                 "token": "usdc.parry.testnet",
-                "amount": "949999"
+                "amount": "1019999"
               },
               {
                 "token": "wrap.testnet",
                 "amount": "1100000000000000000000000"
               }
             ],
-            "near": "329359999999999999999997"
+            "near": "329349999999999999999997"
           },
           "unwind_partial": [],
           "ok": true
         },
         {
           "step": "passkey owner (relayed owner_execute): unwind",
-          "tx": "https://testnet.nearblocks.io/txns/BwRU7U3wQr6uKnq51DnWZdMV4PQr9qew15Kr7zyewMMw",
+          "tx": "https://testnet.nearblocks.io/txns/8cJZ3Xqi4LcGazk8xFvdYwM3A8j1eQixbc55sFVmesiy",
           "unwound": {
             "to": "parry.testnet",
             "tokens": [
               {
                 "token": "usdc.parry.testnet",
-                "amount": "863694"
+                "amount": "937249"
               },
               {
                 "token": "wrap.testnet",
-                "amount": "793838286054394332736652"
+                "amount": "795758367096056795508922"
               }
             ],
-            "near": "329329999999999999999983"
+            "near": "328679999999999999999983"
           },
           "unwind_partial": [],
           "ok": true
@@ -728,16 +724,16 @@
     "17": {
       "title": "A health certificate: issued by the enclave, anchored on the risk board, verified",
       "ok": true,
-      "at": "2026-11-13T13:52:41.314Z",
+      "at": "2026-11-14T21:08:46.946Z",
       "steps": [
         {
-          "step": "the enclave certifies \"health is at least 1.2\" for parry.testnet until 2026-11-14T13:52:17.000Z",
-          "hash": "2486b79cbe5537cfc2bb6d9943f41705ab7697bda8d59caf57539741ed7fc5fc",
-          "block_height": 277518551
+          "step": "the enclave certifies \"health is at least 1.2\" for parry.testnet until 2026-11-15T21:07:43.000Z",
+          "hash": "17f132b02cafd68d508c4e6db811cc0efd496c5cecbb837f7daabae5a0aab30d",
+          "block_height": 277710301
         },
         {
           "step": "the anchor on the risk board (enclave-signed certificate report)",
-          "tx": "https://testnet.nearblocks.io/txns/BpzRrP6kzK6pjTrnFe83uGZQCKzk3P9zJ5sUg9ibkDTt"
+          "tx": "https://testnet.nearblocks.io/txns/EcbGmRCLP6Un1tRytjtC1wEer4qptTAEo3QM1c2oK1ia"
         },
         {
           "step": "the SDK verifies it against the chain",
@@ -770,48 +766,48 @@
     "18": {
       "title": "An insurance inflow: 10% of the vault's staking yield moves into its fund",
       "ok": true,
-      "at": "2026-11-13T15:19:48.951Z",
+      "at": "2026-11-14T20:00:42.885Z",
       "steps": [
         {
           "step": "LiNEAR epoch_update_rewards for 5 validators folds their staking rewards into its price (anyone may call it)",
           "calls": [
             {
               "validator": "bee1stake.pool.f863973.m0",
-              "tx": "https://testnet.nearblocks.io/txns/95teTvfmA7pc2jHXhwzhPWBu4qK1TmJJQZZ6Phq1DciW"
+              "tx": "https://testnet.nearblocks.io/txns/7M7bJpATUEnrq7xp9BHpQZtt83ywRrBNpJeSbVWkjjyg"
             },
             {
               "validator": "chorusone.pool.f863973.m0",
-              "tx": "https://testnet.nearblocks.io/txns/HxTmEmiVRTCo3pJdn337sbHJbvCRq6VkuqBNMGaJo1jo"
+              "tx": "https://testnet.nearblocks.io/txns/ABXE5E75WwYXYzbp8SRuXUimaFRhQe3bebC6J6cYdd61"
             },
             {
               "validator": "aurora.pool.f863973.m0",
-              "tx": "https://testnet.nearblocks.io/txns/3ZEKxvbSX88bnMyfw9BHyUDwqb8sarcnVx2HP7Th7J4Q"
+              "tx": "https://testnet.nearblocks.io/txns/C9Rbt13tuGkXYivQZbWHuXrXZ74dafqxdRBXHeSyRb8k"
             },
             {
               "validator": "01node.pool.f863973.m0",
-              "tx": "https://testnet.nearblocks.io/txns/5ukNJJ7Dhk1QqG8qhRf6doAGdgTkerhCbPufaAiaC4uT"
+              "tx": "https://testnet.nearblocks.io/txns/AsLtURadxDyag8w6dZrBsKkkv3L11Brb3MFb6g6ssY6t"
             },
             {
               "validator": "everstake.pool.f863973.m0",
-              "tx": "https://testnet.nearblocks.io/txns/4QWqAHYvso7T58cKB92YRER2SQF4XqtN5H69GJN3Pt5q"
+              "tx": "https://testnet.nearblocks.io/txns/A3RRPQm2y6jkRF4Bo1ffaz8gnoK6Thsm6H3KKyXdKQ2H"
             }
           ]
         },
         {
-          "step": "LiNEAR rate 2305377925396712032733908 last seen by the vault, now 2305377925399480492616600"
+          "step": "LiNEAR rate 2305539563877815494026295 last seen by the vault, now 2305592930888843777732623"
         },
         {
           "step": "a 0.5 NEAR deposit makes the vault read the higher rate and skim the fund's share",
-          "tx": "https://testnet.nearblocks.io/txns/8KzLyyqZMSF955B2ZtkAHgEntvcYNkB4hxFqAydNx77T"
+          "tx": "https://testnet.nearblocks.io/txns/59AZ7z4Z5v5orDfa51GTgmB6euBnqRiNhZEUKKhkUf72"
         },
         {
-          "step": "the vault report announces insurance_inflow of 8020034111108 LiNEAR (keeper.parry.testnet calls risk.parry.testnet.submit, and vault.parry.testnet emits the event)",
-          "tx": "https://testnet.nearblocks.io/txns/88DxX1AHzUhZoA2Gy47kCZ9fnuUipKym5yVJsGdsQAJK",
+          "step": "the vault report announces insurance_inflow of 157651103736690672064 LiNEAR (keeper.parry.testnet calls risk.parry.testnet.submit, and vault.parry.testnet emits the event)",
+          "tx": "https://testnet.nearblocks.io/txns/9eWHx5vMpbLGdtx266tDcQDsFoThvsziSzcmhUMMtMLQ",
           "fundBefore": {
             "share_bps": 1000,
-            "linear": "1031898677193311193156",
-            "usdc_e6": "1815",
-            "value_usd_e6": "10187",
+            "linear": "1501648338261031351696",
+            "usdc_e6": "18008",
+            "value_usd_e6": "28629",
             "paid_total_e6": "0",
             "paid_today_e6": "0",
             "cap_per_day_bps": 2500,
@@ -821,13 +817,13 @@
             "margin_reserved_usdc_e6": "0",
             "negative_funding_e6": "0",
             "covered_negative_funding_e6": "0",
-            "recent_funding_e6": "12155"
+            "recent_funding_e6": "16449"
           },
           "fundAfter": {
             "share_bps": 1000,
-            "linear": "1031898685213345304264",
-            "usdc_e6": "1815",
-            "value_usd_e6": "10173",
+            "linear": "1659299441997722023760",
+            "usdc_e6": "18551",
+            "value_usd_e6": "30365",
             "paid_total_e6": "0",
             "paid_today_e6": "0",
             "cap_per_day_bps": 2500,
@@ -837,19 +833,19 @@
             "margin_reserved_usdc_e6": "0",
             "negative_funding_e6": "0",
             "covered_negative_funding_e6": "0",
-            "recent_funding_e6": "12155"
+            "recent_funding_e6": "21886"
           }
         }
       ]
     }
   },
   "rescue": {
-    "decision": "a950259353731a7812386ada39e2074528d63193e8e54d48ea82f51564a92690"
+    "decision": "0b0741c8ac94a164549dc165d494fe162f3b802fbd8dd798af9198c59fc1d3fa"
   },
   "evm": {
     "decision": "a973d08fbcf8e606e3527623a7385417e5e9d8e57d1839059968bc6919acc484"
   },
   "hedge": {
-    "tx": "C5mPs3JNRwq2D2jChJUVBfat1nX29nWnhthdXuBiZGY5"
+    "tx": "4TXPDCo1C3etPRTZtWaYWzyRfWR5AGD5fPQWkzD32D2R"
   }
 }

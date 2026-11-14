@@ -405,6 +405,9 @@ async function protect() {
   if (!runs(6)) return;
   const steps6: unknown[] = [];
   let ok6 = true;
+  // The recorded rescue (pnpm verify re-checks it) is this run's first executed one: older
+  // transactions leave the non-archival RPC nodes after a few days.
+  let recorded = false;
   for (const [kind, p] of Object.entries(people)) {
     try {
       // The guardian looks every 2 minutes, and an OutLayer run it misses is tried again on the next look.
@@ -413,7 +416,10 @@ async function protect() {
         return log.items.find((x) => x.createdAt > since && (x.outcome === "executed" || x.outcome === "rejected_by_review" || x.outcome === "refused" || x.outcome === "rolled_back"));
       });
       decisions[kind] = d;
-      if (d.outcome === "executed" && !proofs.rescue) proofs.rescue = { decision: d.id };
+      if (d.outcome === "executed" && !recorded) {
+        proofs.rescue = { decision: d.id };
+        recorded = true;
+      }
       const alerts = await api<{ title: string }[]>(`/v1/alerts?account=${p.account}`);
       const v = await api<{ ok: boolean; checks: { name: string; ok: boolean }[] }>(`/v1/guardian/decisions/${d.id}/verify`);
       // The monitor reads the position again within seconds of the rescue: wait for that reading.
