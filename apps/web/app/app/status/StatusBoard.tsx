@@ -32,7 +32,8 @@ const SERVICE_LABEL: Record<string, string> = {
   stream: "Live stream",
 };
 
-function Up({ ok, yes = "Up", no = "Down" }: { ok: boolean; yes?: string; no?: string }) {
+function Up({ ok, yes = "Up", no = "Down", external = false }: { ok: boolean; yes?: string; no?: string; external?: boolean }) {
+  if (!ok && external) return <span className="text-[13px] text-caution">Waiting on OutLayer</span>;
   return <span className={cn("text-[13px]", ok ? "text-fg" : "text-critical")}>{ok ? yes : no}</span>;
 }
 
@@ -103,7 +104,8 @@ export function StatusBoard() {
   const s = q.data;
   const now = useNow();
   if (q.isError && !s) return <QueryError title="Service status could not be loaded" error={q.error} onRetry={() => void q.refetch()} />;
-  const down = s?.services.filter((x) => !x.ok).length ?? 0;
+  const down = s?.services.filter((x) => !x.ok && x.external !== "outlayer").length ?? 0;
+  const waiting = s?.services.filter((x) => !x.ok && x.external === "outlayer").length ?? 0;
   const isGasKey = (name: string) => / gas key$/.test(name);
   const gasKeys = new Map((s?.treasury?.wallets ?? []).filter((w) => isGasKey(w.name)).map((w) => [w.name.replace(/ gas key$/, ""), w]));
   const wallets = (s?.treasury?.wallets ?? []).filter((w) => !isGasKey(w.name));
@@ -116,8 +118,13 @@ export function StatusBoard() {
             titleAs="h2"
             title={<span id="services-title">Services</span>}
             description="Each service reports its own state; one silent for five minutes counts as down. The bars are the last 48 hours, an hour each."
-            actions={s ? <Up ok={down === 0} yes="All up" no={`${down} down`} /> : <Skeleton width="7ch" />}
+            actions={s ? <Up ok={down === 0 && waiting === 0} yes="All up" no={down ? `${down} down` : `${waiting} waiting on OutLayer`} external={down === 0} /> : <Skeleton width="7ch" />}
           />
+          {s?.notice ? (
+            <p role="status" className="mt-4 rounded-md border border-caution/40 bg-caution/10 px-4 py-3 text-[13px] leading-5 text-fg">
+              {s.notice.message}
+            </p>
+          ) : null}
         </div>
         {!s ? (
           <div className="border-t border-line px-5 py-5 sm:px-6">
@@ -134,7 +141,7 @@ export function StatusBoard() {
                   <span className="flex items-center justify-between gap-3 sm:contents">
                     <span className="text-sm text-fg">{SERVICE_LABEL[x.name] ?? x.name}</span>
                     <span className="sm:order-5 sm:text-right">
-                      <Up ok={x.ok} />
+                      <Up ok={x.ok} external={x.external === "outlayer"} />
                     </span>
                   </span>
                   <span className="sm:order-2">{up && now ? <UptimeBars hours={up.hours} now={now} /> : null}</span>

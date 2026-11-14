@@ -116,7 +116,11 @@ export interface VaultHistoryPoint {
 }
 
 /** Status as the API returns it: lanes and treasury can be partly unknown on a local node. */
-export type StatusView = Omit<Status, "lanes" | "treasury" | "indexer"> & {
+export type StatusView = Omit<Status, "lanes" | "treasury" | "indexer" | "services"> & {
+  /** `external: "outlayer"` when a service's last failure is OutLayer not answering, not Parry. */
+  services: { name: string; ok: boolean; detail: string; checkedAt: string; external?: "outlayer" | null }[];
+  /** Set while OutLayer is not answering every request. */
+  notice?: { source: string; message: string } | null;
   indexer: { lastBlock: number; lagBlocks: number | null };
   lanes: { service: string; account: string | null; key: string | null; nonces: number; inFlight?: number }[];
   treasury: Status["treasury"] | null;

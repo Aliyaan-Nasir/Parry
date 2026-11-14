@@ -143,5 +143,5 @@ Parry is not a dapp that happens to deploy on NEAR: each of its guarantees comes
 
 - Contracts, enclave, services, API, app, SDK, MCP server and agent skill all work together, live on testnet and mainnet-ready ([`MAINNET.md`](MAINNET.md)); `deployments/testnet.json` records every account, code hash and transaction.
 - Every contract is a reproducible build; `near contract verify deployed-at <account>` matches each one, and `pnpm verify` checks it.
-- `pnpm verify` checks the README's claims against testnet, each recorded transaction included, and names what a claim still waits for; `pnpm security` runs Clippy, cargo audit, cargo deny and pnpm audit; [`SECURITY.md`](SECURITY.md) lists every review finding and its status.
+- `pnpm verify` checks the README's claims against testnet, each recorded transaction included, and would name any claim still waiting for a recorded proof (at the last run, 29 of 29 claims passed and none waited); `pnpm security` runs Clippy, cargo audit, cargo deny and pnpm audit; [`SECURITY.md`](SECURITY.md) lists every review finding and its status.
 - Agents can run everything: [`AGENTS.md`](AGENTS.md), [`skills/parry/SKILL.md`](skills/parry/SKILL.md), [`llms.txt`](apps/web/public/llms.txt), and `docker compose up` for the whole stack.

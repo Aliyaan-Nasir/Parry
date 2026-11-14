@@ -10,7 +10,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { contract } from "./config";
 import type { Sql } from "./db";
-import { enclaveModes, runEnclave, type EnclaveRun } from "./enclave";
+import { enclaveModes, outlayerUnavailable, runEnclave, type EnclaveRun } from "./enclave";
 import { senderFromEnv, txHash, type Sender } from "./near";
 
 export const CERTIFICATE_DOMAIN = "parry-certificate:v1:";
@@ -84,7 +84,14 @@ export async function issueCertificate(sql: Sql, input: CertificateInput, issued
   const run = deps.run ?? ((fields) => runEnclave<CertificateOutput>("certificate", [], fields));
   // A run that cannot start or fails (no enclave caller configured, OutLayer down) is a dependency failure.
   const r = await run({ account: input.account, reader: input.reader, threshold: input.threshold, ttl_secs: input.ttlSecs, venue: input.venue }).catch((e: unknown) => {
-    throw new CertificateError(`the enclave run failed: ${(e as Error).message ?? String(e)}`, 503);
+    const message = (e as Error).message ?? String(e);
+    if (outlayerUnavailable(message)) {
+      throw new CertificateError(
+        "OutLayer, the TEE network that signs certificates, did not answer in time, and nothing was charged. This is an OutLayer availability issue, not a fault in Parry: please try again in a minute.",
+        503,
+      );
+    }
+    throw new CertificateError(`the enclave run failed: ${message}`, 503);
   });
   if ("refused" in r.output) throw new CertificateError(`the enclave refused: ${r.output.refused}`, 422);
   const out = r.output;

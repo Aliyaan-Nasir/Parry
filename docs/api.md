@@ -53,7 +53,7 @@ Writes that change a person's settings need a sign-in (section "Auth").
 | GET | `/v1/fx` | `Fx`: USD rates for the display currencies (cached for an hour) |
 | POST | `/v1/copilot` | takes `{ account, positionId?, question? }`, returns `CopilotAnswer` (rate limited) |
 | GET | `/v1/quotes/rescue?amountNear=10` | `RouteComparison`; `amountNear` at least 0.1 |
-| GET | `/v1/status` | `Status`: services, oracle freshness, gas-key lanes, treasury |
+| GET | `/v1/status` | `Status`: services, oracle freshness, gas-key lanes, treasury, and a notice while OutLayer is not answering |
 | GET | `/v1/treasury` | `{ account, balanceNear, postQuantumKey }`: the treasury account (null when unset), its balance and whether it holds an ML-DSA-65 key |
 | POST | `/v1/relay/create-account` | takes `{ passkey }` (a P-256 key, `p256:<base58>` or 66 hex characters) or `{ nearAccount }`, returns `{ accountId, txHash }`: a gasless protected account |
 | POST | `/v1/relay/owner` | takes `{ account, request, assertion }`, returns `{ txHash, value }` (`value` is the account's JSON answer, such as the `{ r, s, v }` a signing action returns, or null): relays a passkey-signed owner request with the gas its actions need (300 Tgas, 900 for `close_rhea`, at least 600 for `unwind`) |
@@ -485,7 +485,8 @@ interface ShockState {
 
 interface Status {
   network: string;
-  services: { name: string; ok: boolean; detail: string; checkedAt: string }[]; // ok is false once a check is over 5 minutes old
+  services: { name: string; ok: boolean; detail: string; checkedAt: string; external: "outlayer" | null }[]; // ok is false once a check is over 5 minutes old; external "outlayer" when the failure is OutLayer not answering a run, not Parry
+  notice: { source: "OutLayer"; message: string } | null; // set while OutLayer is not answering every request: an OutLayer availability issue, retried on its own
   oracle: { publishTime: string; ageSeconds: number; fresh: boolean } | null;    // fresh: published within 120 s
   indexer: { lastBlock: number; lagBlocks: number | null };
   lanes: { service: "monitor" | "keeper" | "relayer"; account: string | null; key: string | null; nonces: number }[]; // nonces: the gas key's nonce lanes, 0 when unknown

@@ -42,6 +42,21 @@ function caller(): Sender {
   return enclaveSender;
 }
 
+/** How a run OutLayer never answered is reported; `outlayerUnavailable` recognises it. */
+export const OUTLAYER_UNANSWERED = "OutLayer did not answer this run in time";
+
+/**
+ * True when `detail` describes an OutLayer availability problem (a request its network never
+ * answered), as opposed to a fault in Parry's own code. Older wording is recognised too.
+ */
+export function outlayerUnavailable(detail: string | null | undefined): boolean {
+  return !!detail && (detail.includes(OUTLAYER_UNANSWERED) || /Execution promise failed|enclave returned nothing/i.test(detail));
+}
+
+/** The public note shown while OutLayer is not answering every request. */
+export const OUTLAYER_NOTICE =
+  "OutLayer, the TEE network that runs Parry's guardian enclave, is not answering every request right now. This is an OutLayer availability issue, not a fault in Parry: each affected service retries on its own, positions keep their on-chain mandate limits, and owners can act directly at any time.";
+
 /** What OutLayer holds per byte of input while a request waits (0.21 NEAR for 54 kB measured on testnet), with a margin. */
 const INPUT_HOLD_PER_BYTE = 4_000_000_000_000_000_000n;
 
@@ -80,8 +95,12 @@ export async function runEnclave<T>(mode: EnclaveMode, accounts: string[] = [], 
   const value = returnValue<T & { error?: string }>(o);
   const tx = o.transaction?.hash ?? null;
   if (!value) {
-    const failure = (o.receipts_outcome ?? []).flatMap((r) => r.outcome.logs).find((l) => /fail|error/i.test(l));
-    throw new Error(`the enclave returned nothing (${tx}): ${failure ?? "no output"}`);
+    const logs = (o.receipts_outcome ?? []).flatMap((r) => r.outcome.logs);
+    const completed = logs.find((l) => l.includes("execution_completed"));
+    // OutLayer ran the request and the program failed: a fault to look at here.
+    if (completed && /"success":false/.test(completed)) throw new Error(`the enclave run failed (${tx}): ${completed.slice(0, 400)}`);
+    // OutLayer never answered before the request expired, and refunded it.
+    throw new Error(`${OUTLAYER_UNANSWERED} (request ${tx}); it was refunded and the service tries again on its own.`);
   }
   if (value.error) throw new Error(`enclave: ${value.error}`);
   return { output: value, tx };

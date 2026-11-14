@@ -21,3 +21,14 @@ describe("attestation evidence", () => {
     expect(() => signedBody('{"other":1}', "tcbInfo")).toThrow();
   });
 });
+
+describe("OutLayer availability", () => {
+  test("a run OutLayer never answered is told apart from a fault in Parry", async () => {
+    const { OUTLAYER_UNANSWERED, outlayerUnavailable } = await import("../src/lib/enclave");
+    expect(outlayerUnavailable(`${OUTLAYER_UNANSWERED} (request abc); it was refunded`)).toBe(true);
+    expect(outlayerUnavailable("the enclave returned nothing (x): Execution promise failed: Failed. Refunded 9005")).toBe(true);
+    expect(outlayerUnavailable("the enclave run failed (x): {\"success\":false}")).toBe(false);
+    expect(outlayerUnavailable("rpc timeout")).toBe(false);
+    expect(outlayerUnavailable(null)).toBe(false);
+  });
+});

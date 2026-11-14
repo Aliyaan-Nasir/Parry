@@ -1,5 +1,6 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
+import { OUTLAYER_NOTICE, outlayerUnavailable } from "@parryguard/services/lib/enclave";
 import { DEFAULT_THRESHOLDS, plan as planSteps, REGIME_THRESHOLDS, reserveProof, STRATEGIES, TREMOR_SCALES, tremorRegime, tremorWords, type LendingPosition, type ReserveLeaf } from "@parryguard/core";
 import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parryguard/services/lib/config";
 import type { Sql } from "@parryguard/services/lib/db";
@@ -459,9 +460,16 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
         hours: mine.map((h) => ({ hour: h.hour.toISOString(), checks: h.checks, ok: h.ok })),
       };
     });
+    const shown = services.map((s) => {
+      const ok = s.ok && Date.now() - s.checked_at.getTime() < 300_000;
+      // A service whose last failure is OutLayer not answering: say so, it is not Parry's fault.
+      return { name: s.name, ok, detail: s.detail, checkedAt: s.checked_at.toISOString(), external: !ok && outlayerUnavailable(s.detail) ? "outlayer" : null };
+    });
+    const outlayerDown = shown.some((s) => s.external === "outlayer");
     return c.json({
       network,
-      services: services.map((s) => ({ name: s.name, ok: s.ok && Date.now() - s.checked_at.getTime() < 300_000, detail: s.detail, checkedAt: s.checked_at.toISOString() })),
+      services: shown,
+      notice: outlayerDown ? { source: "OutLayer", message: OUTLAYER_NOTICE } : null,
       uptime,
       oracle: near ? { publishTime: new Date(near.publish_time * 1000).toISOString(), ageSeconds: Math.round(Date.now() / 1000 - near.publish_time), fresh: Date.now() / 1000 - near.publish_time < 120 } : null,
       indexer: { lastBlock: Number(cursor?.b ?? 0), lagBlocks: head ? head.header.height - Number(cursor?.b ?? 0) : null },

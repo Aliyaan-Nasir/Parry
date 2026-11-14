@@ -221,6 +221,23 @@ describe.skipIf(!url)("routes on a database", () => {
     expect((await app.request("/v1/auth/challenge", { method: "POST", body: "{}" })).status).toBe(400);
   });
 
+  test("a service OutLayer left unanswered is marked as OutLayer's, with a public notice", async () => {
+    await sql`INSERT INTO service_status (name, ok, detail, checked_at) VALUES
+      ('guardian', false, 'OutLayer did not answer this run in time (request abc); it was refunded and the service tries again on its own.', now()),
+      ('relayer', true, 'idle', now())`;
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({ jsonrpc: "2.0", id: "parry", error: { code: -32000, message: "offline" } })) as unknown as typeof fetch;
+    try {
+      const s = (await (await app.request("/v1/status")).json()) as { services: { name: string; ok: boolean; external: string | null }[]; notice: { source: string; message: string } | null };
+      expect(s.services.find((x) => x.name === "guardian")).toMatchObject({ ok: false, external: "outlayer" });
+      expect(s.services.find((x) => x.name === "relayer")).toMatchObject({ ok: true, external: null });
+      expect(s.notice?.source).toBe("OutLayer");
+      expect(s.notice?.message).toContain("not a fault in Parry");
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
   test("signing in to a protected account that is not created yet says so", async () => {
     const { nonce } = (await (await app.request("/v1/auth/challenge", { method: "POST", body: JSON.stringify({ accountId: "0unew.testnet" }) })).json()) as { nonce: string };
     const real = globalThis.fetch;
