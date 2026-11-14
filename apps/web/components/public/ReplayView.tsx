@@ -30,7 +30,7 @@ export function ReplayView() {
         ].map(([k, v]) => (
           <div key={k} className="p-6">
             <dt className="label">{k}</dt>
-            <dd className="display mt-2 text-5xl text-fg sm:text-6xl">{v}</dd>
+            <dd className="display mt-2 whitespace-nowrap text-[2.5rem] text-fg sm:text-6xl lg:text-5xl">{v}</dd>
           </div>
         ))}
       </dl>
