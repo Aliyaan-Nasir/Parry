@@ -31,7 +31,8 @@
       "codeHash": "4APZ71LRbkExR3N31U9x6k9S6M3iyo7vSNXXrrLuUfk7",
       "tx": "7G4MhYKmoesGBeBiTgGPQzr8kdvgDcejqCPPexR6km7y",
       "commit": "f47b842ee481e3ca2a1e8f6b048f6850a875c35c",
-      "source": "contracts/risk"
+      "source": "contracts/risk",
+      "verified": "2026-11-14"
     },
     "vault": {
       "account": "vault.parry.testnet",
@@ -55,7 +56,8 @@
       "tx": "jvXaVSPZkA1uSDVFz7gfDkF5CBPecgqhk5aWrkBU3Hr",
       "commit": "f47b842ee481e3ca2a1e8f6b048f6850a875c35c",
       "source": "contracts/account",
-      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a"
+      "factoryCode": "7PcFeeGqEvK1ZiqnoJXBUhohBgX9g1y76SAk6RoFDX8a",
+      "verified": "2026-11-14"
     },
     "accounts": {
       "account": "accounts.parry.testnet",
@@ -109,18 +111,18 @@
       "signedTx": "GwzViNzy9SjomAKq9MLdBC7hH5Qjx7XXnbFfGZ7fAQ9D"
     }
   },
-  "updatedAt": "2026-11-14T17:01:41.288Z",
+  "updatedAt": "2026-11-14T19:08:28.774Z",
   "dexPool": 2939,
   "enclave": {
     "wasmSha256": "8e27400d4cba2072be2b5c1eff1e77421bc1237055450b8fa548ecd653442116",
     "wasmUrl": "https://test.fastfs.io/enclave.parry.testnet/outlayer.testnet/8e27400d4cba2072be2b5c1eff1e77421bc1237055450b8fa548ecd653442116.wasm",
     "secretsProfile": "parry",
     "secretsOwner": "enclave.parry.testnet",
-    "publicKey": "ed25519:24unfs16EB8vXH1WUEdfcABFJiXfrnNfx5kmKJeVqVTV",
-    "sealingPublicKey": "66db84f528378425599a40128a8b8d74802c73417beb8a991fc3a9631aa0b463",
-    "keysRun": "8Av8yu8rhK4ZLPsNvQFY6TRs97XXnrQ2dCTBNvNRQXpe",
-    "sealingReport": "{\"kind\":\"sealing_key\",\"run_id\":1794675686000,\"at\":1794675686,\"public_key\":\"66db84f528378425599a40128a8b8d74802c73417beb8a991fc3a9631aa0b463\"}",
-    "sealingSignature": "H/qTBZlO6jK4B4pNw0mH5msNXyUWn6pTkRnMjO32/MmSELni+eqdZsGwbXtmA1EzjDj/bg1Jvq46MB8CRxqiAA==",
+    "publicKey": "ed25519:5bwH7357xE7GXaQs6RtQtYcEG5UvKx2L5SHQQHagwLeQ",
+    "sealingPublicKey": "f3335e2f61cdb74f6d6efcdf2848f95a8ddf388592f413bd7b885b8831a1a31b",
+    "keysRun": "B3Bj4pYop7aAindV2Dc2eq5iF9cafzcvp2kQZ9J5MhWa",
+    "sealingReport": "{\"kind\":\"sealing_key\",\"run_id\":1794683278000,\"at\":1794683278,\"public_key\":\"f3335e2f61cdb74f6d6efcdf2848f95a8ddf388592f413bd7b885b8831a1a31b\"}",
+    "sealingSignature": "P4OJSfj55nvZJBYi9pZQFUujJoNhG1cTEv8S10ikroCKYoPenoLMxx/FbJi2CfzkmCT3uEH0wOc872yFq68cAw==",
     "modes": [
       "keys",
       "risk_update",
@@ -129,8 +131,8 @@
       "certificate",
       "attest"
     ],
-    "setEnclaveTx": "FXmRefDY7ExmR7d5X6xQiR2dtg5oBqHhE1ivuUoEyg2q",
-    "sealingTx": "BVZrtzsAEURchtV8zy2m7XAaETwSLHztDyqtjpHTRjLs"
+    "setEnclaveTx": "Feh2X1kkGykau2h8vj7TpJZtAmLvwE1DnW6YsvuyfDJS",
+    "sealingTx": "3Awqzrtw1inCBSubow98vd2J489ARU1vta8z8ASuVMP6"
   },
   "site": "https://parry.market",
   "api": "https://api.parry.market"

@@ -152,7 +152,7 @@ export async function verifyDecisionRecord(d: DecisionRow) {
   }
   if (d.txs.action) {
     const sender = process.env.GUARDIAN_ACCOUNT_ID ?? "";
-    const o = await rpc<FinalExecutionOutcome>("EXPERIMENTAL_tx_status", { tx_hash: d.txs.action, sender_account_id: sender, wait_until: "NONE" }).catch(() => null);
+    const o = await rpc<FinalExecutionOutcome>("tx", { tx_hash: d.txs.action, sender_account_id: sender, wait_until: "NONE" }).catch(() => null);
     const acted = o ? eventsOf(o).find((e) => e.event === "guardian_acted") : undefined;
     const onChain = (acted?.data as { review_hash?: string } | undefined)?.review_hash;
     checks.push({ name: "Review hash on chain", ok: onChain === hash, detail: onChain ? `the account emitted ${onChain} in ${d.txs.action}` : "the action transaction was not found" });

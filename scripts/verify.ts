@@ -136,7 +136,7 @@ type TxOutcome = {
   status: unknown;
 };
 async function txOutcome(hash: string, sender: string) {
-  return rpc<TxOutcome>("EXPERIMENTAL_tx_status", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" });
+  return rpc<TxOutcome>("tx", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" });
 }
 const failed = (o: TxOutcome) => [o.status, ...o.receipts_outcome.map((r) => r.outcome.status)].some((x) => !!x && typeof x === "object" && "Failure" in x);
 const events = (o: { receipts_outcome: { outcome: { logs: string[] } }[] }) =>
@@ -277,12 +277,21 @@ async function main() {
       if (!ok) throw new Error(`the envelope is not signed by the enclave key in force when it was issued (${inForce})`);
       const o = await txOutcome(d.txs.action, dep.services!.guardian!);
       const acted = events(o).find((e) => e.event === "guardian_acted");
-      if (acted?.data.review_hash !== hash) throw new Error(`on chain ${acted?.data.review_hash}, recomputed ${hash}`);
+      // The public record leaves out the model's reasoning (it weighs the owner's sealed policy),
+      // which the review hash covers: the API, holding the full record, recomputes it.
+      if (r.reasoning === undefined) {
+        const v = (await (await fetch(`${API}/v1/guardian/decisions/${rescue.decision}/verify`)).json()) as { ok: boolean; checks: { name: string; ok: boolean; detail: string }[] };
+        const onChain = v.checks.find((c) => /review hash on chain/i.test(c.name));
+        if (!onChain?.ok) throw new Error(`the API's review-hash check: ${onChain?.detail ?? "missing"}`);
+        if (!v.ok) throw new Error(v.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join("; "));
+      } else if (acted?.data.review_hash !== hash) throw new Error(`on chain ${acted?.data.review_hash}, recomputed ${hash}`);
       // With a NEAR AI key, the signer must also be a key attested in TEE hardware right now.
       const { modelAttestation } = await import("../apps/api/src/verify");
       const att = await modelAttestation(r.model!, r.signingAddress!);
       if (att && !att.ok) throw new Error(att.detail);
-      return `review ${hash.slice(0, 16)}... by ${r.model} (${addr}${att ? ", attested" : ""}), action ${d.txs.action}`;
+      const pin = await view<{ signers: { address: string }[]; expires_at: number } | null>(dep.contracts.risk!.account, "model_signers", { model: r.model }).catch(() => null);
+      const pinned = !!pin?.signers.some((s) => s.address === addr.toLowerCase());
+      return `review ${String(acted?.data.review_hash ?? hash).slice(0, 16)}... by ${r.model} (${addr}${att ? ", attested" : ""}${pinned ? ", pinned on the risk board by the enclave's own attestation" : ""}), action ${d.txs.action}`;
     });
   } else {
     wait("A recorded rescue: the model's signature, the review hash on chain and the enclave's signature", "the NEAR AI Cloud key in the enclave's secrets, then `bun scripts/scenarios.ts --only 2,3,4,5,6`");

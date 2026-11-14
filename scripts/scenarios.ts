@@ -453,6 +453,9 @@ async function limits() {
     steps.push({ step: label, refused: !!o.failure, reason: o.failure?.slice(0, 160), tx: explorer(o.hash) });
   };
   const p = people.repay ?? (await person("limits", 1));
+  // Run without scenario 6, the account gets its own mandate, so a forged envelope meets the
+  // signature check rather than "no mandate".
+  if (!people.repay) await mandate(p, ["repay"], [{ token: c("usdc"), reserve: "1000000", daily: "1000000" }], policy("repay-first"), 3600);
   const d = decisions.repay;
   if (d?.envelope && d.envelopeSignature) {
     await refused("replaying an executed envelope", send(root, rootId, p.account, "guardian_execute", { envelope: d.envelope, signature: d.envelopeSignature }, 0n, 300), /nonce|replay|stale|expired/i);
@@ -694,13 +697,20 @@ async function hlOrder() {
     const arrived = after.perps >= before.perps + Number(amount) - 0.01;
     ok &&= arrived;
     p.steps.push({ step: `Perps now holds ${after.perps} USDC and Spot ${after.spotUsdc}`, arrived });
+  } else {
+    // Nothing in Spot this run: the margin move stays proven by the last run that made one.
+    const earlier = (proofs.scenarios?.["8"]?.steps as { step?: string; tx?: string }[] | undefined)?.filter((x) => /from its Spot balance into Perps|Perps now holds/.test(x.step ?? ""));
+    for (const x of earlier ?? []) p.steps.push({ ...x, earlierRun: true });
   }
 
   const mids = (await (await fetch(`${HYPERLIQUID_URL}/info`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) })).json()) as Record<string, string>;
   const mark = Number(mids.NEAR);
-  // A short of 3 NEAR (over Hyperliquid's $10 minimum), immediate-or-cancel, 3 % under the mark.
-  const order: HlOrder = { asset_index: Number(process.env.HYPERLIQUID_NEAR_INDEX ?? 54), is_buy: false, price: String(Number((mark * 0.97).toPrecision(5))), size: "3", reduce_only: false, tif: "Ioc" };
-  const opened = await signAndSend(ownerActions.hlOrder(order, Date.now()), "hyperliquid_signed", `the account signs a Hyperliquid order (sell 3 NEAR at ${order.price}) through Chain Signatures`);
+  // A short worth about $12 at its limit price (Hyperliquid's minimum is $10), immediate-or-cancel,
+  // 3 % under the mark, in whole tenths of a NEAR.
+  const price = Number((mark * 0.97).toPrecision(5));
+  const size = (Math.ceil((12 / price) * 10) / 10).toFixed(1);
+  const order: HlOrder = { asset_index: Number(process.env.HYPERLIQUID_NEAR_INDEX ?? 54), is_buy: false, price: String(price), size, reduce_only: false, tif: "Ioc" };
+  const opened = await signAndSend(ownerActions.hlOrder(order, Date.now()), "hyperliquid_signed", `the account signs a Hyperliquid order (sell ${size} NEAR at ${order.price}) through Chain Signatures`);
   const funded = (await hyperliquidBalances(hyperliquidAddress, network, hl)).perps > 0;
   if (funded) {
     // With margin the short must fill, and the reduce-only close the app sends must take it off again.
