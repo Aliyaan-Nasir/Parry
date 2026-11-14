@@ -37,9 +37,14 @@ Windows with fewer than two samples drop out and the weights renormalize.
 Without any history the index falls back to 70% annual and says so (`fallback: true`).
 Annual volatility is σ × sqrt(8760); the levels are calm below 40%, elevated below 80%, high below 130%, and extreme above.
 
-The index also reads as a regime: calm below 135 % annual, stressed from 135 %, and panic from 230 % (`REGIME_THRESHOLDS`, `tremorRegime`).
-The thresholds come from NEAR's own history (section 11): stressed is the 80th percentile of Tremor over every ordinary hour (the 72 hours around each of the six worst crashes excluded), so one ordinary hour in five reads stressed or worse; panic is the level, on a 5 % grid, that best separates the hours of a crash's fall from ordinary hours (the largest share of crash hours flagged minus ordinary hours flagged) among the levels that flag at most 5 % of ordinary hours.
-On the data, panic flags 35 % of crash hours and 4.8 % of ordinary ones, and stressed or worse flags 70 % of crash hours.
+The index also reads as a regime: calm below 130 % annual, stressed from 130 %, and panic from 215 % (`REGIME_THRESHOLDS`, `tremorRegime`).
+The regime is a label for people (the market strip, `/v1/market`): no score, alert or guardian trigger uses it.
+The thresholds come from NEAR's own history, chosen out of sample (section 11): every hour from 72 hours before each crash and spike the replay scores to 72 hours after its extreme is set aside (2523 hours), and the thresholds are chosen only on the rest.
+There, the crash hours are the falls (peak to trough) of the 12 largest 72-hour falls outside that quarantine (27.6 % to 38.4 %, from November 2020 to October 2025), and the ordinary hours are every hour outside the quarantine and outside 72 hours around those falls (48 359 hours).
+Stressed is the 80th percentile of Tremor over the ordinary hours, so one ordinary hour in five reads stressed or worse; panic is the level, on a 5 % grid, that best separates the crash hours from the ordinary hours (the largest share of crash hours flagged minus ordinary hours flagged) among the levels that flag at most 5 % of ordinary hours.
+On the hours they were chosen on, panic flags 24.7 % of crash hours and 4.8 % of ordinary ones, and stressed or worse 55 % of crash hours.
+Tested on the scored episodes they never saw, panic flags 39.4 % of the six crashes' hours and stressed or worse 72.4 %; panic flags 42.2 % of the six spikes' hours and stressed or worse 73.2 %.
+Choosing the thresholds on the scored crashes themselves would have given 135 % and 230 %; `calibration.inSample` keeps those figures for comparison only.
 The calibration reads Tremor from hourly closes, where the 1-hour window holds a single return; the live index samples every 10 seconds, so its short windows are steadier, and a live reading is at least as well behaved as the calibration's.
 `pnpm replay` recomputes the thresholds and says when they differ from the code's, and a test pins the code's to the committed `deployments/replay.json`.
 
@@ -134,25 +139,28 @@ The square root is deliberate: weighted linearly, a 21 % chance of liquidation w
 - Cascades: cascade pressure covers every Rhea lending borrower the heatmap has swept, with market depth as a configured figure; leverage on other venues is outside its scope.
 - Testnet market: on testnet, Hyperliquid's NEAR market is a test market whose price differs from the real one; the enclave rescales its candles onto the oracle's level for volatility only.
 
-## 11. Crash replay
+## 11. Crash and spike replay
 
-`pnpm replay` (`scripts/replay.ts`, `packages/core/src/replay.ts`) runs this model, the planner and the vault's math through NEAR's largest historical crashes and writes `deployments/replay.json`, which `GET /v1/replay` serves.
-The candles are Binance's public hourly NEARUSDT klines (`https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h`) from October 2020, funding is Binance's NEARUSDT perpetual funding history, and the staking yield is LiNEAR's `ft_price` growth over the last 30 days on mainnet (4.46 % a year when it last ran).
-The crashes are the six largest falls from an hourly close to the lowest close within the next 72 hours, without overlap, skipping the first week after listing.
+`pnpm replay` (`scripts/replay.ts`, `packages/core/src/replay.ts`) runs this model, the planner and the vault's rules through NEAR's largest historical crashes and rallies and writes `deployments/replay.json`, which `GET /v1/replay` serves.
+The candles are Binance's public hourly NEARUSDT klines (`https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h`) from October 2020, funding is Binance's NEARUSDT perpetual funding history, and the staking yield is LiNEAR's `ft_price` growth over the last 30 days on mainnet (4.48 % a year when it last ran).
+The crashes are the six largest falls from an hourly close to the lowest close within the next 72 hours, and the spikes the six largest rises from an hourly close to the highest close within the next 72 hours (`findCrashes`, and `findSpikes`, the same rule on 1 / price); each set without overlap (no two within 144 hours), skipping the first week after listing.
+Nothing in the replay is tuned to the episodes it scores: the guardian's settings are the defaults an owner gets, the vault's are the deployed configuration, and the regime thresholds are chosen out of sample (section 2), which they could not affect anyway, since no score uses the regime.
+
+### The borrower through the crashes
 
 Each crash opens a Rhea wNEAR/USDC position at health 1.30 on the peak's close (1000 NEAR, ratios 0.75 and 0.95) and replays it hour by hour to 24 hours after the trough, twice.
 Alone, it is liquidated at the first hour whose low takes health under 1.
 Protected, the guardian assesses it at each close with the history up to that hour and acts with the default policy: at score 60 or health 1.15, aiming for health 1.45, repay-first with a USDC reserve of 10 % of the debt (its daily cap), at most 4 actions in any 24 hours, swaps at 0.5 % slippage against the planner's 2 % bound.
 The warning is the time from the model's first danger score (50, the default alert threshold) to the liquidation without Parry.
 
-| Crash | Drop | Liquidated without Parry | Warning | Guardian steps | Min health with Parry | Vault drawdown (unhedged) | Min margin ratio | Insurance paid |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 21 Dec 2020 to 24 Dec 2020 | 39.8 % | 2020-12-21 10:00 | 7 h | 7 | 1.080 | 2.7 % (39.8 %) | 0.500 | $0.00 |
-| 21 May 2021 to 23 May 2021 | 45.6 % | 2021-05-21 14:00 | 10 h | 9 | 1.236 | 3.1 % (45.6 %) | 0.500 | $0.00 |
-| 19 Jan 2022 to 22 Jan 2022 | 39.1 % | 2022-01-21 20:00 | 47 h | 7 | 1.193 | 2.7 % (39.1 %) | 0.500 | $5.48 |
-| 9 May 2022 to 12 May 2022 | 51.7 % | 2022-05-11 06:00 | 44 h | 7 | 0.971 (liquidated) | 3.8 % (51.7 %) | 0.500 | $5.06 |
-| 31 Jan 2025 to 3 Feb 2025 | 38.6 % | 2025-02-02 18:00 | 33 h | 6 | 1.149 | 2.6 % (38.6 %) | 0.500 | $2.93 |
-| 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 0.500 | $0.68 |
+| Crash | Drop | Liquidated without Parry | Warning | Guardian steps | Min health with Parry | Vault drawdown (unhedged) | Hedged | Min margin ratio | Funding | Insurance paid |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 21 Dec 2020 to 24 Dec 2020 | 39.8 % | 2020-12-21 10:00 | 7 h | 7 | 1.080 | 2.7 % (39.8 %) | 90 % | 0.495 | $8.47 | $0.00 |
+| 21 May 2021 to 23 May 2021 | 45.6 % | 2021-05-21 14:00 | 10 h | 9 | 1.236 | 6.1 % (45.6 %) | 81 % | 0.488 | $4.59 | $0.00 |
+| 19 Jan 2022 to 22 Jan 2022 | 39.1 % | 2022-01-21 20:00 | 47 h | 7 | 1.193 | 2.7 % (39.1 %) | 84 % | 0.496 | -$5.29 | $3.83 |
+| 9 May 2022 to 12 May 2022 | 51.7 % | 2022-05-11 06:00 | 44 h | 7 | 0.971 (liquidated) | 9.2 % (51.7 %) | 70 % | 0.479 | -$40.26 | $3.23 |
+| 31 Jan 2025 to 3 Feb 2025 | 38.6 % | 2025-02-02 18:00 | 33 h | 6 | 1.149 | 2.6 % (38.6 %) | 88 % | 0.497 | -$2.59 | $2.78 |
+| 3 Jun 2026 to 6 Jun 2026 | 38.9 % | 2026-06-04 08:00 | 16 h | 6 | 1.240 | 2.7 % (39.4 %) | 90 % | 0.484 | $1.72 | $0.68 |
 
 How well the model warned: it warned before every liquidation, with a median of 24.5 hours and at least 7 hours.
 At the first warning its median time to liquidation was, across the crashes, the actual time give or take a factor of two (the median ratio of predicted to actual is 1.0; it ran from 0.67 to 2.1).
@@ -160,7 +168,80 @@ The guardian avoided five of the six liquidations.
 The sixth, in May 2022, was a single hour in which NEAR fell 32 % (7.87 to a low of 5.30): the position stood at health 1.45 after the guardian's fourth action of the day, and a 32 % fall within the hour takes 1.45 under 1.
 The live guardian looks every minute rather than every hour; a one-hour fall that deep is covered by a higher target or a larger daily action budget, both of which the owner sets.
 
-The vault opens with 10 000 USD at the peak: LiNEAR staked and a short of 90 % of it at 2x, rebalanced with `rebalance()`, paid or charged the real funding every 8 hours, scored with `assessPerp` (it asks for margin at score 85, as the vault contract does), against the same deposit all staked and unhedged.
-Its insurance fund starts at 10 % of the positive yield (staking and funding) of the 30 days before the crash and pays negative funding and margin top-ups within 25 % of the fund a day.
-The hedged vault's largest drawdown was 2.6 % to 3.8 % against 38.6 % to 51.7 % unhedged; in a fall the short gains, so the margin ratio never dropped below where it opened, and the fund paid only negative funding.
+### The vault, by its real rules
 
+The vault opens with 10 000 USD at the start of each episode (the peak of a crash, the low of a spike): LiNEAR staked and a short at leverage 2, sized by the hedge ratio the enclave's report would ask for then, and replays it hour by hour as the deployed vault, enclave and keeper work.
+
+- Hedge ratio: 90 % while shorts were paid over the last 7 days, leaning toward the vault's floor of 70 % as 7-day funding is paid by shorts, all the way at 20 % a year (`hedgeRatioForFunding`, the enclave's `hedge_ratio`).
+- Funding: Binance's real NEARUSDT funding, every 8 hours, paid to or by the short.
+- Score: once an hour a vault report scored with the enclave's formula and its floors (`vaultRisk`, section 12), with no oracle deviation, LiNEAR rate fall or reserves shortfall, since the replay has none.
+- Levers, with the contract's hysteresis (`contracts/vault/src/report.rs`): score 70 pauses deposits until one under 60, score 50 lowers the leverage cap from 3 to 2 until one under 40, and score 85 asks the keeper for margin.
+- Rebalance (`rebalance()`, as `contracts/vault/src/order.rs`): whenever the short is off target by 2 % or 1 NEAR, trade it to the target, the hedge ratio of the exposure capped at the leverage cap on the hedge account's value, at 0.05 % in fees.
+- Liquidation: Hyperliquid liquidates the short once the account's value falls to its maintenance margin (5 % of notional for NEAR): with account value E, short S and price P, at P' = (E + S P) / (S (1 + 0.05)).
+  Each hour the high is checked against the liquidation price left by the last close, so a jump inside the hour counts in full; a short that reaches it is closed there and the hedge account's remaining value is lost (Hyperliquid's backstop case, the worst one).
+- The insurance fund, as the contract keeps it (`contracts/vault/src/insurance.rs`): it opens with 10 % of the positive yield (staking and funding) of the 30 days before, then takes 10 % of the staking yield (as LiNEAR) and of each report's funding received (as USDC that stays in the hedge account), and records the funding each report shows paid as owed back.
+  The depositors' value leaves the fund out, and what it earmarks for margin.
+- The keeper's two payouts from it (`services/src/keeper.ts`), each clamped to what `insurance_pay` allows (at most 1000 USD a payout, the fund's value, and 25 % of the fund's value a day), so the vault does not refuse them:
+  - every hour while the last 12 reports show funding paid, the negative funding cover (`fundingCover`): the least of what is owed back, the per-payout cap, the fund and the day's cap left, at least a cent, back to the depositors;
+  - while the vault asks for margin, the margin top-up (`marginDecision` with `payableUsd`): the shortfall back to a margin ratio of 0.4, clamped to what the fund may pay now and floored to the cent, nothing under a cent, at most one insurance payout an hour; the fund's USDC is earmarked where it already is, and its LiNEAR is counted as routed into the hedge account within the hour (the owner does that by hand on the live vault).
+
+The live keeper reports every 5 minutes and rebalances every 2, so within an hour it would buy the short back sooner than the replay does: the replay's intra-hour risk is an upper bound.
+
+In the crashes the short gains, so its margin ratio barely moves from the 0.5 it opened at (0.479 to 0.497 at the worst hourly high) and its liquidation price stays 41 % to 43 % above every hourly high.
+The drawdown comes from the part left unhedged: where shorts had been paying funding for a week before the crash, the report leans the hedge down, to 81 % before May 2021 and to 70 % before May 2022, and those two crashes cost the vault 6.1 % and 9.2 % instead of about 2.7 %.
+The fund covered the funding the short paid in four of the crashes, 0.68 to 3.83 USD each, within its daily cap: in May 2022 it covered 3.23 of the 40.26 USD paid.
+
+### The vault's short through the spikes
+
+| Spike | Rise | Vault liquidated | Min margin ratio | Closest to liquidation | Max score | Deposits paused | Margin asked | Margin topped up (largest shortfall) | Rebalances (buybacks) | Hedged at the end | Share price (unhedged) | Drawdown |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 Feb 2021 to 13 Feb 2021 | 67.8 % | no | 0.212 | 15.4 % away | 70 | 2 h | no | n/a | 39 (19) | 27 % | 1.122 (1.498) | 8.5 % |
+| 23 Feb 2021 to 25 Feb 2021 | 63.2 % | no | 0.184 | 12.8 % away | 85 | 2 h | 1 h | $16.61 ($749.23) | 58 (30) | 14 % | 1.167 (1.627) | 11.5 % |
+| 6 Sep 2021 to 9 Sep 2021 | 92.0 % | no | 0.093 | 4.1 % away | 85 | 8 h | 2 h | $0.00 ($1069.43) | 63 (24) | 9 % | 1.105 (1.555) | 17.7 % |
+| 21 Dec 2021 to 24 Dec 2021 | 78.0 % | no | 0.197 | 14.0 % away | 70 | 2 h | no | n/a | 66 (35) | 11 % | 1.246 (1.741) | 6.4 % |
+| 18 Dec 2023 to 21 Dec 2023 | 64.4 % | no | 0.191 | 13.4 % away | 70 | 1 h | no | n/a | 56 (31) | 21 % | 1.122 (1.518) | 8.1 % |
+| 16 Sep 2026 to 19 Sep 2026 | 65.7 % | no | 0.271 | 21.0 % away | 38 | no | no | n/a | 57 (33) | 22 % | 1.144 (1.546) | 6.2 % |
+
+"Min margin ratio" is the account's value over the short's notional at the worst hourly high, and "closest to liquidation" how far that high stayed under the short's liquidation price.
+The short was liquidated in none of the six rallies of 63 % to 92 % in 72 hours.
+What kept it alive is the leverage cap: as NEAR rose, the short's losses shrank the hedge account, and each hourly rebalance bought part of the short back to stay within leverage 3, or 2 once the score reached 50.
+The score's floors (section 12) now act in a rally: a short whose liquidation price came within 20 % of the mark paused deposits (15 hours in five of the six spikes) and lowered the leverage cap at once, and within 15 % asked for margin (3 hours, in two spikes).
+The closest call was 8 September 2021, when one hour's high came within 4.1 % of the liquidation price and the margin ratio fell to 0.093.
+The cost is the hedge itself: at the end of the spikes only 9 % to 27 % of the NEAR was still hedged (median 18 %), so the share price followed NEAR part of the way up (ending at 1.12 to 1.25 against 1.50 to 1.74 unhedged) and fell 6 % to 18 % from its high as NEAR came back.
+
+The vault asked for margin in 3 hours, against shortfalls of 561 to 1069 USD back to a ratio of 0.4.
+In late February 2021 the keeper paid 16.61 USD, a quarter of the 66 USD fund and all it may pay in a day; in September 2021 it could pay nothing in either hour, because the funding covers earlier the same day (5.97 and 4.67 USD) had already spent the day's cap of a fund of about 20 USD.
+The fund, at 10 % of a month's yield, is sized for funding, not for margin: its daily cap is a few to tens of USD against a shortfall of hundreds.
+Nothing else refills the hedge account after a rally: the short regrows only as the price falls back, until margin is added by hand.
+
+## 12. The vault's score
+
+The enclave scores the vault in every vault report, and the vault contract acts on the score (section 11):
+
+    S = max( round(0.35 L + 0.25 M + 0.10 F + 0.10 O + 0.05 R + 0.15 V), floor(d) )
+
+each component in percent of "fully risky" and clamped to 0 to 100 %:
+
+- L, the liquidation price: 1 − d / 0.5 for a short, where d = P_liq / P − 1 is how far the liquidation price is above the mark, so full at the mark and nothing 50 % above it.
+- M, leverage: notional over account value, over 5.
+- F, funding: the hourly rate paid by shorts, over 1 bp.
+- O, the oracle: the mark's deviation from the oracle, over 2 %.
+- R, the LiNEAR rate: its fall from the rate the vault booked, over 1 %.
+- V, reserves: the shortfall of reserves under liabilities, over 5 %.
+
+The weighted sum alone cannot make a short ask for margin: L, M and F, all a short can move, top out at 35 + 25 + 10 = 70, under the contract's margin score of 85, which only oracle, LiNEAR rate or reserves trouble on top could reach.
+So the score has floors on the liquidation distance d:
+
+| d | Floor | What the vault does |
+| --- | ---: | --- |
+| under 15 % | 85 | asks the keeper for margin (and pauses deposits and lowers the leverage cap) |
+| under 20 % | 70 | pauses deposits and lowers the leverage cap to 2 |
+| 20 % or more | none | the weighted sum alone |
+
+The thresholds come from the margin ratio m (account value over notional): with Hyperliquid's 5 % maintenance margin, d = (m − 0.05) / 1.05.
+A distance of 15 % is a margin ratio of about 0.21, just above the keeper's early mark of 0.2 (`MARGIN_EARLY_RATIO`), so the vault asks for margin where the keeper starts watching rather than after it.
+A distance of 20 % is a margin ratio of about 0.26: the leverage cap of 3 leaves a ratio of 1/3 (d of 27 %) after each rebalance, so the pause floor is reached only when the price outruns the rebalances, and well before the margin floor.
+The floors only raise the score, and both step up as d falls, so the score never falls as the liquidation price comes closer.
+In the replay's spikes they paused deposits as the short neared liquidation and asked for margin at the September 2021 and late February 2021 peaks (section 11).
+
+`risk::vault_risk` in the enclave (with `VAULT_MARGIN_DISTANCE` and `VAULT_PAUSE_DISTANCE`) and `vaultRisk` in `packages/core` (`VAULT_SCORE_FLOORS`) compute it, and both pass the hand-checked cases in `packages/core/fixtures/vault-cases.json`, with the funding-aware hedge ratio (`hedge_ratio`, `hedgeRatioForFunding`).

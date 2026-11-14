@@ -95,7 +95,7 @@ Calls and payments:
 - `claimAction()`: pays the caller's vault claims.
 - `sendCall(call, { accountId, privateKey })`: signs a call with a full-access key and sends it.
 - `ownerRequest({ account, nonce, actions })`: an owner request for the client's network.
-- `verifyDecision(decisionOrId)`: verifies a decision with the key read from the risk board.
+- `verifyDecision(decisionOrId)`: verifies a decision with the keys the risk board trusted when it was signed and the board's own record of it; a public record is verified as far as public data goes (`scope: "public"`), the owner's full record in full.
 - `paidRiskCheck(accountId, { payer, maxAmount })`: a risk check paid per call over x402 on NEAR.
 - `signIn(accountId, privateKey)`: a session token for the API, signed with the owner's full-access key (NEP-413).
 - `closing(accountId)`, `rheaPosition(accountId)`: the close round in flight on a protected account (null when none) and its Rhea lending position, read from the chain.
@@ -132,6 +132,7 @@ Hyperliquid (the account's own derived address):
 Mandates:
 
 - `buildMandate(input)`: a mandate, checked as the contract checks it, with the policy sealed when given.
+  The Hyperliquid guard takes `dailySizeE8` (default `maxSizeE8`) and `maxHedgeE8` (default `maxSizeE8` with `hl_hedge`, else 0); the EVM guard takes `dailyAmount` (default `maxAmount`) and `totalAmount` (default 3 x `maxAmount`).
 - `sealPolicy(policy, { account, sealingPublicKey })`: encrypts trigger thresholds and strategy to the enclave.
 - `openPolicy(sealed, { account, secret })`: opens a sealed policy with a known secret (tests and tools).
 - `policyJson(policy)`: the exact plaintext the enclave reads.
@@ -139,7 +140,7 @@ Mandates:
 
 Verification:
 
-- `verifyDecision(decision, { enclavePublicKey })`: checks the review hash, the signed exchange, the model's signature, the envelope's signature, the envelope's review hash and the decision id.
+- `verifyDecision(decision, { enclavePublicKey, recordPublicKey?, onChainRecord? })`: checks the signed exchange, the model's signature, the envelope's signature, the envelope's review hash, the decision id, the enclave's signature over the public risk-board record and its match with the board's copy; on the owner's full record also the review hash over the reasoning, the reasoning hash and the facts the review saw. Checks that need the owner's private text are `skip` on a public record, with the reason.
 - `verifyReserves(reserves, { onChainRoot })`: checks every reserve proof and recomputes the root.
 - `verifyCertificate(certificate, { enclaveHistory, reader, anchor, now })`: checks a health certificate's hash, statement, signature, expiry, reader and anchor.
 - `reviewHash(review)`: the review hash the account emits with each action.
@@ -148,11 +149,12 @@ Verification:
 
 x402 on NEAR:
 
-- `encodePaymentHeader(payment)` and `decodePaymentHeader(header)`: the `X-PAYMENT` header.
-- `encodePaymentResponse(response)` and `decodePaymentResponse(header)`: the `X-PAYMENT-RESPONSE` header.
+- `encodePaymentRequired(required)` and `decodePaymentRequired(header)`: the x402 v2 `PAYMENT-REQUIRED` header of a 402.
+- `encodePaymentHeader(payment)` and `decodePaymentHeader(header)`: the `PAYMENT-SIGNATURE` header (the decoder also reads the earlier `X-PAYMENT` payload).
+- `encodePaymentResponse(response)` and `decodePaymentResponse(header)`: the `PAYMENT-RESPONSE` header (also sent as `X-PAYMENT-RESPONSE`).
 - `parseSignedDelegate(base64)`: sender, receiver, actions, nonce, max block height and public key of a signed delegate action.
 - `verifySignedDelegate(base64)`: checks its ed25519 signature over the NEP-461 hash.
-- `verifyPayment(payment, requirements, { blockHeight })`: checks a payment against what was asked.
+- `verifyPayment(payment, requirements, { blockHeight, resource })`: checks a payment against what was asked.
 - `checkDelegateOnChain(near, delegate)`: checks the payer's full-access key, its nonce and the expiry on chain.
 - `signPaymentDelegate(near, payerId, requirements)`: signs the `ft_transfer` a payment needs.
 

@@ -65,6 +65,8 @@ export type ParryAccount = {
   /** A sign-in token for the selected account's own writes (settings, alerts, push), kept in memory. */
   withSignIn: <T>(fn: (token: string) => Promise<T>) => Promise<T>;
   signedIn: boolean;
+  /** The selected account's sign-in token while signed in, for reads only its owner may make (the full guardian record). */
+  sessionToken: string | null;
 };
 
 const AccountContext = createContext<ParryAccount | null>(null);
@@ -351,6 +353,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       sendFromWallet,
       withSignIn,
       signedIn: !!token,
+      sessionToken: token,
     }),
     [
       ready,

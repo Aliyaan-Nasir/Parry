@@ -80,8 +80,15 @@ type VaultStateView = {
 };
 
 /** The vault's `insurance()` view, or null while the deployed vault has none. */
-export async function insuranceView(): Promise<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number } | null> {
-  return view<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number }>(contract("vault"), "insurance").catch(() => null);
+export async function insuranceView(): Promise<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number; max_payout_e6?: string } | null> {
+  return view<{ value_usd_e6: string; margin_reserved_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number; max_payout_e6?: string }>(contract("vault"), "insurance").catch(() => null);
+}
+
+/** What the fund may pay in one payout now, in USD: the per-payout cap, its value and today's cap left. */
+export function payableUsd(f: { value_usd_e6: string; paid_today_e6: string; cap_per_day_bps: number; max_payout_e6?: string }): number {
+  const value = Number(f.value_usd_e6) / 1e6;
+  const dayLeft = (value * f.cap_per_day_bps) / 10_000 - Number(f.paid_today_e6) / 1e6;
+  return Math.max(0, Math.min(value, dayLeft, f.max_payout_e6 ? Number(f.max_payout_e6) / 1e6 : Infinity));
 }
 
 /**
@@ -126,15 +133,70 @@ export interface MarginDecision {
  * pays a top-up from the insurance fund (`insurance_pay` kind `margin_top_up`) back to `target`,
  * but only when the deployed vault has the insurance fund.
  */
-export function marginDecision(o: { ratio: number | null; needsMargin: boolean; insurance: boolean; notionalUsd: number; accountValueUsd: number; early: number; target: number }): MarginDecision {
+export function marginDecision(o: { ratio: number | null; needsMargin: boolean; insurance: boolean; notionalUsd: number; accountValueUsd: number; early: number; target: number; payableUsd?: number }): MarginDecision {
   if (o.ratio === null) return { action: "none", amountUsd: 0, reason: "no short open" };
   if (o.needsMargin) {
-    const amountUsd = Math.max(0, o.target * o.notionalUsd - o.accountValueUsd);
-    if (!o.insurance) return { action: "unsupported", amountUsd, reason: "the vault needs margin, and the deployed vault has no insurance fund yet: nothing paid" };
-    return amountUsd > 0 ? { action: "top_up", amountUsd, reason: `margin ratio ${o.ratio.toFixed(3)} with needs_margin set: top up to ${o.target}` } : { action: "none", amountUsd: 0, reason: "already at the target" };
+    const shortfall = Math.max(0, o.target * o.notionalUsd - o.accountValueUsd);
+    if (!o.insurance) return { action: "unsupported", amountUsd: shortfall, reason: "the vault needs margin, and the deployed vault has no insurance fund yet: nothing paid" };
+    if (shortfall <= 0) return { action: "none", amountUsd: 0, reason: "already at the target" };
+    // The contract refuses a payout above the per-payout cap, the fund's value or today's cap:
+    // pay what it allows now, and the rest after the next report.
+    const amountUsd = Math.floor(Math.min(shortfall, o.payableUsd ?? shortfall) * 100) / 100;
+    if (amountUsd < 0.01) return { action: "watch", amountUsd: 0, reason: `margin ratio ${o.ratio.toFixed(3)} with needs_margin set, and the insurance fund can pay nothing more today` };
+    const part = amountUsd < shortfall ? ` (${amountUsd.toFixed(2)} of the ${shortfall.toFixed(2)} USD short: all the fund may pay now)` : "";
+    return { action: "top_up", amountUsd, reason: `margin ratio ${o.ratio.toFixed(3)} with needs_margin set: top up to ${o.target}${part}` };
   }
   if (o.ratio < o.early) return { action: "watch", amountUsd: 0, reason: `margin ratio ${o.ratio.toFixed(3)} is under the early mark ${o.early}; the vault has not asked yet` };
   return { action: "none", amountUsd: 0, reason: `margin ratio ${o.ratio.toFixed(3)}` };
+}
+
+/** The fund as `insurance()` shows it, with the funding fields `fundingCover` reads. */
+export type FundView = {
+  value_usd_e6: string;
+  paid_today_e6: string;
+  cap_per_day_bps: number;
+  max_payout_e6: string;
+  negative_funding_e6: string;
+  covered_negative_funding_e6: string;
+  recent_funding_e6: string;
+};
+
+/**
+ * How much negative funding the fund should cover now, in USD e6, or null: only while the last
+ * reports show net funding paid, never more than what is not yet covered, the per-payout cap, the
+ * fund's value or what today's cap leaves (the contract checks each again), and not under a cent.
+ */
+export function fundingCover(f: FundView): bigint | null {
+  if (BigInt(f.recent_funding_e6) >= 0n) return null;
+  const open = BigInt(f.negative_funding_e6) - BigInt(f.covered_negative_funding_e6);
+  const value = BigInt(f.value_usd_e6);
+  const dayLeft = (value * BigInt(f.cap_per_day_bps)) / 10_000n - BigInt(f.paid_today_e6);
+  const amount = [open, BigInt(f.max_payout_e6), value, dayLeft].reduce((a, b) => (b < a ? b : a));
+  return amount >= 10_000n ? amount : null;
+}
+
+/**
+ * Pays the hedge's negative funding from the insurance fund (`insurance_pay` kind
+ * `negative_funding`), which the contract allows only while recent reports show funding paid.
+ */
+async function negativeFunding(sql: Sql): Promise<string> {
+  if (!contract("vault")) return "no vault in this deployment";
+  if (!keeper) throw new Error("KEEPER wallet is not configured");
+  const f = await view<FundView>(contract("vault"), "insurance").catch(() => null);
+  if (!f) return "the deployed vault has no insurance fund";
+  const amount = fundingCover(f);
+  if (amount === null) return BigInt(f.recent_funding_e6) >= 0n ? "funding is not negative" : "nothing to cover";
+  const state = await view<VaultStateView>(contract("vault"), "vault_state");
+  if (Date.now() / 1000 - state.report_at > 900) return "waiting for a fresh vault report";
+  const o = await keeper.call({
+    receiverId: contract("vault"),
+    methodName: "insurance_pay",
+    args: { kind: "negative_funding", amount_usd_e6: amount.toString(), report_at: state.report_at },
+    tgas: 50,
+  });
+  const usd = Number(amount) / 1e6;
+  await sql`INSERT INTO reports (kind, run_id, tx_hash, payload) VALUES ('insurance_pay', ${Date.now()}, ${txHash(o)}, ${sql.json({ kind: "negative_funding", amountUsd: usd } as never)}) ON CONFLICT DO NOTHING`;
+  return `covered ${usd.toFixed(2)} USD of negative funding in ${txHash(o)}`;
 }
 
 /** Margin-ratio monitoring with the early top-up decision (no-op until the vault has `insurance_pay`). */
@@ -153,6 +215,7 @@ async function marginWatch(sql: Sql): Promise<string> {
     accountValueUsd,
     early: Number(process.env.MARGIN_EARLY_RATIO ?? 0.2),
     target: Number(process.env.MARGIN_TARGET_RATIO ?? 0.4),
+    payableUsd: insurance ? payableUsd(insurance) : undefined,
   });
   if (d.action === "none") return d.reason;
   await sql`INSERT INTO reports (kind, run_id, payload) VALUES ('margin_watch', ${Date.now()}, ${sql.json(d as never)}) ON CONFLICT DO NOTHING`;
@@ -184,6 +247,49 @@ async function sealingKey(): Promise<string> {
   const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 50 });
   log.info("sealing key published", { tx: txHash(o), key: run.output.sealing_public_key });
   return `published in ${txHash(o)}`;
+}
+
+/** The review model the enclave build uses (its `PARRY_REVIEW_MODEL`). */
+const REVIEW_MODEL = process.env.REVIEW_MODEL ?? "z-ai/glm-5.3-flash";
+/** Re-attest once a pin has less than this left (pins last 24 h). */
+const REATTEST_LEFT_SECS = 18 * 3600;
+
+/** The signing addresses NEAR AI serves the review model with now (no nonce: only a hint of when to re-attest). */
+async function servingAddresses(): Promise<string[] | null> {
+  const key = process.env.NEARAI_API_KEY;
+  if (!key) return null;
+  const r = await fetch(`https://cloud-api.near.ai/v1/attestation/report?model=${encodeURIComponent(REVIEW_MODEL)}&signing_algo=ecdsa`, {
+    headers: { authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok) return null;
+  const d = (await r.json()) as { model_attestations?: { signing_address?: string }[] };
+  return [...new Set((d.model_attestations ?? []).map((m) => m.signing_address?.toLowerCase()).filter((a): a is string => !!a))];
+}
+
+/**
+ * Keeps the review model's keys pinned on the risk board. The enclave's `attest` mode checks NEAR
+ * AI's hardware attestation itself (Intel TDX quote binding each key to its own nonce, NVIDIA GPU
+ * evidence) and signs a `model_signers` report; the guardian accepts a review only from a key
+ * pinned there. Re-attests when the pin runs low or NEAR AI serves a key that is not pinned.
+ */
+async function modelSigners(): Promise<string> {
+  if (!keeper) throw new Error("KEEPER wallet is not configured");
+  type Pin = { signers: { address: string }[]; expires_at: number } | null;
+  const pin = await view<Pin>(contract("risk"), "model_signers", { model: REVIEW_MODEL }).catch(() => null);
+  const now = Date.now() / 1000;
+  const serving = await servingAddresses().catch(() => null);
+  const unpinned = (serving ?? []).filter((a) => !pin?.signers.some((s) => s.address === a));
+  if (pin && pin.expires_at - now > REATTEST_LEFT_SECS && unpinned.length === 0) {
+    return `current: ${pin.signers.length} attested key(s) until ${new Date(pin.expires_at * 1000).toISOString()}`;
+  }
+  type Attest = { report_json: string; signature: string; failed: string[] };
+  const run = await runEnclave<Attest>("attest");
+  if ((run.output as unknown as { error?: string }).error) throw new Error((run.output as unknown as { error: string }).error);
+  const o = await keeper.call({ receiverId: contract("risk"), methodName: "submit", args: { report_json: run.output.report_json, signature: run.output.signature }, tgas: 50 });
+  const pinned = (JSON.parse(run.output.report_json) as { signers: unknown[] }).signers.length;
+  log.info("model signers pinned", { tx: txHash(o), pinned, failed: run.output.failed });
+  return `pinned ${pinned} attested key(s) in ${txHash(o)}${run.output.failed.length ? `; ${run.output.failed.length} node(s) failed` : ""}`;
 }
 
 /**
@@ -340,10 +446,14 @@ export async function main() {
   every(600_000, "gas-key", () => tendGasKey(sql, "keeper", keeper));
   every(intEnv("FEED_MS", 30_000), "feed", track("feed", feed));
   every(intEnv("SEALING_KEY_MS", 6 * 3_600_000), "sealing-key", track("sealing-key", sealingKey), intEnv("SEALING_KEY_RETRY_MS", 600_000));
-  every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)));
+  every(intEnv("MODEL_SIGNERS_MS", 1_800_000), "model-signers", track("model-signers", modelSigners), intEnv("MODEL_SIGNERS_RETRY_MS", 300_000));
+  // The vault refuses deposits on a report older than 15 minutes: a failed run retries within a
+  // minute instead of waiting for the next 5-minute slot.
+  every(intEnv("VAULT_REPORT_MS", 300_000), "vault-report", track("vault-report", () => vaultReport(sql)), intEnv("VAULT_REPORT_RETRY_MS", 60_000));
   every(intEnv("REBALANCE_MS", 120_000), "rebalance", track("rebalance", () => rebalance(sql)));
   every(intEnv("MARGIN_ROUTE_MS", 1_800_000), "margin-route", track("margin-route", () => marginRoute(sql)));
   every(intEnv("MARGIN_WATCH_MS", 120_000), "margin-watch", track("margin-watch", () => marginWatch(sql)));
+  every(intEnv("NEGATIVE_FUNDING_MS", 3_600_000), "negative-funding", track("negative-funding", () => negativeFunding(sql)));
   every(intEnv("MARGIN_SWEEP_MS", 300_000), "margin-sweep", track("margin-sweep", () => marginSweep(sql)));
   every(intEnv("WITHDRAW_MS", 120_000), "withdrawals", track("withdrawals", withdrawals));
   every(intEnv("LIQUIDATOR_MS", 30_000), "liquidator", track("liquidator", () => liquidator(sql)));

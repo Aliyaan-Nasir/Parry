@@ -8,8 +8,10 @@
 
 import type { Sql } from "@parryguard/services/lib/db";
 import { errorText } from "@parryguard/services/lib/log";
+import { isPublicPlan, publicPlan } from "@parryguard/core";
 import { decision, position, vaultState, type DecisionRow, type PositionRow } from "./views";
 
+export type { AlertRow };
 export const STREAM_EVENTS = ["alert", "decision", "position", "price", "vault", "status"] as const;
 export type StreamEvent = (typeof STREAM_EVENTS)[number];
 
@@ -28,17 +30,25 @@ interface Client {
 
 type AlertRow = { id: string; account: string; kind: string; severity: string; title: string; body: string; status: string; created_at: Date; updated_at: Date };
 
-export const alertView = (a: AlertRow) => ({
+/**
+ * An alert as served. A guardian alert's body is its decision's plan: guardian alerts written
+ * before the guardian kept the public plan carry the full one, so everyone but the account's
+ * signed-in owner reads it redacted.
+ */
+export const alertView = (a: AlertRow, opts: { owner?: boolean } = {}) => ({
   id: String(a.id),
   account: a.account,
   kind: a.kind,
   severity: a.severity,
   title: a.title,
-  body: a.body,
+  body: a.kind === "guardian" && !opts.owner && !isPublicPlan(a.body) ? publicPlan(a.body, guardianAction(a.title)) : a.body,
   status: a.status,
   createdAt: a.created_at.toISOString(),
   updatedAt: a.updated_at.toISOString(),
 });
+
+/** The action a guardian alert's title names ("Guardian executed: add collateral" is add_collateral). */
+const guardianAction = (title: string) => (title.split(": ")[1] ?? "").trim().replace(/ /g, "_");
 
 export const sseFrame = (event: string, data: unknown): string => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
@@ -125,6 +135,7 @@ export class StreamHub {
     for (const a of alerts) out.push({ event: "alert", account: a.account, data: alertView(a) });
     advance("alert", alerts.at(-1)?.cur);
     const decisions = await sql<(DecisionRow & { cur: string })[]>`SELECT *, created_at::text AS cur FROM decisions WHERE created_at > ${c.decision!}::text::timestamptz ORDER BY created_at LIMIT 100`;
+    // The stream is open to anyone: every decision goes out in its public form.
     for (const d of decisions) out.push({ event: "decision", account: d.account, data: decision(d) });
     advance("decision", decisions.at(-1)?.cur);
     const positions = await sql<(PositionRow & { cur: string })[]>`SELECT *, scored_at::text AS cur FROM positions WHERE scored_at > ${c.position!}::text::timestamptz ORDER BY scored_at LIMIT 500`;

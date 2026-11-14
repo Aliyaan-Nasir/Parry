@@ -1,7 +1,7 @@
 // The Parry client for the app: one @parryguard/sdk client for API reads, relays and builders, and the
 // same client (or, against a local node, one with that deployment's contract ids) for chain reads.
 
-import { createParry, type ContractIds, type PasskeyAssertion, type Parry } from "@parryguard/sdk";
+import { createParry, type ContractIds, type DecisionPage, type PasskeyAssertion, type Parry } from "@parryguard/sdk";
 import type {
   AuthChallenge,
   AuthProof,
@@ -75,6 +75,9 @@ export const api = {
     parry().api.request<{ id: string; status: string }>(`/v1/alerts/${seg(id)}/resolve`, { method: "POST", body: {}, headers: bearer(token) }),
   pushSubscribe: (subscription: PushSubscriptionJSON, token: string) =>
     parry().api.request<{ ok: boolean }>("/v1/push/subscribe", { method: "POST", body: subscription, headers: bearer(token) }),
+  /** One account's guardian decisions as its signed-in owner reads them: the full records. */
+  decisions: (q: { account: string; limit: number; cursor?: string }, token: string) =>
+    parry().api.request<DecisionPage>("/v1/guardian/decisions", { query: { account: q.account, limit: q.limit, cursor: q.cursor }, headers: bearer(token) }),
   shock: () => parry().api.request<ShockState>("/v1/shock"),
   applyShock: (bps: number) => parry().api.request<ShockResult>("/v1/shock", { method: "POST", body: { bps } }),
   /**

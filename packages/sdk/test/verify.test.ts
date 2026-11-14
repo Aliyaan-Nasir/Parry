@@ -82,6 +82,32 @@ function makeDecision(): Decision {
   };
 }
 
+/** The decision with the enclave-signed risk-board record and the review's facts, as the owner reads it. */
+function withRecord(d: Decision): Decision {
+  const plan = "Repay 60.00 USDC from the reserve: health 0.830 to 1.450 (target 1.45). Chose repay: the first step in the order repay, deleverage that the mandate allows and that moves health toward 1.45.";
+  const record = JSON.stringify({
+    kind: "decision", run_id: 1, at: 1_800_000_000, id: d.id, account: d.account, venue: d.venue, trigger: { score: 81, tier: "critical", health_bps: 8250 }, action: d.action,
+    plan: "Repay 60.00 USDC from the reserve.", envelope_hash: d.id,
+    review: { model: d.review.model, chat_id: d.review.chatId, review_hash: d.review.reviewHash, verdict: "approve", signing_address: d.review.signingAddress, reasoning_hash: toHex(sha256(utf8(d.review.reasoning!))) },
+  });
+  return {
+    ...d,
+    plan,
+    publicPlan: "Repay 60.00 USDC from the reserve.",
+    visibility: "owner",
+    decisionJson: record,
+    decisionSignature: toBase64(ed25519.sign(sha256(utf8(`parry-risk:v1:${record}`)), enclaveSecret)),
+    facts: { account: d.account, plan, target_health: 1.45, owner_trigger: { score: 60, health: 1.2 }, proposed_action: JSON.parse(d.envelope!).action },
+  };
+}
+
+/** What the API serves to everyone else: the public plan, no reasoning, no facts. */
+function publicView(d: Decision): Decision {
+  const { reasoning: _r, ...review } = d.review;
+  const { facts: _f, ...rest } = d;
+  return { ...rest, plan: d.publicPlan!, visibility: "public", review: { ...review, reasoningHash: toHex(sha256(utf8(d.review.reasoning!))) }, explanation: null };
+}
+
 const status = (v: ReturnType<typeof verifyDecision>, name: string) => v.checks.find((c) => c.name === name)?.status;
 
 describe("verifyDecision", () => {
@@ -94,8 +120,60 @@ describe("verifyDecision", () => {
       ["envelope_signature", "pass"],
       ["envelope_review_hash", "pass"],
       ["decision_id", "pass"],
+      ["decision_record_signature", "skip"],
+      ["decision_record", "skip"],
+      ["reasoning_hash", "skip"],
+      ["facts", "skip"],
     ]);
     expect(v.ok).toBe(true);
+    expect(v.scope).toBe("owner");
+  });
+
+  test("the public record (no reasoning, no facts) verifies what is public and says what it skipped", () => {
+    const owner = withRecord(makeDecision());
+    const pub = publicView(owner);
+    const v = verifyDecision(pub, { enclavePublicKey: enclaveKey, onChainRecord: JSON.parse(owner.decisionJson!) });
+    expect(v.scope).toBe("public");
+    expect(v.checks.map((c) => [c.name, c.status])).toEqual([
+      ["review_hash", "skip"],
+      ["signed_exchange", "pass"],
+      ["model_signature", "pass"],
+      ["envelope_signature", "pass"],
+      ["envelope_review_hash", "pass"],
+      ["decision_id", "pass"],
+      ["decision_record_signature", "pass"],
+      ["decision_record", "pass"],
+      ["reasoning_hash", "skip"],
+      ["facts", "skip"],
+    ]);
+    expect(v.ok).toBe(true);
+    expect(JSON.stringify(v)).not.toContain("1.45");
+  });
+
+  test("the owner's full record runs every check", () => {
+    const owner = withRecord(makeDecision());
+    const v = verifyDecision(owner, { enclavePublicKey: enclaveKey, onChainRecord: JSON.parse(owner.decisionJson!) });
+    expect(v.checks.every((c) => c.status === "pass")).toBe(true);
+    expect(v.scope).toBe("owner");
+    expect(v.ok).toBe(true);
+  });
+
+  test("a public record that another key signed, or that names another review, fails", () => {
+    const owner = withRecord(makeDecision());
+    const other = formatEd25519PublicKey(ed25519.getPublicKey(sha256(utf8("other"))));
+    expect(status(verifyDecision(publicView(owner), { enclavePublicKey: enclaveKey, recordPublicKey: other }), "decision_record_signature")).toBe("fail");
+    const board = { ...JSON.parse(owner.decisionJson!), review: { review_hash: "ef".repeat(32) } };
+    const legacy = { ...publicView(owner), decisionJson: null, decisionSignature: null };
+    const v = verifyDecision(legacy, { enclavePublicKey: enclaveKey, onChainRecord: board });
+    expect(status(v, "decision_record_signature")).toBe("skip");
+    expect(status(v, "decision_record")).toBe("fail");
+    expect(v.ok).toBe(false);
+  });
+
+  test("facts that do not match the envelope's action fail", () => {
+    const owner = withRecord(makeDecision());
+    const v = verifyDecision({ ...owner, facts: { ...owner.facts, proposed_action: { repay: { token: "usdc.parry.testnet", amount: "99000000" } } } }, { enclavePublicKey: enclaveKey });
+    expect(status(v, "facts")).toBe("fail");
   });
 
   test("explicit request and response hashes are checked against the signed text", () => {

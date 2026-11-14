@@ -5,7 +5,7 @@
 //! Usage: echo '{"mode":"keys"}' | parry-enclave-local
 
 use ed25519_dalek::{Signer, SigningKey};
-use parry_enclave::io::{Io, Result};
+use parry_enclave::io::{Io, Response, Result};
 use std::io::Read;
 
 struct Local {
@@ -19,6 +19,22 @@ impl Io for Local {
             req = req.set(k, v);
         }
         read(req.call().map_err(|e| format!("GET {url}: {e}"))?)
+    }
+    fn get_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response> {
+        let mut req = ureq::get(url).timeout(std::time::Duration::from_secs(30));
+        for (k, v) in headers {
+            req = req.set(k, v);
+        }
+        let res = req.call().map_err(|e| format!("GET {url}: {e}"))?;
+        let names = res
+            .headers_names()
+            .into_iter()
+            .filter_map(|n| {
+                res.header(&n)
+                    .map(|v| (n.to_ascii_lowercase(), v.to_string()))
+            })
+            .collect();
+        Ok((read(res)?, names))
     }
     fn post(&self, url: &str, headers: &[(&str, &str)], body: &[u8]) -> Result<Vec<u8>> {
         let mut req = ureq::post(url).timeout(std::time::Duration::from_secs(60));

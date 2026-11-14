@@ -64,7 +64,7 @@ import {
   type Policy,
   type Power,
 } from "../packages/sdk/src/index";
-import { HYPERLIQUID_URL, network, RPC_URLS } from "../services/src/lib/config";
+import { FASTNEAR_TX_URL, HYPERLIQUID_URL, network, RPC_URLS } from "../services/src/lib/config";
 import { recoverAddress } from "../services/src/lib/evm";
 
 const ROOT_DIR = join(import.meta.dir, "..");
@@ -602,7 +602,8 @@ async function evmRescue() {
   const { key, sealingKey } = await parry.enclave();
   const m = buildMandate({
     account: p.account, guardianKey: key.public_key, powers: ["evm_repay"], limits: [], maxActionsPerDay: 10, minHealthAfterBps: 10500, maxSlippageBps: 300,
-    evm: { chainId: guard.chain_id, pool: guard.pool, asset: guard.asset, address: guard.address, maxAmount: guard.max_amount },
+    // The repay caps per day and in all: one repay a day, three over the mandate (the approval moves nothing).
+    evm: { chainId: guard.chain_id, pool: guard.pool, asset: guard.asset, address: guard.address, maxAmount: guard.max_amount, dailyAmount: guard.max_amount, totalAmount: (BigInt(guard.max_amount) * 3n).toString() },
     expiresAt: Math.floor(Date.now() / 1000) + 7 * 86400, policy: { ...policy("repay-first"), evmTriggerHealth: 1.2 },
     ...(sealingKey ? { sealingPublicKey: sealingKey.public_key } : {}),
   });
@@ -612,12 +613,13 @@ async function evmRescue() {
     // The earlier run's record holds the loan's transactions; the mandate is set again (with the
     // current guardian key) from the EVM guard already on chain.
     p.steps.push(...((proofs.scenarios["9"]?.steps ?? []) as { step?: string }[]).filter((x) => /protected account|basescan|Aave:/.test(x.step ?? "")));
-    const onChain = await view<{ mandate: { evm: { chain_id: number; pool: string; asset: string; address: string; max_amount: string } } }>(p.account, "mandate");
+    const onChain = await view<{ mandate: { evm: { chain_id: number; pool: string; asset: string; address: string; max_amount: string; daily_amount?: string; total_amount?: string } } }>(p.account, "mandate");
     const g = onChain.mandate.evm;
     const { key, sealingKey } = await parry.enclave();
     const m = buildMandate({
       account: p.account, guardianKey: key.public_key, powers: ["evm_repay"], limits: [], maxActionsPerDay: 10, minHealthAfterBps: 10500, maxSlippageBps: 300,
-      evm: { chainId: g.chain_id, pool: g.pool, asset: g.asset, address: g.address, maxAmount: g.max_amount },
+      // The caps already on chain, else one repay a day and three in all (a guard set before the caps had none).
+      evm: { chainId: g.chain_id, pool: g.pool, asset: g.asset, address: g.address, maxAmount: g.max_amount, dailyAmount: g.daily_amount ?? g.max_amount, totalAmount: g.total_amount ?? (BigInt(g.max_amount) * 3n).toString() },
       expiresAt: Math.floor(Date.now() / 1000) + 7 * 86400, policy: { ...policy("repay-first"), evmTriggerHealth: 1.2 },
       ...(sealingKey ? { sealingPublicKey: sealingKey.public_key } : {}),
     });
@@ -1043,6 +1045,10 @@ async function certificate(p: Person) {
  * rewards into its price when `epoch_update_rewards` runs for it (anyone may call it); the vault
  * skims when it reads a rate above the highest it has seen (a deposit reads it), and the next
  * vault report announces the inflow.
+ *
+ * The reward updates are preparation, not proof: they go into one step's `calls`, so the step
+ * transactions (the ones the README's scenario table links) are the deposit and the vault report
+ * whose receipts emit `insurance_inflow`.
  */
 async function insuranceInflow() {
   const title = "An insurance inflow: 10% of the vault's staking yield moves into its fund";
@@ -1052,11 +1058,12 @@ async function insuranceInflow() {
     const linear = dep.external?.linear ?? "linear-protocol.testnet";
     const before = await view<{ linear: string; value_usd_e6: string }>(c("vault"), "insurance");
     const state = await view<{ linear_rate_e24: string }>(c("vault"), "vault_state");
+    const rewards: { validator: string; tx: string }[] = [];
     const updateRewards = async () => {
       const validators = await view<{ account_id: string; staked_amount: string }[]>(linear, "get_validators", { offset: 0, limit: 20 });
       for (const v of validators.filter((x) => BigInt(x.staked_amount) > 0n)) {
         const o = await send(root, rootId, linear, "epoch_update_rewards", { validator_id: v.account_id }, 0n, 200);
-        if (!o.failure) steps.push({ step: `LiNEAR epoch_update_rewards for ${v.account_id}`, tx: explorer(o.hash) });
+        if (!o.failure) rewards.push({ validator: v.account_id, tx: explorer(o.hash) });
       }
     };
     let rate = await view<string>(linear, "ft_price");
@@ -1072,21 +1079,53 @@ async function insuranceInflow() {
         return BigInt(r) > BigInt(state.linear_rate_e24) ? r : null;
       }).catch(() => rate);
     }
+    if (rewards.length) steps.push({ step: `LiNEAR epoch_update_rewards for ${rewards.length} validators folds their staking rewards into its price (anyone may call it)`, calls: rewards });
     steps.push({ step: `LiNEAR rate ${state.linear_rate_e24} last seen by the vault, now ${rate}` });
     if (BigInt(rate) <= BigInt(state.linear_rate_e24)) return save(18, title, false, [...steps, { step: "waits for LiNEAR's next epoch: the rate has not risen since the vault last read it" }]);
     // A deposit makes the vault read the rate (and skim); the root deposits the minimum.
     const d = await call(root, rootId, c("vault"), "deposit", {}, near(0.5), 150);
     steps.push({ step: "a 0.5 NEAR deposit makes the vault read the higher rate and skim the fund's share", tx: explorer(d.hash) });
+    // The API lists the vault's indexed events; the inflow after the deposit is the one this skim
+    // announces. Its transaction is then read back, so the proof links the report that emitted it.
     const inflow = await until("an insurance_inflow event", Number(process.env.SCENARIO_INSURANCE_MS ?? 15 * 60_000), async () => {
       const ins = await api<{ events: { kind: string; at: string | null; tx: string; linear?: string }[] }>("/v1/vault/insurance");
-      return ins.events.find((e) => e.kind === "inflow" && (e.at ?? "") > since);
+      return ins.events.find((e) => e.kind === "inflow" && (e.at ?? "") > since && BigInt(e.linear ?? "0") > 0n);
     });
+    const report = sandbox ? null : await until("the inflow's transaction", 120_000, () => inflowTx(inflow.tx, inflow.linear ?? ""));
     const after = await view<{ linear: string; value_usd_e6: string }>(c("vault"), "insurance");
-    steps.push({ step: `the vault report announces insurance_inflow of ${inflow.linear} LiNEAR`, tx: explorer(inflow.tx), fundBefore: before, fundAfter: after });
-    save(18, title, BigInt(after.linear) > BigInt(before.linear), steps);
+    steps.push({
+      step: `the vault report announces insurance_inflow of ${inflow.linear} LiNEAR${report ? ` (${report.signer} calls ${report.receiver}.${report.method}, and ${c("vault")} emits the event)` : ""}`,
+      tx: explorer(inflow.tx),
+      fundBefore: before,
+      fundAfter: after,
+    });
+    save(18, title, BigInt(after.linear) > BigInt(before.linear) && (sandbox || !!report), steps);
   } catch (e) {
     save(18, title, false, [...steps, { error: String(e).slice(0, 400) }]);
   }
+}
+
+/**
+ * The transaction `hash` when one of its receipts on the vault emits `insurance_inflow` of `linear`
+ * LiNEAR (read from FastNEAR's transactions API, which needs no signer id), with who signed it.
+ */
+async function inflowTx(hash: string, linear: string): Promise<{ signer: string; receiver: string; method: string } | null> {
+  const res = await fetch(`${FASTNEAR_TX_URL}/v0/transactions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx_hashes: [hash] }) });
+  if (!res.ok) return null;
+  type Tx = { transaction: { hash: string; signer_id: string; receiver_id: string; actions: ({ FunctionCall?: { method_name: string } } | string)[] }; receipts: { execution_outcome: { outcome: { executor_id: string; logs: string[] } } }[] };
+  const t = ((await res.json()) as { transactions: (Tx | null)[] }).transactions[0];
+  if (!t) return null;
+  const emitted = t.receipts.some(({ execution_outcome: { outcome: o } }) =>
+    o.executor_id === c("vault") &&
+    o.logs.some((l) => {
+      if (!l.startsWith("EVENT_JSON:")) return false;
+      const e = JSON.parse(l.slice(11)) as { event?: string; data?: { linear?: string } };
+      return e.event === "insurance_inflow" && (!linear || e.data?.linear === linear);
+    }),
+  );
+  if (!emitted) return null;
+  const call = t.transaction.actions.find((a): a is { FunctionCall: { method_name: string } } => typeof a === "object" && !!a.FunctionCall);
+  return { signer: t.transaction.signer_id, receiver: t.transaction.receiver_id, method: call?.FunctionCall.method_name ?? "" };
 }
 
 // ---------------------------------------------------------------------------------------------

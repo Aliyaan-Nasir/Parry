@@ -1,0 +1,377 @@
+{
+ "source": "GET https://api.parry.market/v1/guardian/decisions on 2026-11-14 (the testnet scenario accounts; action and plan only)",
+ "rows": [
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3987 NEAR of collateral for at least 1.24 USDC and repay: health 1.170 to at least 1.291 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3872 NEAR of collateral for at least 1.20 USDC and repay: health 1.165 to at least 1.279 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3747 NEAR of collateral for at least 1.15 USDC and repay: health 1.159 to at least 1.267 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1173 NEAR of collateral for at least 0.30 USDC and repay: health 1.120 to at least 1.187 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 3.81 USDC from the reserve: health 1.122 to 1.450 (target 1.45). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.45."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.9299 NEAR of collateral for at least 2.39 USDC and repay: health 1.141 to at least 1.230 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0828 NEAR of collateral for at least 0.21 USDC and repay: health 1.041 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0855 NEAR of collateral for at least 0.22 USDC and repay: health 1.042 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 1.2190 NEAR of collateral for at least 3.26 USDC and repay: health 1.149 to at least 1.245 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1073 NEAR of collateral for at least 0.29 USDC and repay: health 1.049 to at least 1.066 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1070 NEAR of collateral for at least 0.29 USDC and repay: health 1.049 to at least 1.067 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0761 NEAR of collateral for at least 0.21 USDC and repay: health 1.036 to at least 1.048 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.036 to 1.382 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0648 NEAR of collateral for at least 0.17 USDC and repay: health 1.033 to at least 1.042 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 1.54 USDC from the reserve: health 1.027 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 1.51 USDC from the reserve: health 1.032 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.029 to 1.372 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.034 to 1.378 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0689 NEAR of collateral for at least 0.19 USDC and repay: health 1.034 to at least 1.044 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 0.5000 wNEAR collateral from the reserve: health 1.150 to 1.202 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 1.53 USDC from the reserve: health 1.034 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 0.5000 wNEAR collateral from the reserve: health 1.148 to 1.193 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0836 NEAR of collateral for at least 0.23 USDC and repay: health 1.039 to at least 1.051 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0849 NEAR of collateral for at least 0.24 USDC and repay: health 1.039 to at least 1.052 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0859 NEAR of collateral for at least 0.24 USDC and repay: health 1.040 to at least 1.053 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.040 to 1.386 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 1.0432 NEAR of collateral for at least 2.93 USDC and repay: health 1.140 to at least 1.228 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 1.49 USDC from the reserve: health 1.047 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6831 NEAR of collateral for at least 1.84 USDC and repay: health 1.092 to at least 1.137 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6838 NEAR of collateral for at least 1.84 USDC and repay: health 1.092 to at least 1.137 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.2671 NEAR of collateral for at least 0.72 USDC and repay: health 1.118 to at least 1.185 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6661 NEAR of collateral for at least 1.79 USDC and repay: health 1.090 to at least 1.133 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1515 NEAR of collateral for at least 0.41 USDC and repay: health 1.065 to at least 1.093 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6836 NEAR of collateral for at least 1.84 USDC and repay: health 1.092 to at least 1.137 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.041 to 1.388 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0895 NEAR of collateral for at least 0.24 USDC and repay: health 1.041 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 1.46 USDC from the reserve: health 1.041 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6979 NEAR of collateral for at least 1.88 USDC and repay: health 1.094 to at least 1.140 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6991 NEAR of collateral for at least 1.88 USDC and repay: health 1.094 to at least 1.140 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7169 NEAR of collateral for at least 1.93 USDC and repay: health 1.096 to at least 1.144 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7228 NEAR of collateral for at least 1.95 USDC and repay: health 1.097 to at least 1.146 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7374 NEAR of collateral for at least 2.00 USDC and repay: health 1.099 to at least 1.149 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7462 NEAR of collateral for at least 2.02 USDC and repay: health 1.100 to at least 1.151 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7467 NEAR of collateral for at least 2.02 USDC and repay: health 1.100 to at least 1.151 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.9409 NEAR of collateral for at least 2.55 USDC and repay: health 1.104 to at least 1.159 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7441 NEAR of collateral for at least 2.01 USDC and repay: health 1.100 to at least 1.151 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.9279 NEAR of collateral for at least 2.51 USDC and repay: health 1.103 to at least 1.156 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7426 NEAR of collateral for at least 2.01 USDC and repay: health 1.100 to at least 1.150 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.9383 NEAR of collateral for at least 2.54 USDC and repay: health 1.104 to at least 1.158 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7486 NEAR of collateral for at least 2.03 USDC and repay: health 1.100 to at least 1.152 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.9391 NEAR of collateral for at least 2.54 USDC and repay: health 1.104 to at least 1.158 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7632 NEAR of collateral for at least 2.07 USDC and repay: health 1.102 to at least 1.155 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7692 NEAR of collateral for at least 2.09 USDC and repay: health 1.103 to at least 1.156 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7744 NEAR of collateral for at least 2.10 USDC and repay: health 1.104 to at least 1.158 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1146 NEAR of collateral for at least 0.31 USDC and repay: health 1.107 to at least 1.163 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.6086 NEAR of collateral for at least 1.65 USDC and repay: health 1.066 to at least 1.093 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7871 NEAR of collateral for at least 2.14 USDC and repay: health 1.105 to at least 1.161 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3607 NEAR of collateral for at least 0.98 USDC and repay: health 1.041 to at least 1.055 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7878 NEAR of collateral for at least 2.14 USDC and repay: health 1.105 to at least 1.161 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3473 NEAR of collateral for at least 0.94 USDC and repay: health 1.040 to at least 1.053 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.040 to 1.127 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1144 NEAR of collateral for at least 0.31 USDC and repay: health 1.107 to at least 1.163 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.7775 NEAR of collateral for at least 2.11 USDC and repay: health 1.104 to at least 1.158 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 5.92 USDC from the reserve: health 1.040 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.1211 NEAR of collateral for at least 0.33 USDC and repay: health 1.113 to at least 1.174 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.8241 NEAR of collateral for at least 2.25 USDC and repay: health 1.110 to at least 1.170 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.8244 NEAR of collateral for at least 2.25 USDC and repay: health 1.110 to at least 1.170 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0874 NEAR of collateral for at least 0.24 USDC and repay: health 1.077 to at least 1.112 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.5685 NEAR of collateral for at least 1.56 USDC and repay: health 1.073 to at least 1.105 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0852 NEAR of collateral for at least 0.23 USDC and repay: health 1.076 to at least 1.109 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.5533 NEAR of collateral for at least 1.52 USDC and repay: health 1.071 to at least 1.102 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0813 NEAR of collateral for at least 0.22 USDC and repay: health 1.072 to at least 1.104 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.5261 NEAR of collateral for at least 1.44 USDC and repay: health 1.068 to at least 1.097 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0493 NEAR of collateral for at least 0.13 USDC and repay: health 1.046 to at least 1.061 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.3102 NEAR of collateral for at least 0.85 USDC and repay: health 1.042 to at least 1.057 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 1.0000 wNEAR collateral from the reserve: health 1.043 to 1.147 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 4.93 USDC from the reserve: health 1.042 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0872 NEAR of collateral for at least 0.25 USDC and repay: health 1.075 to at least 1.108 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0869 NEAR of collateral for at least 0.24 USDC and repay: health 1.075 to at least 1.107 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "deleverage",
+   "plan": "Sell 0.0520 NEAR of collateral for at least 0.15 USDC and repay: health 1.046 to at least 1.063 (target 1.40). Chose deleverage: the first step in the order deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "add_collateral",
+   "plan": "Add 0.5061 wNEAR collateral from the reserve: health 1.047 to 1.400 (target 1.40). Chose add_collateral: the first step in the order add_collateral, repay, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.75 USDC from the reserve: health 1.045 to 1.400 (target 1.40). Chose repay: the first step in the order repay, add_collateral, deleverage, hl_reduce, evm_repay that the mandate allows and that moves health toward 1.40."
+  },
+  {
+   "action": "evm_repay",
+   "plan": "Repay 0.81 of the Aave debt asset ($0.81) from the person's own address: health 1.151 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "evm_approve",
+   "plan": "Approve the Aave pool to take up to 0.82 of the debt asset ($0.82) from the person's own address (the repay plus 1% for interest), so the next run can repay 0.81 ($0.81): health 1.151, target 1.40."
+  },
+  {
+   "action": "evm_approve",
+   "plan": "Approve the Aave pool to take up to 4.57 of the debt asset from the person's own address, so the next run can repay 0.81 (health 1.150, target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.63 USDC from the reserve: health 1.040 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.63 USDC from the reserve: health 1.041 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.71 USDC from the reserve: health 1.066 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.62 USDC from the reserve: health 1.042 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.71 USDC from the reserve: health 1.067 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.71 USDC from the reserve: health 1.064 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.62 USDC from the reserve: health 1.041 to 1.400 (target 1.40)."
+  },
+  {
+   "action": "repay",
+   "plan": "Repay 0.71 USDC from the reserve: health 1.065 to 1.400 (target 1.40)."
+  }
+ ]
+}

@@ -24,7 +24,7 @@ export function Hero() {
       <div className="mx-auto max-w-[1180px] px-4 sm:px-6">
         <h1 className="display text-gradient mx-auto max-w-[14ch] text-center text-[3.4rem] sm:text-[5.5rem] lg:text-[7rem]">Liquidation, turned aside.</h1>
         <p className="mx-auto mt-6 max-w-[38rem] text-center text-lg leading-relaxed text-muted sm:text-xl">
-          A guardian that sees trouble hours ahead and steps in on its own, inside limits only you set, with every move reviewed by a verifiable AI. Or earn without liquidation risk at all.
+          A guardian that sees trouble hours ahead and steps in on its own, inside limits only you set, with every move reviewed by a verifiable AI. Or earn staking yield and funding in a hedged vault that never liquidates a depositor.
         </p>
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Magnetic>

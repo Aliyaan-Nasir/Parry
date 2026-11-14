@@ -267,6 +267,11 @@ type DecisionSeed = {
   minutesAgo: number;
   action: string;
   plan: string;
+  /** The action alone; derived like the API does when absent. */
+  publicPlan?: string;
+  explanation?: Decision["explanation"];
+  /** Publish the enclave-signed risk-board record (its plan is the public one). */
+  record?: boolean;
   trigger: Decision["trigger"];
   outcome: Decision["outcome"];
   verdict: "approve" | "reject";
@@ -318,12 +323,34 @@ function buildDecision(seed: DecisionSeed, now: number): Decision {
     });
     if (seed.signEnvelope) envelopeSignature = toBase64(ed25519.sign(envelopeDigest(envelope), ENCLAVE_SECRET));
   }
+  const id = envelope ? sha256Hex(envelope) : hash;
+  const venue = (seed.action.startsWith("hl_") ? "hyperliquid" : seed.action.startsWith("evm_") ? "evm" : "rhea") as Decision["venue"];
+  const publicPlan = seed.publicPlan ?? publicPlanOf(seed.plan, seed.action);
+  let decisionJson: string | null = null;
+  let decisionSignature: string | null = null;
+  if (seed.record && envelope) {
+    decisionJson = JSON.stringify({
+      kind: "decision", run_id: createdAt, at: Math.floor(createdAt / 1000) - 3, id, account: ACCOUNT, venue, action: seed.action, plan: publicPlan, envelope_hash: id,
+      trigger: { score: seed.trigger.score, tier: seed.trigger.tier, health_bps: seed.trigger.healthBps },
+      review: { model: REVIEW_MODEL, chat_id: chatId, review_hash: hash, verdict: seed.verdict, signing_address: MODEL_ADDRESS, reasoning_hash: sha256Hex(seed.reasoning) },
+    });
+    decisionSignature = toBase64(ed25519.sign(createHash("sha256").update(`parry-risk:v1:${decisionJson}`).digest(), ENCLAVE_SECRET));
+  }
   return {
-    id: envelope ? sha256Hex(envelope) : hash,
+    id,
     account: ACCOUNT,
-    venue: (seed.action.startsWith("hl_") ? "hyperliquid" : seed.action.startsWith("evm_") ? "evm" : "rhea") as Decision["venue"],
+    venue,
     action: seed.action,
     plan: seed.plan,
+    publicPlan,
+    visibility: "owner",
+    explanation: seed.explanation ?? null,
+    decisionJson,
+    decisionSignature,
+    facts: {
+      account: ACCOUNT, venue, network: "testnet", target_health: 1.45, owner_trigger: { score: 60, health: 1.2 }, plan: seed.plan,
+      ...(seed.envelopeAction ? { proposed_action: seed.envelopeAction } : {}),
+    },
     trigger: seed.trigger,
     outcome: seed.outcome,
     review: { model: REVIEW_MODEL, chatId, reviewHash: hash, requestHash, responseHash, verdict: seed.verdict, reasoning: seed.reasoning, signingAddress: MODEL_ADDRESS, signedText, signature, signatureKind: "ecdsa" },
@@ -360,7 +387,10 @@ export function decisions(now: number): Decision[] {
         label: "repay",
         minutesAgo: 14,
         action: "repay",
-        plan: "Repay 54.40 USDC from the reserve to lift health from 1.04 to 1.45 (repay first).",
+        plan: "Repay 54.40 USDC from the reserve: health 1.043 to 1.450 (target 1.45). Chose repay: the first step in the order repay, add_collateral, deleverage that the mandate allows and that moves health toward 1.45.",
+        publicPlan: "Repay 54.40 USDC from the reserve.",
+        explanation: { step: "repay", why: "Chose repay: the first step in the order repay, add_collateral, deleverage that the mandate allows and that moves health toward 1.45.", skipped: [] },
+        record: true,
         trigger: { score: 85, tier: "critical", healthBps: 10432 },
         outcome: "executed",
         verdict: "approve",
@@ -443,6 +473,26 @@ export function decisions(now: number): Decision[] {
   ];
   decisionCache = { at: now, list };
   return list;
+}
+
+/** A plan with the owner's policy cut off, as the API redacts a decision stored before the public plan. */
+function publicPlanOf(plan: string, action: string): string {
+  const cut = [": ", " (target", " (health", " Chose "].map((m) => plan.indexOf(m)).filter((i) => i >= 0);
+  const s = (cut.length ? plan.slice(0, Math.min(...cut)) : plan).replace(/[\s.,;]+$/, "");
+  return /\b(target|trigger|order|health)\b/i.test(s) ? `A guardian ${action.replace(/_/g, " ")}.` : `${s}.`;
+}
+
+/** A decision as the API serves it to anyone but its signed-in owner: no plan details, reasons, reasoning or facts. */
+export function publicDecision(d: Decision): Decision {
+  const { reasoning, ...review } = d.review;
+  const { facts: _facts, ...rest } = d;
+  return {
+    ...rest,
+    plan: d.publicPlan ?? d.plan,
+    visibility: "public",
+    explanation: null,
+    review: { ...review, reasoningHash: reasoning === undefined ? null : sha256Hex(reasoning) },
+  };
 }
 
 /** A decision whose review was altered after signing: its review hash check fails. */
@@ -562,6 +612,10 @@ export function vault(now: number, empty = false): VaultView {
   return {
     network: "testnet",
     paused: false,
+    depositsOpen: true,
+    depositsClosedReason: null,
+    depositsClosedBy: null,
+    reportAgeSeconds: 240,
     riskScore: 22,
     reportAt: iso(now - 240_000),
     sharePriceUsd: 1.0213,
@@ -826,16 +880,96 @@ export function replay() {
       navUnhedged: Array.from({ length: 73 }, (_, h) => ({ t: t(h), v: 1 - (drop / 100) * Math.min(1, h / 60) })),
       maxDrawdownPct: 2.7,
       maxDrawdownUnhedgedPct: drop,
-      marginMin: 0.5,
-      insurancePaidUsd: 5.48,
+      marginMin: 0.479,
+      insurancePaidUsd: 0,
+      hedgedMinPct: 70,
+      fundingUsd: -40.26,
     },
   });
+  // A rally: the short's margin thins, the leverage cap buys it back, its liquidation price follows the price up.
+  const spike = (id: string, name: string, rise: number, headroom: number) => {
+    const price = (h: number) => 3 * (1 + (rise / 100) * Math.min(1, h / 60));
+    const hedge = Array.from({ length: 73 }, (_, h) => {
+      const marginRatio = Math.max(0.1, 0.5 - h * 0.008);
+      return { t: t(h), marginAtHigh: h ? marginRatio * 0.8 : null, short: Math.max(100, 900 - h * 11), marginRatio, liqPx: (price(h) * (1 + marginRatio)) / 1.05, score: Math.min(61, 16 + h) };
+    });
+    return {
+      id,
+      name,
+      start: t(0),
+      end: t(72),
+      peak: t(60),
+      risePct: rise,
+      startPrice: price(0),
+      peakPrice: price(60),
+      candles: Array.from({ length: 73 }, (_, h) => ({ t: t(h), price: price(h), high: price(h) * 1.01 })),
+      vault: {
+        navWith: Array.from({ length: 73 }, (_, h) => ({ t: t(h), v: 10_000 * (1 + h * 0.0015) })),
+        navUnhedged: Array.from({ length: 73 }, (_, h) => ({ t: t(h), v: (10_000 * price(h)) / price(0) })),
+        hedge,
+        maxDrawdownPct: 17.8,
+        maxDrawdownUnhedgedPct: 9.1,
+        marginMin: 0.093,
+        marginMinAt: t(48),
+        liquidationHeadroomMinPct: headroom,
+        liquidatedAt: null,
+        maxScore: 85,
+        pausedHours: 8,
+        reducedLeverageHours: 4,
+        marginNeededHours: 2,
+        marginTopUps: 1,
+        marginTopUpsRefused: 0,
+        marginTopUpsUnpaid: 1,
+        marginShortfallMaxUsd: 1069.43,
+        hedgedMinPct: 4,
+        hedgedEndPct: 8,
+        sharePriceMin: 0.977,
+        sharePriceEnd: 1.103,
+        unhedgedEnd: 1.555,
+        insurancePaidUsd: 20.81,
+        insurancePaid: { negativeFundingUsd: 4.2, marginTopUpUsd: 16.61 },
+        fundingUsd: -27.97,
+        rebalances: 63,
+        buybacks: 27,
+        events: [
+          { t: t(40), kind: "rebalance", detail: "Buy back 40.0 NEAR (leverage 3.40 against the cap of 3): short 500.0 to 460.0 NEAR." },
+          { t: t(47), kind: "leverage_reduced", detail: "Score 52: the leverage cap drops to 2." },
+          { t: t(51), kind: "leverage_restored", detail: "Score 38: the leverage cap is back at 3." },
+        ],
+      },
+    };
+  };
   return {
     source: "https://data-api.binance.vision/api/v3/klines?symbol=NEARUSDT&interval=1h",
     sources: { candles: "Binance spot, hourly NEARUSDT", funding: "Binance USD-M funding", staking: "LiNEAR ft_price: 4.46 % a year", model: "packages/core" },
     generatedAt: iso(start + 400 * 24 * HOUR_MS),
     crashes: [crash("2022-05", "9 May 2022 to 12 May 2022", 51.7, false), crash("2021-05", "21 May 2021 to 23 May 2021", 45.6, true)],
-    summary: { crashes: 2, medianWarningHours: 24.5, minWarningHours: 7, liquidationsWithout: 2, liquidationsAvoided: 1, medianVaultDrawdownPct: 2.7, medianUnhedgedDrawdownPct: 48.6 },
+    spikes: [spike("spike-2021-09-06", "6 Sep 2021 to 9 Sep 2021", 92, 4.1), spike("spike-2021-12-21", "21 Dec 2021 to 24 Dec 2021", 78, 14)],
+    summary: {
+      crashes: 2,
+      medianWarningHours: 24.5,
+      minWarningHours: 7,
+      liquidationsWithout: 2,
+      liquidationsAvoided: 1,
+      medianVaultDrawdownPct: 2.7,
+      medianUnhedgedDrawdownPct: 48.6,
+      spikes: 2,
+      spikeLiquidations: 0,
+      spikeMinMarginRatio: 0.093,
+      spikeClosestLiquidationPct: 4.1,
+    },
+    calibration: {
+      regime: {
+        stressed: 1.3,
+        panic: 2.15,
+        method: "out of sample",
+        panicHitRate: 0.2468,
+        panicFalseRate: 0.0478,
+        calibrationCrashes: Array.from({ length: 12 }, (_, i) => ({ start: t(i), trough: t(i + 30), dropPct: 30 })),
+        test: { crashes: { hours: 399, panicRate: 0.3935, stressedOrWorseRate: 0.7243 }, spikes: { hours: 396, panicRate: 0.4217, stressedOrWorseRate: 0.7323 } },
+      },
+      inSample: { stressed: 1.35, panic: 2.3 },
+    },
   };
 }
 

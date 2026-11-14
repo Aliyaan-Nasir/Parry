@@ -91,7 +91,7 @@ export type MockHandle = {
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization, x-payment",
+  "access-control-allow-headers": "content-type, authorization, payment-signature, x-payment",
   "access-control-expose-headers": "x-payment-response",
 };
 
@@ -294,11 +294,13 @@ const ROUTES: RouteDef[] = [
     const all = empty(c) || (c.query.account && c.query.account !== fx.ACCOUNT) ? [] : fx.decisions(c.now);
     const cursor = c.query.cursor ? Date.parse(c.query.cursor) : null;
     const rows = all.filter((d) => cursor === null || Date.parse(d.createdAt) < cursor).slice(0, limit);
-    return json({ items: rows, next: rows.length === limit ? rows[rows.length - 1]!.createdAt : null });
+    // As the API: the full record only for a request signed in as the decision's own account.
+    const who = bearer(c);
+    return json({ items: rows.map((d) => (who === d.account ? d : fx.publicDecision(d))), next: rows.length === limit ? rows[rows.length - 1]!.createdAt : null });
   }),
   route("GET /v1/guardian/decisions/:id", (c) => {
     const d = fx.decisions(c.now).find((x) => x.id === c.params.id);
-    return d ? json(d) : error("no such decision", 404);
+    return d ? json(bearer(c) === d.account ? d : fx.publicDecision(d)) : error("no such decision", 404);
   }),
   route("GET /v1/guardian/decisions/:id/verify", (c) => {
     const d = fx.decisions(c.now).find((x) => x.id === c.params.id);

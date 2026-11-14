@@ -269,6 +269,26 @@ test.describe("vault", () => {
     expect(call).toMatchObject({ receiver_id: fx.CONTRACTS.vault, method_name: "deposit", deposit: "2000000000000000000000000" });
   });
 
+  test("a stale report closes deposits, says why, and the form cannot send", async ({ page }) => {
+    const v = fx.vault(Date.now());
+    const reason = "the vault's report is 27 min old (the contract takes deposits only within 15 min of one); deposits reopen with the next report";
+    const api = await asPasskeyOwner(page);
+    api.override("GET /v1/vault", { body: { ...v, depositsOpen: false, depositsClosedBy: "stale_report", depositsClosedReason: reason, reportAgeSeconds: 1620, reportAt: new Date(Date.now() - 1_620_000).toISOString() } });
+    await page.goto("/app/vault");
+    await expect(page.getByRole("region", { name: "Overview" }).getByText(`Deposits are closed: ${reason}.`, { exact: false })).toBeVisible();
+    await expect(page.getByText(`Deposits are closed: ${reason}.`).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Deposit", exact: true })).toBeDisabled();
+    await expect(page.getByText("Open for deposits.")).toHaveCount(0);
+  });
+
+  test("an API that names only the pause flag still closes deposits on a report over 15 minutes old", async ({ page }) => {
+    const { depositsOpen: _o, depositsClosedReason: _r, depositsClosedBy: _b, reportAgeSeconds: _a, ...v } = fx.vault(Date.now());
+    await mockApi(page, { overrides: { "GET /v1/vault": { body: { ...v, reportAt: new Date(Date.now() - 1_620_000).toISOString() } } } });
+    await seedAccount(page, "watch");
+    await page.goto("/app/vault");
+    await expect(page.getByRole("region", { name: "Overview" }).getByText(/Deposits are closed: the vault's report is 27 min old/)).toBeVisible();
+  });
+
   test("a hedge short of margin shows the 1Click top-up route", async ({ page }) => {
     const v = fx.vault(Date.now());
     await mockApi(page, {
@@ -309,7 +329,7 @@ test.describe("guardian log", () => {
     const first = page.getByRole("article").first();
     await expect(first.getByRole("heading", { name: /Repay on Rhea/ })).toBeVisible();
     await first.getByRole("button", { name: "Verify", exact: true }).click();
-    await expect(first.getByText("6 of 6 checks pass")).toBeVisible();
+    await expect(first.getByText("7 of 7 checks pass, 3 skipped")).toBeVisible();
     const evm = page.getByRole("article").filter({ has: page.getByRole("heading", { name: /Repay on Aave/ }) });
     // Older decisions are one-line rows that open into the full record.
     await evm.getByRole("button", { expanded: false }).click();
@@ -327,6 +347,36 @@ test.describe("guardian log", () => {
     await page.goto("/app/guardian");
     await page.getByRole("button", { name: "Verify", exact: true }).click();
     await expect(page.getByText("Verification failed")).toBeVisible();
+  });
+
+  test("a stranger reads the public record: the action, no target, trigger, step order or reasoning", async ({ page }) => {
+    await mockApi(page);
+    await seedAccount(page, "watch");
+    await page.goto("/app/guardian");
+    const first = page.getByRole("article").first();
+    await expect(first.getByText("Repay 54.40 USDC from the reserve.", { exact: true })).toBeVisible();
+    await expect(first.getByText("Public record", { exact: true })).toBeVisible();
+    await expect(first.getByText(/only the account's signed-in owner reads its reasoning/)).toBeVisible();
+    const text = (await first.innerText()).toLowerCase();
+    for (const secret of ["target 1.45", "1.450", "the order repay", "why this step", "97% chance", "leaves health at 1.45"]) expect(text).not.toContain(secret);
+    await expect(page.getByRole("button", { name: "Sign in to see the full record" })).toHaveCount(0);
+  });
+
+  test("the owner signs in and reads the full record, and every check runs", async ({ page }) => {
+    const api = await asPasskeyOwner(page);
+    await page.goto("/app/guardian");
+    const first = page.getByRole("article").first();
+    await expect(first.getByText("Repay 54.40 USDC from the reserve.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Sign in to see the full record" }).click();
+    await expect.poll(() => api.calls("POST", "/v1/auth/verify").length).toBe(1);
+    await expect(page.getByText(/You are signed in as this account's owner/)).toBeVisible();
+    await expect(first.getByText(/health 1\.043 to 1\.450 \(target 1\.45\)/)).toBeVisible();
+    await expect(first.getByText("Owner's record", { exact: true })).toBeVisible();
+    await expect(first.getByText("Why this step")).toBeVisible();
+    await expect(first.getByText(/97% chance of liquidation/)).toBeVisible();
+    expect(api.calls("GET", "/v1/guardian/decisions").some((r) => /^Bearer /.test(r.headers["authorization"] ?? ""))).toBe(true);
+    await first.getByRole("button", { name: "Verify", exact: true }).click();
+    await expect(first.getByText("10 of 10 checks pass")).toBeVisible();
   });
 
   test("a link to one decision opens it", async ({ page }) => {

@@ -7,3 +7,4 @@ export * from "./alerts.js";
 export * from "./heatmap.js";
 export * from "./replay.js";
 export * from "./savings.js";
+export * from "./privacy.js";

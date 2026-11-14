@@ -43,15 +43,15 @@ Write tools appear only when `PARRY_AGENT_ACCOUNT_ID` and `PARRY_AGENT_PRIVATE_K
 | `risk_check(account)` | score any NEAR account's Rhea lending position, protected or not |
 | `get_position_risk(account)` | read a protected account's owner, mandate and every position's health, liquidation price, 24 h liquidation probability, time to liquidation and tier |
 | `get_market()` | read the NEAR price, the Tremor volatility index and cascade pressure |
-| `get_vault()` | read the vault's NAV, share price, hedge, risk score and caps |
+| `get_vault()` | read the vault's NAV, share price, hedge, risk score and caps, and whether it takes deposits now, and why not |
 | `get_reserves()` | fetch every reserve leaf with its Merkle proof, verified against the root on chain |
 | `get_guardian_log(account?, limit?)` | list guardian decisions with trigger, action, AI review and outcome |
-| `verify_guardian_decision(id)` | check a decision's review hash, the model's TEE signature, the enclave's signature and the envelope |
+| `verify_guardian_decision(id)` | verify a decision's public record (model and enclave signatures, the board's record); private checks run only on the owner's record |
 | `simulate_rescue(account)` | see what the guardian would do now, unsigned |
 | `get_rescue_route(amount_near)` | compare the Rhea pool with a dry-run NEAR Intents 1Click quote for a rescue swap |
 | `get_status()` | read every service's health, the oracle's freshness, the gas-key lanes and the treasury |
 | `get_rates()` | read Rhea's supply and borrow rates per asset, Hyperliquid NEAR funding and the vault's staking and funding yield, each with its source |
-| `get_crash_replay()` | read how the risk model, the guardian and the vault fared through six real NEAR crashes |
+| `get_crash_replay()` | read how the risk model, the guardian and the vault fared through six real NEAR crashes, and the vault's short through six real NEAR rallies |
 | `get_liquidation_heatmap(network?)` | see where Rhea borrowers would be liquidated as NEAR falls, and the cascade chains, on mainnet or testnet |
 | `get_prices(tokens?)` | read NEAR ecosystem token prices with their 24 h change |
 | `verify_record(id)` | re-check a guardian decision, a health certificate or a NEAR transaction by its id |

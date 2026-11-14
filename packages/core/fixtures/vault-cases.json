@@ -1,0 +1,299 @@
+{
+  "description": "Hand-checked cases for the vault's risk score (packages/core vaultRisk, enclave risk::vault_risk) with its floors on the liquidation distance, and the funding-aware hedge ratio (hedgeRatioForFunding, modes::hedge_ratio). Expected values computed independently from the formulas in docs/risk-model.md, section 12.",
+  "vaultRisk": [
+    {
+      "name": "a calm short at leverage 2, shorts paid",
+      "input": {
+        "size": -900,
+        "mark": 3,
+        "liquidationPx": 4.2857,
+        "accountValue": 1350,
+        "fundingRateHourly": 1.25e-05,
+        "oracleDeviation": 0.001,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 1429,
+          "margin": 4000,
+          "funding": 0,
+          "oracle": 500,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 16
+      }
+    },
+    {
+      "name": "a short at leverage 3 after a rally",
+      "input": {
+        "size": -600,
+        "mark": 4.2,
+        "liquidationPx": 5.2,
+        "accountValue": 840,
+        "fundingRateHourly": 4e-05,
+        "oracleDeviation": 0.002,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 5238,
+          "margin": 6000,
+          "funding": 0,
+          "oracle": 1000,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 34
+      }
+    },
+    {
+      "name": "a short near its liquidation price, shorts paying",
+      "input": {
+        "size": -900,
+        "mark": 4,
+        "liquidationPx": 4.2,
+        "accountValue": 400,
+        "fundingRateHourly": -5e-05,
+        "oracleDeviation": 0.005,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 9000,
+          "margin": 10000,
+          "funding": 5000,
+          "oracle": 2500,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 85
+      }
+    },
+    {
+      "name": "everything at once",
+      "input": {
+        "size": -100,
+        "mark": 5,
+        "liquidationPx": 5,
+        "accountValue": 50,
+        "fundingRateHourly": -0.0002,
+        "oracleDeviation": 0.03,
+        "bookRate": 1.2,
+        "rate": 1.18,
+        "reservesRatioBps": 9400
+      },
+      "expected": {
+        "components": {
+          "liquidation": 10000,
+          "margin": 10000,
+          "funding": 10000,
+          "oracle": 10000,
+          "rate": 10000,
+          "reserves": 10000
+        },
+        "score": 100
+      }
+    },
+    {
+      "name": "a long and an empty account score no liquidation or leverage",
+      "input": {
+        "size": 10,
+        "mark": 3,
+        "liquidationPx": 2,
+        "accountValue": 0,
+        "fundingRateHourly": 0,
+        "oracleDeviation": 0,
+        "bookRate": 0,
+        "rate": 1.2,
+        "reservesRatioBps": 9800
+      },
+      "expected": {
+        "components": {
+          "liquidation": 0,
+          "margin": 0,
+          "funding": 0,
+          "oracle": 0,
+          "rate": 0,
+          "reserves": 4000
+        },
+        "score": 6
+      }
+    },
+    {
+      "name": "a liquidation price more than 50 % away counts nothing",
+      "input": {
+        "size": -10,
+        "mark": 3,
+        "liquidationPx": 6,
+        "accountValue": 30,
+        "fundingRateHourly": 0.0001,
+        "oracleDeviation": 0.01,
+        "bookRate": 1.2,
+        "rate": 1.19,
+        "reservesRatioBps": 10500
+      },
+      "expected": {
+        "components": {
+          "liquidation": 0,
+          "margin": 2000,
+          "funding": 0,
+          "oracle": 5000,
+          "rate": 8333,
+          "reserves": 0
+        },
+        "score": 14
+      }
+    },
+    {
+      "name": "no liquidation price reported",
+      "input": {
+        "size": -10,
+        "mark": 3,
+        "liquidationPx": null,
+        "accountValue": 15,
+        "fundingRateHourly": -3e-05,
+        "oracleDeviation": 0,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 0,
+          "margin": 4000,
+          "funding": 3000,
+          "oracle": 0,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 13
+      }
+    },
+    {
+      "name": "a short 12 % from its liquidation price asks for margin, whatever the rest",
+      "input": {
+        "size": -700,
+        "mark": 4.0,
+        "liquidationPx": 4.48,
+        "accountValue": 700,
+        "fundingRateHourly": 2e-05,
+        "oracleDeviation": 0.001,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 7600,
+          "margin": 8000,
+          "funding": 0,
+          "oracle": 500,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 85
+      }
+    },
+    {
+      "name": "a short 18 % from its liquidation price pauses deposits",
+      "input": {
+        "size": -700,
+        "mark": 4.0,
+        "liquidationPx": 4.72,
+        "accountValue": 860,
+        "fundingRateHourly": 2e-05,
+        "oracleDeviation": 0.001,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 6400,
+          "margin": 6512,
+          "funding": 0,
+          "oracle": 500,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 70
+      }
+    },
+    {
+      "name": "a short 22 % from its liquidation price takes no floor",
+      "input": {
+        "size": -700,
+        "mark": 4.0,
+        "liquidationPx": 4.88,
+        "accountValue": 940,
+        "fundingRateHourly": 2e-05,
+        "oracleDeviation": 0.001,
+        "bookRate": 1.2,
+        "rate": 1.2,
+        "reservesRatioBps": 10000
+      },
+      "expected": {
+        "components": {
+          "liquidation": 5600,
+          "margin": 5957,
+          "funding": 0,
+          "oracle": 500,
+          "rate": 0,
+          "reserves": 0
+        },
+        "score": 35
+      }
+    }
+  ],
+  "hedgeRatio": [
+    {
+      "name": "shorts paid: full hedge",
+      "maxBps": 9000,
+      "minBps": 7000,
+      "fundingSum7d": 0.0008,
+      "expected": 9000
+    },
+    {
+      "name": "unknown funding: full hedge",
+      "maxBps": 9000,
+      "minBps": 7000,
+      "fundingSum7d": null,
+      "expected": 9000
+    },
+    {
+      "name": "shorts pay 5.2 % a year: lean a quarter",
+      "maxBps": 9000,
+      "minBps": 7000,
+      "fundingSum7d": -0.001,
+      "expected": 8400
+    },
+    {
+      "name": "shorts pay 10.4 % a year: lean half",
+      "maxBps": 9000,
+      "minBps": 7000,
+      "fundingSum7d": -0.002,
+      "expected": 7900
+    },
+    {
+      "name": "shorts pay more than 20 % a year: the minimum",
+      "maxBps": 9000,
+      "minBps": 7000,
+      "fundingSum7d": -0.01,
+      "expected": 7000
+    },
+    {
+      "name": "a minimum above the maximum is the maximum",
+      "maxBps": 8000,
+      "minBps": 9500,
+      "fundingSum7d": -1.0,
+      "expected": 8000
+    }
+  ]
+}

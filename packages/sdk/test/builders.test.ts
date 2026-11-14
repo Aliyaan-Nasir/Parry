@@ -141,8 +141,24 @@ describe("mandates", () => {
       hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 10n ** 9n, bandBps: 150, hedgeIsBuy: false },
       evm: { chainId: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: "1000000" },
     });
-    expect(m.hl).toEqual({ asset: "NEAR", asset_index: 54, max_size_e8: "1000000000", band_bps: 150, hedge_is_buy: false });
-    expect(m.evm).toEqual({ chain_id: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, max_amount: "1000000" });
+    // Defaults: the daily caps equal the per-action caps, no hedge without hl_hedge, a total of 3 actions' worth.
+    expect(m.hl).toEqual({ asset: "NEAR", asset_index: 54, max_size_e8: "1000000000", daily_size_e8: "1000000000", max_hedge_e8: "0", band_bps: 150, hedge_is_buy: false });
+    expect(m.evm).toEqual({
+      chain_id: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, max_amount: "1000000", daily_amount: "1000000", total_amount: "3000000",
+    });
+  });
+
+  test("the daily and total caps for Hyperliquid and EVM actions", () => {
+    const m = buildMandate({
+      ...base,
+      powers: ["hl_reduce", "hl_hedge", "evm_repay"],
+      hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 10n ** 9n, dailySizeE8: 3n * 10n ** 9n, bandBps: 150, hedgeIsBuy: false },
+      evm: { chainId: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: "1000000", dailyAmount: "2000000", totalAmount: "9000000" },
+    });
+    expect(m.hl).toMatchObject({ daily_size_e8: "3000000000", max_hedge_e8: "1000000000" });
+    expect(m.evm).toMatchObject({ daily_amount: "2000000", total_amount: "9000000" });
+    const big = buildMandate({ ...base, powers: ["evm_repay"], evm: { chainId: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: 1, dailyAmount: 5 } });
+    expect(big.evm).toMatchObject({ daily_amount: "5", total_amount: "5" });
   });
 
   test("a policy is sealed to the enclave and bound to the account", () => {
@@ -172,6 +188,10 @@ describe("mandates", () => {
       [{ limits: Array.from({ length: 9 }, (_, i) => ({ token: `t${i}.testnet`, reserve: 1, daily: 1 })) }, "at most 8"],
       [{ hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 1, bandBps: 301, hedgeIsBuy: false } }, "1 to 300"],
       [{ evm: { chainId: 1, pool: "0x12", asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: 1 } }, "bad EVM address"],
+      [{ hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 10, dailySizeE8: 9, bandBps: 100, hedgeIsBuy: false } }, "daily size cap must be at least"],
+      [{ powers: ["hl_hedge"], hl: { asset: "NEAR", assetIndex: 54, maxSizeE8: 10, maxHedgeE8: 0, bandBps: 100, hedgeIsBuy: false } }, "positive total hedge cap"],
+      [{ evm: { chainId: 1, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: 10, dailyAmount: 9 } }, "daily repay cap must be at least"],
+      [{ evm: { chainId: 1, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, maxAmount: 10, dailyAmount: 20, totalAmount: 19 } }, "total repay cap must be at least"],
       [{ policy: { triggerScore: 50, triggerHealth: 1.1, targetHealth: 1.4, strategy: "repay-first" } }, "sealingPublicKey"],
     ];
     for (const [patch, msg] of bad) expect(() => buildMandate({ ...base, powers: [...base.powers], ...patch } as Parameters<typeof buildMandate>[0])).toThrow(msg);

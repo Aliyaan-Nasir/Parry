@@ -1,8 +1,10 @@
 /**
- * x402 payments on NEAR. A paid endpoint answers 402 with what it accepts; the client signs a
- * NEP-366 delegate action for `ft_transfer` of the price to the payee and repeats the request with
- * it in `X-PAYMENT`; the server checks the delegate, relays it (paying the gas) and answers with
- * `X-PAYMENT-RESPONSE`. The encoders, the parser and the verifier here are what both sides use.
+ * x402 payments on NEAR (x402 v2, the `exact` scheme on NEAR). A paid endpoint answers 402 with
+ * what it accepts, in the `PAYMENT-REQUIRED` header and the JSON body; the client signs a NEP-366
+ * delegate action for `ft_transfer` of the price to the payee and repeats the request with it in
+ * `PAYMENT-SIGNATURE`; the server checks the delegate, relays it (paying the gas) and answers with
+ * `PAYMENT-RESPONSE`. Every header is base64 of JSON. The encoders, the parser and the verifier
+ * here are what both sides use.
  *
  * A delegate action is signed as NEP-461 prescribes for on-chain messages: ed25519 over
  * SHA-256(u32 little endian (2^30 + 366) ++ borsh(DelegateAction)), where DelegateAction is
@@ -16,11 +18,20 @@ import { DELEGATE_ACTION_PREFIX, decodeSignedDelegateAction, encodeSignedDelegat
 import { bytesEqual, concatBytes, formatEd25519PublicKey, fromBase64, fromUtf8, parseEd25519PublicKey, toBase64, utf8 } from "./encoding.js";
 
 export const X402_VERSION = 2;
-export const PAYMENT_HEADER = "X-PAYMENT";
-export const PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
+/** x402 v2 over HTTP: the server's 402 requirements. */
+export const PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
+/** x402 v2 over HTTP: the client's payment. */
+export const PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
+/** x402 v2 over HTTP: the server's settlement answer. */
+export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
+/** The x402 v1 name of the payment header, still accepted from older clients. */
+export const V1_PAYMENT_HEADER = "X-PAYMENT";
+/** The x402 v1 name of the settlement header, still sent for older clients. */
+export const V1_PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
 /** NEP-461 prefix of NEP-366 delegate actions: 2^30 + 366. */
 export const NEP366_PREFIX = DELEGATE_ACTION_PREFIX;
 
+/** One way to pay, as listed in a 402's `accepts`. */
 export interface PaymentRequirements {
   scheme: "exact";
   /** `near:testnet` or `near:mainnet` */
@@ -30,60 +41,118 @@ export interface PaymentRequirements {
   /** Token units, decimal string. */
   amount: string;
   payTo: string;
-  resource: string;
-  description: string;
+  /** The delegate may stay valid for at most this many blocks (NEAR's exact scheme counts 1 s a block). */
   maxTimeoutSeconds: number;
+  extra?: Record<string, unknown>;
 }
 
-/** The body of a 402 answer. */
+/** The protected resource a 402 is about. */
+export interface ResourceInfo {
+  url: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/** What a 402 carries, in `PAYMENT-REQUIRED` (base64 of its JSON) and as its body. */
 export interface PaymentRequired {
   x402Version: number;
-  accepts: PaymentRequirements[];
   error?: string;
+  resource: ResourceInfo;
+  accepts: PaymentRequirements[];
+  extensions?: Record<string, unknown>;
 }
 
-/** What `X-PAYMENT` carries (base64 of its JSON). */
+/** What `PAYMENT-SIGNATURE` carries (base64 of its JSON). */
 export interface PaymentPayload {
   x402Version: number;
-  scheme: "exact";
-  network: string;
+  resource?: ResourceInfo;
+  /** The entry of `accepts` the client pays by. */
+  accepted: PaymentRequirements;
   payload: { signedDelegateAction: string };
+  extensions?: Record<string, unknown>;
 }
 
-/** What `X-PAYMENT-RESPONSE` carries (base64 of its JSON). */
+/**
+ * A payment as read from a request. Older clients (SDK 0.1) sent `scheme` and `network` at the top
+ * level instead of `accepted`; such a payment is read with just those two fields in `accepted`.
+ */
+export type ReceivedPayment = Omit<PaymentPayload, "accepted"> & { accepted: Pick<PaymentRequirements, "scheme" | "network"> & Partial<PaymentRequirements> };
+
+/** What `PAYMENT-RESPONSE` carries (base64 of its JSON). */
 export interface PaymentResponse {
   success: boolean;
   transaction: string;
   network: string;
+  /** The account that paid, once the server verified it. */
+  payer?: string;
   errorReason?: string;
 }
 
 const b64json = (v: unknown): string => toBase64(utf8(JSON.stringify(v)));
 const unb64json = (s: string): unknown => JSON.parse(fromUtf8(fromBase64(s.trim())));
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+export const encodePaymentRequired = (r: PaymentRequired): string => b64json(r);
+
+export function decodePaymentRequired(header: string): PaymentRequired {
+  let v: unknown;
+  try {
+    v = unb64json(header);
+  } catch {
+    throw new Error("PAYMENT-REQUIRED is not base64 JSON");
+  }
+  if (!isObject(v) || typeof v.x402Version !== "number" || !Array.isArray(v.accepts)) throw new Error("PAYMENT-REQUIRED has no x402Version and accepts");
+  return v as unknown as PaymentRequired;
+}
 
 export const encodePaymentHeader = (p: PaymentPayload): string => b64json(p);
 
-export function decodePaymentHeader(header: string): PaymentPayload {
-  let v: Partial<PaymentPayload>;
+/** Reads `PAYMENT-SIGNATURE` (or the v1 `X-PAYMENT`, which carries the same JSON). */
+export function decodePaymentHeader(header: string): ReceivedPayment {
+  let v: unknown;
   try {
-    v = unb64json(header) as Partial<PaymentPayload>;
+    v = unb64json(header);
   } catch {
-    throw new Error("X-PAYMENT is not base64 JSON");
+    throw new Error("the payment header is not base64 JSON");
   }
-  if (typeof v !== "object" || v === null) throw new Error("X-PAYMENT is not an object");
-  if (typeof v.x402Version !== "number") throw new Error("X-PAYMENT has no x402Version");
-  if (v.scheme !== "exact") throw new Error("X-PAYMENT scheme must be exact");
-  if (typeof v.network !== "string") throw new Error("X-PAYMENT has no network");
-  if (typeof v.payload?.signedDelegateAction !== "string") throw new Error("X-PAYMENT has no payload.signedDelegateAction");
-  return { x402Version: v.x402Version, scheme: "exact", network: v.network, payload: { signedDelegateAction: v.payload.signedDelegateAction } };
+  if (!isObject(v)) throw new Error("the payment is not an object");
+  if (typeof v.x402Version !== "number") throw new Error("the payment has no x402Version");
+  const payload = v.payload;
+  if (!isObject(payload) || typeof payload.signedDelegateAction !== "string") throw new Error("the payment has no payload.signedDelegateAction");
+  const resource = isObject(v.resource) && typeof v.resource.url === "string" ? { resource: v.resource as unknown as ResourceInfo } : {};
+  const extensions = isObject(v.extensions) ? { extensions: v.extensions } : {};
+  const common = { x402Version: v.x402Version, ...resource, payload: { signedDelegateAction: payload.signedDelegateAction }, ...extensions };
+  if (v.accepted === undefined) {
+    // SDK 0.1: scheme and network at the top level.
+    if (v.scheme !== "exact") throw new Error("the payment's scheme must be exact");
+    if (typeof v.network !== "string") throw new Error("the payment has no network");
+    return { ...common, accepted: { scheme: "exact", network: v.network } };
+  }
+  const a = v.accepted;
+  if (!isObject(a)) throw new Error("the payment's accepted is not an object");
+  if (a.scheme !== "exact") throw new Error("the payment's scheme must be exact");
+  for (const k of ["network", "asset", "amount", "payTo"] as const) {
+    if (typeof a[k] !== "string") throw new Error(`the payment's accepted has no ${k}`);
+  }
+  if (typeof a.maxTimeoutSeconds !== "number" || !Number.isInteger(a.maxTimeoutSeconds) || a.maxTimeoutSeconds <= 0) {
+    throw new Error("the payment's accepted.maxTimeoutSeconds must be a positive integer");
+  }
+  return { ...common, accepted: a as unknown as PaymentRequirements };
 }
 
 export const encodePaymentResponse = (r: PaymentResponse): string => b64json(r);
 
+/** Reads `PAYMENT-RESPONSE` (or the v1 `X-PAYMENT-RESPONSE`). */
 export function decodePaymentResponse(header: string): PaymentResponse {
   const v = unb64json(header) as Partial<PaymentResponse>;
-  if (typeof v?.success !== "boolean") throw new Error("X-PAYMENT-RESPONSE has no success flag");
-  return { success: v.success, transaction: String(v.transaction ?? ""), network: String(v.network ?? ""), ...(v.errorReason ? { errorReason: String(v.errorReason) } : {}) };
+  if (typeof v?.success !== "boolean") throw new Error("the payment response has no success flag");
+  return {
+    success: v.success,
+    transaction: String(v.transaction ?? ""),
+    network: String(v.network ?? ""),
+    ...(v.payer ? { payer: String(v.payer) } : {}),
+    ...(v.errorReason ? { errorReason: String(v.errorReason) } : {}),
+  };
 }
 
 export type DelegateActionItem =
@@ -183,23 +252,34 @@ export function verifySignedDelegate(input: string | Uint8Array | ParsedDelegate
 export interface PaymentCheckOptions {
   /** The chain's current block height: the delegate must still be valid at it. */
   blockHeight?: bigint | number;
-  /** Largest `maxBlockHeight - blockHeight` accepted (default 240 blocks, about 4 minutes). */
+  /**
+   * Largest `maxBlockHeight - blockHeight` accepted. Defaults to the requirement's
+   * `maxTimeoutSeconds`, since NEAR's exact scheme counts one block a second.
+   */
   maxBlocksAhead?: number;
   /** Most gas the delegate may attach, since the relayer pays for it (default 50 Tgas). */
   maxGas?: bigint;
+  /** The resource URL the 402 named: a payment naming another resource is refused. */
+  resource?: string;
 }
 
 export type PaymentCheck = { ok: true; delegate: ParsedDelegate } | { ok: false; reason: string; delegate?: ParsedDelegate };
 
 /**
- * Checks a payment against what was asked: scheme and network, a valid signature, one
- * `ft_transfer` on the asset of exactly `amount` to `payTo` with 1 yoctoNEAR, bounded gas, and a
- * delegate that is still valid. The caller then relays it and checks the transfer succeeded.
+ * Checks a payment against what was asked: the requirements it accepted and the resource it names,
+ * a valid signature, one `ft_transfer` on the asset of exactly `amount` to `payTo` with 1
+ * yoctoNEAR, bounded gas, and a delegate that is still valid. The caller then relays it and checks
+ * the transfer succeeded.
  */
-export function verifyPayment(payment: PaymentPayload, req: PaymentRequirements, opts: PaymentCheckOptions = {}): PaymentCheck {
+export function verifyPayment(payment: ReceivedPayment, req: PaymentRequirements, opts: PaymentCheckOptions = {}): PaymentCheck {
   if (payment.x402Version !== X402_VERSION) return { ok: false, reason: `x402Version must be ${X402_VERSION}` };
-  if (payment.scheme !== req.scheme) return { ok: false, reason: "scheme does not match" };
-  if (payment.network !== req.network) return { ok: false, reason: "network does not match" };
+  const accepted = payment.accepted;
+  if (accepted.scheme !== req.scheme) return { ok: false, reason: "scheme does not match" };
+  if (accepted.network !== req.network) return { ok: false, reason: "network does not match" };
+  for (const k of ["asset", "amount", "payTo", "maxTimeoutSeconds"] as const) {
+    if (accepted[k] !== undefined && accepted[k] !== req[k]) return { ok: false, reason: `the payment accepted another ${k}` };
+  }
+  if (opts.resource !== undefined && payment.resource && payment.resource.url !== opts.resource) return { ok: false, reason: "the payment is for another resource" };
   let d: ParsedDelegate;
   try {
     d = parseSignedDelegate(payment.payload.signedDelegateAction);
@@ -222,7 +302,7 @@ export function verifyPayment(payment: PaymentPayload, req: PaymentRequirements,
   if (opts.blockHeight !== undefined) {
     const h = BigInt(opts.blockHeight);
     if (d.maxBlockHeight <= h) return fail("delegate expired");
-    if (d.maxBlockHeight - h > BigInt(opts.maxBlocksAhead ?? 240)) return fail("delegate is valid for too long");
+    if (d.maxBlockHeight - h > BigInt(opts.maxBlocksAhead ?? req.maxTimeoutSeconds)) return fail("delegate is valid for too long");
   }
   return { ok: true, delegate: d };
 }

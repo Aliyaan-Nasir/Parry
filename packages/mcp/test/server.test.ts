@@ -4,7 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import { openPolicy, toBase58 } from "@parryguard/sdk";
+import { createParry, decodePaymentHeader, encodePaymentRequired, encodePaymentResponse, openPolicy, toBase58, type PaymentRequired } from "@parryguard/sdk";
 import { configFromEnv, createMcpHttpHandler, createParryMcpServer, createUsageLedger, DEFAULT_CAPS, type ParryMcpOptions } from "../src/index.js";
 import { closingAt, enclaveKey, fakeParry, genuineDecision, sealingSecret } from "./fixtures.js";
 
@@ -104,6 +104,57 @@ describe("routes, status and paid checks", () => {
     expect(JSON.stringify(r.structuredContent)).toContain("paid-tx");
   });
 
+  test("paid_risk_check pays through the SDK with an x402 v2 PAYMENT-SIGNATURE", async () => {
+    const RPC = "https://rpc.mcp-test.invalid";
+    const accepted = { scheme: "exact" as const, network: "near:testnet", asset: "usdc.parry.testnet", amount: "10000", payTo: "api.parry.testnet", maxTimeoutSeconds: 240 };
+    const required: PaymentRequired = { x402Version: 2, error: "payment required", resource: { url: "https://api.parry.example/v1/paid/risk/alice.testnet" }, accepts: [accepted] };
+    const sent: Record<string, string>[] = [];
+    const api = async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers: Record<string, string> = {};
+      new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
+      sent.push(headers);
+      if (!headers["payment-signature"]) return Response.json(required, { status: 402, headers: { "PAYMENT-REQUIRED": encodePaymentRequired(required) } });
+      const risk = { account: "alice.testnet", checkedAt: "2026-11-10T00:00:00Z", position: null, market: {}, model: "docs/risk-model.md" };
+      return Response.json(risk, { headers: { "PAYMENT-RESPONSE": encodePaymentResponse({ success: true, transaction: "v2-tx", network: "near:testnet", payer: AGENT.accountId }) } });
+    };
+    // near-kit reads the agent key's nonce and the block height to sign the delegate.
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const { id, method, params } = JSON.parse(String(init?.body)) as { id: number; method: string; params: Record<string, unknown> };
+      const result =
+        method === "query" && params["request_type"] === "view_access_key"
+          ? { nonce: 7, permission: "FullAccess", block_height: 5_000, block_hash: "11111111111111111111111111111111" }
+          : {
+              version: { version: "2.9.0", build: "test" },
+              chain_id: "testnet",
+              genesis_hash: "11111111111111111111111111111111",
+              protocol_version: 80,
+              latest_protocol_version: 80,
+              rpc_addr: "0.0.0.0:3030",
+              node_public_key: "ed25519:11111111111111111111111111111111",
+              node_key: null,
+              validator_account_id: null,
+              validator_public_key: null,
+              validators: [],
+              sync_info: { latest_block_hash: "11111111111111111111111111111111", latest_block_height: 5_000, latest_state_root: "11111111111111111111111111111111", latest_block_time: "2026-11-10T00:00:00Z", syncing: false },
+            };
+      return Response.json({ jsonrpc: "2.0", id, result });
+    }) as typeof fetch;
+    try {
+      const parry = createParry({ network: "testnet", apiUrl: "https://api.parry.example", rpcUrl: RPC, fetch: api, contracts: { usdc: "usdc.parry.testnet" } });
+      const { call } = await connect({ parry, agent: AGENT });
+      const r = await call("paid_risk_check", { account: "alice.testnet" });
+      expect(r.error).toBe(false);
+      expect(JSON.stringify(r.data)).toContain("v2-tx");
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!["x-payment"]).toBeUndefined();
+    const payment = decodePaymentHeader(sent[1]!["payment-signature"]!);
+    expect(payment).toMatchObject({ x402Version: 2, resource: required.resource, accepted });
+  });
+
   test("paid_risk_check refuses on mainnet before paying", async () => {
     const fake = fakeParry("mainnet");
     const { client } = await connect({ parry: fake.parry, agent: AGENT });
@@ -130,6 +181,8 @@ describe("read tools", () => {
     const vault = await call("get_vault");
     expect(vault.data!["riskScore"]).toBe(18);
     expect(vault.text).toContain("Risk score 18");
+    expect(vault.text).toContain("deposits closed: the vault's report is 27 min old");
+    expect(vault.text).not.toContain("deposits open");
 
     const reserves = await call("get_reserves");
     expect(Object.keys(reserves.data!).sort()).toEqual(["onChainRoot", "reserves", "verification"]);
@@ -162,9 +215,19 @@ describe("read tools", () => {
     const { call } = await connect({ parry: fakeParry().parry });
     const v = await call("verify_guardian_decision", { id: genuineDecision().id });
     expect(v.error).toBe(false);
-    expect(v.text).toStartWith("Verified.");
-    expect(v.data!["enclavePublicKey"]).toBe(enclaveKey);
-    expect((v.data!["verification"] as { checks: { status: string }[] }).checks.map((c) => c.status)).toEqual(["pass", "pass", "pass", "pass", "pass", "pass"]);
+    expect(v.text).toStartWith("Verified (the owner's full record: 6 checks ran");
+    expect((v.data!["verification"] as { checks: { status: string }[] }).checks.map((c) => c.status)).toEqual(["pass", "pass", "pass", "pass", "pass", "pass", "skip", "skip", "skip", "skip"]);
+  });
+
+  test("verify_guardian_decision verifies a public record and names what it skipped", async () => {
+    const { reasoning: _r, ...review } = genuineDecision().review;
+    const pub = { ...genuineDecision(), visibility: "public" as const, review };
+    const base = fakeParry().parry;
+    const { call } = await connect({ parry: { ...base, decision: async () => pub } });
+    const v = await call("verify_guardian_decision", { id: pub.id });
+    expect(v.error).toBe(false);
+    expect(v.text).toStartWith("Verified (the public record: 5 checks ran; skipped: review_hash,");
+    expect(JSON.stringify(v.data)).not.toContain("proportionate");
   });
 
   test("API failures come back as tool errors", async () => {
@@ -247,6 +310,25 @@ describe("write tools", () => {
     const mandate = (f.sent[0]!.args["actions"] as { set_mandate: { mandate: { sealed: string } } }[])[0]!.set_mandate.mandate;
     expect(openPolicy(mandate["sealed"], { account: "0uagent.testnet", secret: sealingSecret })).toMatchObject({ strategy: "repay-first", steps: ["deleverage", "repay"] });
     expect((await call("set_mandate", { powers: ["repay"], limits: [], expires_in_days: 7, policy: { trigger_score: 55, trigger_health: 1.2, target_health: 1.5, strategy: "repay-first", steps: ["repay", "repay"] } })).error).toBe(true);
+  });
+
+  test("set_mandate writes the Hyperliquid and EVM guards with their daily and total caps", async () => {
+    const f = fakeParry();
+    const { call } = await connect({ parry: f.parry, agent: AGENT });
+    const evm = { chain_id: 84532, pool: `0x${"11".repeat(20)}`, asset: `0x${"22".repeat(20)}`, address: `0x${"33".repeat(20)}`, max_amount: "1000000" };
+    const r = await call("set_mandate", {
+      powers: ["hl_reduce", "hl_hedge", "evm_repay"],
+      limits: [],
+      hl: { asset_index: 54, max_size_e8: "1000000000", daily_size_e8: "3000000000" },
+      evm,
+    });
+    expect(r.error).toBe(false);
+    const mandate = (f.sent[0]!.args["actions"] as { set_mandate: { mandate: Record<string, unknown> } }[])[0]!.set_mandate.mandate;
+    expect(mandate["hl"]).toEqual({ asset: "NEAR", asset_index: 54, max_size_e8: "1000000000", daily_size_e8: "3000000000", max_hedge_e8: "1000000000", band_bps: 100, hedge_is_buy: false });
+    expect(mandate["evm"]).toMatchObject({ max_amount: "1000000", daily_amount: "1000000", total_amount: "3000000" });
+    const bad = await call("set_mandate", { powers: ["evm_repay"], limits: [], evm: { ...evm, daily_amount: "10" } });
+    expect(bad.error).toBe(true);
+    expect(bad.text).toContain("daily repay cap must be at least the per-action cap");
   });
 
   test("close_position closes the agent's position in rounds through the API's pool, retrying a stuck round", async () => {
@@ -391,6 +473,9 @@ describe("market, replay, verification and incident tools", () => {
     const replay = await call("get_crash_replay");
     expect(replay.text).toContain("median warning 44 h");
     expect((replay.data!["crashes"] as { guardianSteps: number }[])[0]!.guardianSteps).toBe(0);
+    expect(replay.text).toContain("1 spike; the vault's short liquidated in 0.");
+    expect((replay.data!["spikes"] as { closestToLiquidationPct: number }[])[0]!.closestToLiquidationPct).toBe(4.1);
+    expect((replay.data!["spikes"] as { marginTopUpUsd: number }[])[0]!.marginTopUpUsd).toBe(16.61);
     expect((await call("get_liquidation_heatmap", { network: "testnet" })).text).toContain("1 borrowers on testnet");
     expect((await call("get_prices", { tokens: ["wNEAR"] })).text).toContain("1 price(s)");
     expect((await call("verify_record", { id: "ab".repeat(32) })).text).toContain("certificate: verified");

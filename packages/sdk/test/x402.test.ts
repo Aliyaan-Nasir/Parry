@@ -6,9 +6,11 @@ import {
   checkDelegateOnChain,
   createParry,
   decodePaymentHeader,
+  decodePaymentRequired,
   decodePaymentResponse,
   delegateActionHash,
   encodePaymentHeader,
+  encodePaymentRequired,
   encodePaymentResponse,
   nearClient,
   NEP366_PREFIX,
@@ -17,6 +19,7 @@ import {
   verifyPayment,
   verifySignedDelegate,
   type PaymentPayload,
+  type PaymentRequired,
   type PaymentRequirements,
 } from "../src/index.js";
 import { concatBytes, fromBase64, formatEd25519PublicKey, toBase58, toBase64, toHex, utf8 } from "../src/encoding.js";
@@ -33,10 +36,11 @@ const requirement: PaymentRequirements = {
   asset: "usdc.parry.testnet",
   amount: "10000",
   payTo: "api.parry.testnet",
-  resource: "https://api.parry.example/v1/paid/risk/alice.testnet",
-  description: "Parry risk check",
   maxTimeoutSeconds: 120,
 };
+const RESOURCE = "https://api.parry.example/v1/paid/risk/alice.testnet";
+const required: PaymentRequired = { x402Version: 2, error: "payment required", resource: { url: RESOURCE, description: "Parry risk check", mimeType: "application/json" }, accepts: [requirement] };
+const v2Payment = (signedDelegateAction: string): PaymentPayload => ({ x402Version: 2, resource: required.resource, accepted: requirement, payload: { signedDelegateAction } });
 
 let restore: (() => void) | null = null;
 afterEach(() => {
@@ -129,25 +133,42 @@ describe("chain-side payment checks", () => {
 });
 
 describe("x402 headers", () => {
-  test("payment header round trip", async () => {
-    const payload: PaymentPayload = { x402Version: 2, scheme: "exact", network: "near:testnet", payload: { signedDelegateAction: await signed() } };
+  test("v2 payment header round trip, with the accepted requirements and the resource", async () => {
+    const payload = v2Payment(await signed());
     const header = encodePaymentHeader(payload);
     expect(JSON.parse(new TextDecoder().decode(fromBase64(header)))).toEqual(payload);
     expect(decodePaymentHeader(header)).toEqual(payload);
     expect(() => decodePaymentHeader("not base64 json")).toThrow();
-    expect(() => decodePaymentHeader(toBase64(utf8(JSON.stringify({ ...payload, scheme: "upto" }))))).toThrow("exact");
+    const raw = (v: unknown) => toBase64(utf8(JSON.stringify(v)));
+    expect(() => decodePaymentHeader(raw({ ...payload, accepted: { ...requirement, scheme: "upto" } }))).toThrow("exact");
+    expect(() => decodePaymentHeader(raw({ ...payload, accepted: { ...requirement, payTo: undefined } }))).toThrow("payTo");
+    expect(() => decodePaymentHeader(raw({ ...payload, accepted: { ...requirement, maxTimeoutSeconds: 0 } }))).toThrow("maxTimeoutSeconds");
+  });
+
+  test("an SDK 0.1 payment (scheme and network at the top level) is still read", async () => {
+    const signedDelegateAction = await signed();
+    const old = toBase64(utf8(JSON.stringify({ x402Version: 2, scheme: "exact", network: "near:testnet", payload: { signedDelegateAction } })));
+    const read = decodePaymentHeader(old);
+    expect(read).toEqual({ x402Version: 2, accepted: { scheme: "exact", network: "near:testnet" }, payload: { signedDelegateAction } });
+    expect(verifyPayment(read, requirement, { blockHeight: 1_010, resource: RESOURCE }).ok).toBe(true);
+    expect(() => decodePaymentHeader(toBase64(utf8(JSON.stringify({ x402Version: 2, scheme: "upto", network: "near:testnet", payload: { signedDelegateAction } }))))).toThrow("exact");
+  });
+
+  test("PAYMENT-REQUIRED round trip", () => {
+    expect(decodePaymentRequired(encodePaymentRequired(required))).toEqual(required);
+    expect(() => decodePaymentRequired(toBase64(utf8("{}")))).toThrow("accepts");
   });
 
   test("payment response round trip", () => {
-    const r = { success: true, transaction: "8f3Tx", network: "near:testnet" };
+    const r = { success: true, transaction: "8f3Tx", network: "near:testnet", payer: PAYER };
     expect(decodePaymentResponse(encodePaymentResponse(r))).toEqual(r);
     expect(decodePaymentResponse(encodePaymentResponse({ ...r, success: false, errorReason: "insufficient balance" })).errorReason).toBe("insufficient balance");
   });
 
   test("verifyPayment accepts the exact payment and refuses everything else", async () => {
     const b64 = await signed(1_000);
-    const payload: PaymentPayload = { x402Version: 2, scheme: "exact", network: "near:testnet", payload: { signedDelegateAction: b64 } };
-    const ok = verifyPayment(payload, requirement, { blockHeight: 1_010 });
+    const payload = v2Payment(b64);
+    const ok = verifyPayment(payload, requirement, { blockHeight: 1_010, resource: RESOURCE });
     expect(ok.ok).toBe(true);
     if (ok.ok) expect(ok.delegate.senderId).toBe(PAYER);
 
@@ -155,13 +176,21 @@ describe("x402 headers", () => {
       const r = verifyPayment(p, req, { blockHeight: height });
       return r.ok ? "ok" : r.reason;
     };
-    expect(refuse(payload, { ...requirement, amount: "10001" })).toContain("exactly 10001");
-    expect(refuse(payload, { ...requirement, payTo: "eve.testnet" })).toContain("must pay eve.testnet");
-    expect(refuse(payload, { ...requirement, asset: "other.testnet" })).toContain("not the asset");
-    expect(refuse({ ...payload, network: "near:mainnet" }, requirement)).toContain("network");
+    // The delegate itself is checked against what was asked, whatever the payment says it accepted.
+    const asked = (r: PaymentRequirements) => refuse({ ...payload, accepted: r }, r);
+    expect(asked({ ...requirement, amount: "10001" })).toContain("exactly 10001");
+    expect(asked({ ...requirement, payTo: "eve.testnet" })).toContain("must pay eve.testnet");
+    expect(asked({ ...requirement, asset: "other.testnet" })).toContain("not the asset");
+    expect(refuse(payload, { ...requirement, amount: "10001" })).toBe("the payment accepted another amount");
+    expect(refuse({ ...payload, accepted: { ...requirement, network: "near:mainnet" } }, requirement)).toContain("network");
+    expect(refuse({ ...payload, accepted: { ...requirement, amount: "1" } }, requirement)).toBe("the payment accepted another amount");
+    expect(refuse({ ...payload, accepted: { ...requirement, payTo: "eve.testnet" } }, requirement)).toBe("the payment accepted another payTo");
+    expect(verifyPayment({ ...payload, resource: { url: "https://api.parry.example/v1/paid/risk/bob.testnet" } }, requirement, { resource: RESOURCE })).toMatchObject({ ok: false, reason: "the payment is for another resource" });
     expect(refuse({ ...payload, x402Version: 1 }, requirement)).toContain("x402Version");
     expect(refuse(payload, requirement, 1_120)).toBe("delegate expired");
-    expect(refuse(payload, requirement, 500)).toBe("delegate is valid for too long");
+    // At most maxTimeoutSeconds blocks ahead (120 here): 1_120 - 999 = 121.
+    expect(refuse(payload, requirement, 1_000)).toBe("ok");
+    expect(refuse(payload, requirement, 999)).toBe("delegate is valid for too long");
     expect(verifyPayment(payload, requirement, { maxGas: 10_000_000_000_000n }).ok).toBe(false);
   });
 });
@@ -179,30 +208,48 @@ describe("paidRiskCheck", () => {
     model: "docs/risk-model.md",
   };
 
-  test("pays on 402 with a signed delegate and returns the result and the receipt", async () => {
+  test("pays on 402 with a signed delegate in PAYMENT-SIGNATURE and returns the result and the receipt", async () => {
     const api = mockFetch((req) => {
-      if (!req.url.startsWith("https://api.parry.example/v1/paid/risk/alice.testnet")) return undefined;
-      const header = req.headers["x-payment"];
-      if (!header) return json({ x402Version: 2, accepts: [requirement] }, { status: 402 });
-      const check = verifyPayment(decodePaymentHeader(header), requirement, { blockHeight: 1_005 });
+      if (!req.url.startsWith(RESOURCE)) return undefined;
+      const header = req.headers["payment-signature"];
+      // The requirements travel in PAYMENT-REQUIRED; the body here is empty to prove the header is read.
+      if (!header) return json({}, { status: 402, headers: { "PAYMENT-REQUIRED": encodePaymentRequired(required) } });
+      const check = verifyPayment(decodePaymentHeader(header), requirement, { blockHeight: 1_005, resource: RESOURCE });
       if (!check.ok) return json({ error: check.reason }, { status: 402 });
-      return json(riskCheck, { headers: { "X-PAYMENT-RESPONSE": encodePaymentResponse({ success: true, transaction: "txhash1", network: "near:testnet" }) } });
+      return json(riskCheck, { headers: { "PAYMENT-RESPONSE": encodePaymentResponse({ success: true, transaction: "txhash1", network: "near:testnet", payer: PAYER }) } });
     });
     const rpc = mockFetch(rpcRoute({ blockHeight: 1_000 }));
     restore = installGlobalFetch(rpc.fetch);
     const parry = createParry({ network: "testnet", apiUrl: "https://api.parry.example", rpcUrl: RPC_URL, fetch: api.fetch });
     const out = await parry.paidRiskCheck("alice.testnet", { payer: { accountId: PAYER, privateKey: payerKey }, maxAmount: "10000" });
     expect(out.result).toEqual(riskCheck as never);
-    expect(out.payment).toEqual({ success: true, transaction: "txhash1", network: "near:testnet" });
+    expect(out.payment).toEqual({ success: true, transaction: "txhash1", network: "near:testnet", payer: PAYER });
     expect(out.requirement).toEqual(requirement);
     expect(api.seen).toHaveLength(2);
-    const sent = decodePaymentHeader(api.seen[1]!.headers["x-payment"]!);
-    expect(sent).toMatchObject({ x402Version: 2, scheme: "exact", network: "near:testnet" });
+    expect(api.seen[1]!.headers["x-payment"]).toBeUndefined();
+    const sent = decodePaymentHeader(api.seen[1]!.headers["payment-signature"]!);
+    expect(sent).toMatchObject({ x402Version: 2, resource: { url: RESOURCE }, accepted: requirement });
     expect(parseSignedDelegate(sent.payload.signedDelegateAction).maxBlockHeight).toBe(1_120n);
   });
 
+  test("reads the requirements from the body and the v1 X-PAYMENT-RESPONSE when a server sends only those", async () => {
+    const api = mockFetch((req) => {
+      if (!req.headers["payment-signature"]) return json(required, { status: 402 });
+      return json(riskCheck, { headers: { "X-PAYMENT-RESPONSE": encodePaymentResponse({ success: true, transaction: "txhash2", network: "near:testnet" }) } });
+    });
+    const rpc = mockFetch(rpcRoute({ blockHeight: 1_000 }));
+    restore = installGlobalFetch(rpc.fetch);
+    const parry = createParry({ network: "testnet", apiUrl: "https://api.parry.example", rpcUrl: RPC_URL, fetch: api.fetch });
+    const out = await parry.paidRiskCheck("alice.testnet", { payer: { accountId: PAYER, privateKey: payerKey } });
+    expect(out.payment?.transaction).toBe("txhash2");
+    // A shorter timeout bounds the delegate's lifetime.
+    const short = mockFetch((req) => (req.headers["payment-signature"] ? json(riskCheck) : json({ ...required, accepts: [{ ...requirement, maxTimeoutSeconds: 30 }] }, { status: 402 })));
+    await createParry({ network: "testnet", apiUrl: "https://api.parry.example", rpcUrl: RPC_URL, fetch: short.fetch }).paidRiskCheck("alice.testnet", { payer: { accountId: PAYER, privateKey: payerKey } });
+    expect(parseSignedDelegate(decodePaymentHeader(short.seen[1]!.headers["payment-signature"]!).payload.signedDelegateAction).maxBlockHeight).toBe(1_030n);
+  });
+
   test("refuses to pay above the limit, in another asset or on another network", async () => {
-    const answer = (req: PaymentRequirements) => mockFetch(() => json({ x402Version: 2, accepts: [req] }, { status: 402 }));
+    const answer = (req: PaymentRequirements) => mockFetch(() => json({ ...required, accepts: [req] }, { status: 402 }));
     const payer = { accountId: PAYER, privateKey: payerKey };
     const make = (req: PaymentRequirements) => createParry({ network: "testnet", apiUrl: "https://api.parry.example", fetch: answer(req).fetch });
     await expect(make(requirement).paidRiskCheck("a.testnet", { payer, maxAmount: 9_999n })).rejects.toThrow("above the limit");

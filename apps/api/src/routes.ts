@@ -14,7 +14,7 @@ import { checkInput, CertificateError, certificateView, issueCertificate, type C
 import { contract, FASTNEAR_TX_URL, network, type Network } from "@parryguard/services/lib/config";
 import type { Sql } from "@parryguard/services/lib/db";
 import { heatmapView } from "@parryguard/services/lib/heatmap";
-import { changes24h, BINANCE_TICKER, hyperliquidFunding, lendingOf, pythInfos, rheaAssets, tokenMeta, tokenPrices } from "@parryguard/services/lib/markets";
+import { changes24h, BINANCE_TICKER, hyperliquidFunding, lendingOf, mainnetTokenOf, pythInfos, rheaAssets, tokenMeta, tokenPrices } from "@parryguard/services/lib/markets";
 import { view } from "@parryguard/services/lib/near";
 import { oraclePrices, readRhea } from "@parryguard/services/lib/positions";
 import type { Context, Hono } from "hono";
@@ -78,6 +78,24 @@ async function fetchTx(hash: string): Promise<FastTx | null> {
 
 const failed = (status: unknown) => !!status && typeof status === "object" && "Failure" in status;
 
+/** Symbols for tokens whose `ft_metadata` names no symbol: Rhea lists Aurora's bridged ETH as `aurora`. */
+const SYMBOLS: Record<string, string> = { aurora: "ETH" };
+
+/** Names people use for a token besides its id and symbol, lower case. */
+const ALIASES: Record<string, string[]> = { near: ["wrap.near"], wnear: ["wrap.near"], eth: ["aurora", "eth.bridge.near"], btc: ["nbtc.bridge.near", "2260fac5e5542a773aa44fbcfedf7c193bc2c599.factory.bridge.near"] };
+
+/**
+ * Whether a `tokens` entry names this price row: the token id, its symbol or a common alias
+ * (NEAR is wNEAR), case-insensitive; a testnet id names the mainnet token its price mirrors.
+ */
+export function pricesMatch(wanted: string, row: { id: string; symbol: string }): boolean {
+  const w = wanted.toLowerCase();
+  const id = row.id.toLowerCase();
+  if (w === id || w === row.symbol.toLowerCase()) return true;
+  if (ALIASES[w]?.includes(id)) return true;
+  return mainnetTokenOf("testnet", wanted).toLowerCase() === id;
+}
+
 export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
   // ------------------------------------------------------------------ rates
   app.get("/v1/rates", async (c) => {
@@ -127,7 +145,7 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
           const ch = changes.get(infos[id]?.price_identifier ?? "");
           return {
             id,
-            symbol: (await tokenMeta("mainnet", id)).symbol,
+            symbol: SYMBOLS[id] ?? (await tokenMeta("mainnet", id)).symbol,
             priceUsd: p.priceUsd,
             change24h: ch ? ch.change : null,
             source: `${p.source}${ch ? `; 24 h change: ${BINANCE_TICKER} ${ch.symbol}${p.nearLinked && id !== "wrap.near" ? " (the token's NEAR rate moves under 0.1 % a day)" : ""}` : ""}`,
@@ -136,8 +154,8 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
       );
       return rows.filter((r): r is NonNullable<typeof r> => r !== null);
     });
-    const wanted = c.req.query("tokens")?.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
-    const tokens = wanted?.length ? all.filter((t) => wanted.includes(t.id.toLowerCase()) || wanted.includes(t.symbol.toLowerCase())) : all;
+    const wanted = c.req.query("tokens")?.split(",").map((t) => t.trim()).filter(Boolean);
+    const tokens = wanted?.length ? all.filter((t) => wanted.some((w) => pricesMatch(w, t))) : all;
     return c.json({ tokens, readAt: new Date().toISOString() });
   });
 
@@ -147,8 +165,8 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
     const file = await cached(`replay:${statSync(REPLAY).mtimeMs}`, 3_600_000, async () => JSON.parse(readFileSync(REPLAY, "utf8")) as unknown);
     // ?summary=1: the headline figures and sources without the hourly series (a few hundred bytes, not 150 KB).
     if (c.req.query("summary") === "1") {
-      const { crashes: _crashes, ...rest } = file as { crashes?: unknown[] } & Record<string, unknown>;
-      return c.json({ ...rest, crashes: [] });
+      const { crashes: _crashes, spikes: _spikes, ...rest } = file as { crashes?: unknown[]; spikes?: unknown[] } & Record<string, unknown>;
+      return c.json({ ...rest, crashes: [], spikes: [] });
     }
     return c.json(file as Record<string, unknown>);
   });
@@ -357,17 +375,23 @@ export function registerRoutes(app: Hono, sql: Sql, h: RouteHelpers) {
     const alerts = ids.length
       ? await sql<(Parameters<typeof alertView>[0] & { incident_id: string })[]>`SELECT * FROM alerts WHERE incident_id = ANY(${ids}) ORDER BY id`
       : [];
+    // An incident's body quotes its alerts: a guardian alert's full plan is read redacted there too.
     return c.json(
-      incidents.map((i) => ({
-        id: String(i.id),
-        account: i.account,
-        title: i.title,
-        body: i.body,
-        severity: i.severity,
-        alerts: alerts.filter((a) => String(a.incident_id) === String(i.id)).map(alertView),
-        openedAt: i.opened_at.toISOString(),
-        closedAt: i.closed_at?.toISOString() ?? null,
-      })),
+      incidents.map((i) => {
+        const mine = alerts.filter((a) => String(a.incident_id) === String(i.id));
+        const shown = mine.map((a) => alertView(a));
+        const body = mine.reduce((b, a, k) => (a.body && a.body !== shown[k]!.body ? b.split(a.body).join(shown[k]!.body) : b), i.body);
+        return {
+          id: String(i.id),
+          account: i.account,
+          title: i.title,
+          body,
+          severity: i.severity,
+          alerts: shown,
+          openedAt: i.opened_at.toISOString(),
+          closedAt: i.closed_at?.toISOString() ?? null,
+        };
+      }),
     );
   });
 

@@ -32,8 +32,17 @@ export interface MandateInput {
   minHealthAfterBps: number;
   /** Largest rescue swap slippage against the mark, bps (at most 300). */
   maxSlippageBps: number;
-  hl?: { asset: string; assetIndex: number; maxSizeE8: Amount; bandBps: number; hedgeIsBuy: boolean } | null;
-  evm?: { chainId: number; pool: string; asset: string; address: string; maxAmount: Amount } | null;
+  /**
+   * The Hyperliquid guard. `dailySizeE8` (default `maxSizeE8`) caps the guardian's order sizes per
+   * UTC day; `maxHedgeE8` (default `maxSizeE8` with `hl_hedge`, else 0) caps the hedge it may open
+   * over the mandate's life.
+   */
+  hl?: { asset: string; assetIndex: number; maxSizeE8: Amount; dailySizeE8?: Amount; maxHedgeE8?: Amount; bandBps: number; hedgeIsBuy: boolean } | null;
+  /**
+   * The EVM guard. `dailyAmount` (default `maxAmount`) caps repays per UTC day; `totalAmount`
+   * (default 3 x `maxAmount`) caps them over the mandate's life.
+   */
+  evm?: { chainId: number; pool: string; asset: string; address: string; maxAmount: Amount; dailyAmount?: Amount; totalAmount?: Amount } | null;
   /** Unix seconds or a Date; at most 180 days ahead. */
   expiresAt: number | Date;
   /** Trigger thresholds and strategy, sealed to the enclave (needs `sealingPublicKey`). */
@@ -79,7 +88,12 @@ export function buildMandate(input: MandateInput): Mandate {
         intIn(input.hl.assetIndex, 0, 4_294_967_295, "Hyperliquid asset index must be a u32");
         const size = u128(input.hl.maxSizeE8, "maxSizeE8");
         if (size === "0") fail("Hyperliquid size cap must be positive");
-        return { asset: input.hl.asset, asset_index: input.hl.assetIndex, max_size_e8: size, band_bps: input.hl.bandBps, hedge_is_buy: input.hl.hedgeIsBuy };
+        const daily = input.hl.dailySizeE8 === undefined ? size : u128(input.hl.dailySizeE8, "dailySizeE8");
+        if (BigInt(daily) < BigInt(size)) fail("the Hyperliquid daily size cap must be at least the per-order cap");
+        const hedge = powers.includes("hl_hedge");
+        const maxHedge = input.hl.maxHedgeE8 === undefined ? (hedge ? size : "0") : u128(input.hl.maxHedgeE8, "maxHedgeE8");
+        if (hedge && maxHedge === "0") fail("the hedge power needs a positive total hedge cap");
+        return { asset: input.hl.asset, asset_index: input.hl.assetIndex, max_size_e8: size, daily_size_e8: daily, max_hedge_e8: maxHedge, band_bps: input.hl.bandBps, hedge_is_buy: input.hl.hedgeIsBuy };
       })()
     : null;
   if (powers.some((p) => p === "hl_reduce" || p === "hl_hedge") && !hl) fail("Hyperliquid powers need a Hyperliquid guard");
@@ -90,7 +104,11 @@ export function buildMandate(input: MandateInput): Mandate {
         if (!Number.isSafeInteger(input.evm.chainId) || input.evm.chainId <= 0) fail("EVM chain id must be a positive integer");
         const max = u128(input.evm.maxAmount, "maxAmount");
         if (max === "0") fail("EVM repay cap must be positive");
-        return { chain_id: input.evm.chainId, pool: input.evm.pool, asset: input.evm.asset, address: input.evm.address, max_amount: max };
+        const daily = input.evm.dailyAmount === undefined ? max : u128(input.evm.dailyAmount, "dailyAmount");
+        if (BigInt(daily) < BigInt(max)) fail("the EVM daily repay cap must be at least the per-action cap");
+        const total = input.evm.totalAmount === undefined ? (BigInt(max) * 3n > BigInt(daily) ? BigInt(max) * 3n : BigInt(daily)).toString() : u128(input.evm.totalAmount, "totalAmount");
+        if (BigInt(total) < BigInt(daily)) fail("the EVM total repay cap must be at least the daily cap");
+        return { chain_id: input.evm.chainId, pool: input.evm.pool, asset: input.evm.asset, address: input.evm.address, max_amount: max, daily_amount: daily, total_amount: total };
       })()
     : null;
   if (powers.includes("evm_repay") && !evm) fail("EVM repay needs an EVM guard");

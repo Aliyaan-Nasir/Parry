@@ -310,6 +310,7 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
   const watch = signer === "watch";
   const held = portfolio.data?.vault.shares ?? "0";
   const minYocto = BigInt(v.minDepositNear || "0");
+  const closed = depositsClosed(v);
 
   const refresh = () => {
     for (const k of [keys.vault, keys.portfolio(account), keys.balance(account)]) void queryClient.invalidateQueries({ queryKey: k });
@@ -400,17 +401,17 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
             label: "Deposit",
             content: (
               <form onSubmit={deposit} className="grid gap-4" noValidate>
-                {v.paused ? <Note tone="caution">Deposits are paused while the vault&apos;s risk score is high.</Note> : null}
+                {closed ? <Note tone="caution">Deposits are closed: {closed}.</Note> : null}
                 <AmountField
                   label="Amount"
                   unit="NEAR"
                   value={amount}
                   onChange={setAmount}
-                  disabled={watch || v.paused}
+                  disabled={watch || !!closed}
                   hint={`At least ${fromUnits(minYocto, 24)} NEAR. ${signer === "wallet" ? "Your wallet first sends any NEAR the account lacks." : "Paid from the account's own NEAR."}`}
                 />
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" disabled={watch || v.paused} loading={busy === "deposit"} loadingLabel="Depositing">
+                  <Button type="submit" disabled={watch || !!closed} loading={busy === "deposit"} loadingLabel="Depositing">
                     Deposit
                   </Button>
                 </div>
@@ -464,6 +465,20 @@ function Actions({ v, account, signer }: { v: Vault; account: string; signer: Si
   );
 }
 
+/**
+ * Why the vault would refuse a deposit now, or null: the API checks it as the contract does (a
+ * pause, a report older than 15 minutes, the cap, the oracle off the hedge mark). An API before
+ * that check sends only the pause flag, so the report's age is checked here too.
+ */
+export function depositsClosed(v: Vault, nowMs = Date.now()): string | null {
+  if (v.depositsOpen !== undefined) return v.depositsOpen ? null : (v.depositsClosedReason ?? "the vault refuses deposits now");
+  if (v.paused) return "the vault's owner or its risk score paused them";
+  const age = v.reportAt ? (nowMs - Date.parse(v.reportAt)) / 1000 : null;
+  if (age === null) return "the vault has no report yet";
+  if (age > 900) return `the vault's report is ${Math.round(age / 60)} min old; deposits reopen with the next report`;
+  return null;
+}
+
 function Overview({ v }: { v: Vault }) {
   const { format } = useMoney();
   const now = useNow();
@@ -478,7 +493,9 @@ function Overview({ v }: { v: Vault }) {
           <div className="label">Share price</div>
           {/* Sized to its column, so the figure never runs into the balance beside it. */}
           <div className="display mt-2 text-[min(7rem,26cqi)] text-fg">{format(v.sharePriceUsd, { digits: 4 })}</div>
-          <p className="mt-3 text-sm text-muted">{v.paused ? "Deposits are paused." : "Open for deposits."} One share was worth one dollar at the first deposit.</p>
+          <p className="mt-3 text-sm text-muted">
+            {depositsClosed(v) ? `Deposits are closed: ${depositsClosed(v)}.` : "Open for deposits."} One share was worth one dollar at the first deposit; it moves with the hedge&apos;s profit and loss and with fees.
+          </p>
           <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-5">
             {[
               ["Net asset value", format(v.navUsd)],

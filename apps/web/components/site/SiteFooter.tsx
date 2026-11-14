@@ -32,7 +32,7 @@ export function SiteFooter() {
           <div className="col-span-2 md:col-span-5">
             <Logo height={26} />
             <p className="mt-4 max-w-sm text-sm leading-6 text-muted">
-              Parry keeps your money from getting liquidated, and lets you earn without liquidation risk at all.
+              Parry keeps your money from getting liquidated, and runs a hedged NEAR vault that never liquidates a depositor.
             </p>
             <div className="mt-6">
               <ThemeSwitcher />

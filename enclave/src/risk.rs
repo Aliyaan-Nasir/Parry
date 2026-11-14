@@ -226,6 +226,106 @@ pub fn assess_aave(health: f64) -> Assessment {
     }
 }
 
+/// What the vault's risk score is computed from, as the vault report reads it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VaultRiskInput {
+    /// Signed perp size (negative is short), NEAR.
+    pub size: f64,
+    pub mark: f64,
+    /// Hyperliquid's liquidation price for the position.
+    pub liquidation: Option<f64>,
+    /// The hedge account's value, USD.
+    pub account_value: f64,
+    /// Hyperliquid's current funding rate, per hour (negative: shorts pay).
+    pub funding_rate: f64,
+    /// Mark against the oracle, as a fraction.
+    pub oracle_dev: f64,
+    /// NEAR per LiNEAR the vault last booked, and now.
+    pub book_rate: f64,
+    pub rate: f64,
+    /// Reserves over liabilities, bps.
+    pub reserves_ratio_bps: u32,
+}
+
+/// The vault's risk components, each 0..10000 (bps of "fully risky"), and its 0..100 score.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VaultRisk {
+    pub liquidation: u32,
+    pub margin: u32,
+    pub funding: u32,
+    pub oracle: u32,
+    pub rate: u32,
+    pub reserves: u32,
+    pub score: u8,
+}
+
+fn unit_bps(x: f64) -> u32 {
+    if !x.is_finite() {
+        return 999_999;
+    }
+    (x * 10_000.0).round().clamp(0.0, 999_999.0) as u32
+}
+
+/// A short whose liquidation price is less than this far above the mark scores at least
+/// `VAULT_MARGIN_FLOOR`, the vault contract's margin score: with Hyperliquid's 5% maintenance
+/// margin for NEAR, 15% is a margin ratio of about 0.21, just above the keeper's early mark of 0.2.
+pub const VAULT_MARGIN_DISTANCE: f64 = 0.15;
+pub const VAULT_MARGIN_FLOOR: u8 = 85;
+/// ...and less than this far, at least `VAULT_PAUSE_FLOOR`, the contract's deposit pause (a
+/// margin ratio of about 0.26, under the 1/3 the leverage cap of 3 keeps after a rebalance).
+pub const VAULT_PAUSE_DISTANCE: f64 = 0.20;
+pub const VAULT_PAUSE_FLOOR: u8 = 70;
+
+/// The vault's risk score (packages/core `vaultRisk` mirrors it; both pass
+/// packages/core/fixtures/vault-cases.json): 35% how close the short's liquidation price is (full
+/// at the mark, none 50% above it), 25% leverage (full at leverage 5), 10% funding paid by shorts
+/// (full at 1 bp an hour), 10% oracle deviation (full at 2%), 5% a fall of the LiNEAR rate (full
+/// at 1%) and 15% a reserves shortfall (full at 5%); then floors on the liquidation distance, so
+/// a short near its liquidation price alone pauses deposits and asks for margin.
+pub fn vault_risk(i: &VaultRiskInput) -> VaultRisk {
+    let distance = match i.liquidation {
+        Some(l) if i.size < 0.0 && i.mark > 0.0 => Some(l / i.mark - 1.0),
+        _ => None,
+    };
+    let liquidation = distance.map_or(0, |d| unit_bps(clamp01(1.0 - d / 0.5)));
+    let floor = match distance {
+        Some(d) if d < VAULT_MARGIN_DISTANCE => VAULT_MARGIN_FLOOR,
+        Some(d) if d < VAULT_PAUSE_DISTANCE => VAULT_PAUSE_FLOOR,
+        _ => 0,
+    };
+    let leverage = if i.account_value > 0.0 {
+        i.size.abs() * i.mark / i.account_value
+    } else {
+        0.0
+    };
+    let margin = unit_bps(clamp01(leverage / 5.0));
+    let funding = unit_bps(clamp01(-i.funding_rate / 0.0001));
+    let oracle = unit_bps(clamp01(i.oracle_dev / 0.02));
+    let rate = if i.book_rate > 0.0 {
+        unit_bps(clamp01((i.book_rate - i.rate) / i.book_rate / 0.01))
+    } else {
+        0
+    };
+    let reserves = unit_bps(clamp01((10_000.0 - i.reserves_ratio_bps as f64) / 500.0));
+    let score = ((0.35 * liquidation as f64
+        + 0.25 * margin as f64
+        + 0.1 * funding as f64
+        + 0.1 * oracle as f64
+        + 0.05 * rate as f64
+        + 0.15 * reserves as f64)
+        / 100.0)
+        .round() as u8;
+    VaultRisk {
+        liquidation,
+        margin,
+        funding,
+        oracle,
+        rate,
+        reserves,
+        score: score.max(floor).min(100),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +384,64 @@ mod tests {
     fn tremor_falls_back_without_history() {
         let (s, fallback) = tremor(&[], 0.0);
         assert!(fallback && (s * HOURS_PER_YEAR.sqrt() - DEFAULT_ANNUAL_VOL).abs() < 1e-12);
+    }
+
+    #[test]
+    fn vault_risk_and_hedge_ratio_match_the_shared_fixtures() {
+        let raw = include_str!("../../packages/core/fixtures/vault-cases.json");
+        let v: Value = serde_json::from_str(raw).unwrap();
+        for c in v["vaultRisk"].as_array().unwrap() {
+            let f = |k: &str| c["input"][k].as_f64().unwrap();
+            let r = vault_risk(&VaultRiskInput {
+                size: f("size"),
+                mark: f("mark"),
+                liquidation: c["input"]["liquidationPx"].as_f64(),
+                account_value: f("accountValue"),
+                funding_rate: f("fundingRateHourly"),
+                oracle_dev: f("oracleDeviation"),
+                book_rate: f("bookRate"),
+                rate: f("rate"),
+                reserves_ratio_bps: f("reservesRatioBps") as u32,
+            });
+            let e = &c["expected"];
+            let got = [
+                r.liquidation,
+                r.margin,
+                r.funding,
+                r.oracle,
+                r.rate,
+                r.reserves,
+            ];
+            let keys = [
+                "liquidation",
+                "margin",
+                "funding",
+                "oracle",
+                "rate",
+                "reserves",
+            ];
+            for (k, g) in keys.iter().zip(got) {
+                assert_eq!(
+                    g as u64,
+                    e["components"][k].as_u64().unwrap(),
+                    "{} {k}",
+                    c["name"]
+                );
+            }
+            assert_eq!(
+                r.score as u64,
+                e["score"].as_u64().unwrap(),
+                "{}",
+                c["name"]
+            );
+        }
+        for c in v["hedgeRatio"].as_array().unwrap() {
+            let (bps, _) = crate::modes::hedge_ratio(
+                c["maxBps"].as_u64().unwrap() as u32,
+                c["minBps"].as_u64().unwrap() as u32,
+                c["fundingSum7d"].as_f64(),
+            );
+            assert_eq!(bps as u64, c["expected"].as_u64().unwrap(), "{}", c["name"]);
+        }
     }
 }

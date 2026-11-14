@@ -9,7 +9,7 @@
 import { contract, enclaveInfo } from "./config";
 import { returnValue, Sender, view } from "./near";
 
-export type EnclaveMode = "keys" | "risk_update" | "guardian" | "vault_report" | "certificate";
+export type EnclaveMode = "keys" | "risk_update" | "guardian" | "vault_report" | "certificate" | "attest";
 
 /**
  * The modes the deployed enclave build serves: `ENCLAVE_MODES` (comma separated), else the

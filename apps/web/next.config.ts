@@ -37,7 +37,14 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
   async redirects() {
-    return [{ source: "/legal", destination: "/legal/terms", permanent: false }];
+    const docs = "https://github.com/Aliyaan-Nasir/Parry";
+    return [
+      { source: "/legal", destination: "/legal/terms", permanent: false },
+      // Short links people type: the vault lives in the app, the docs in the repository.
+      { source: "/vault", destination: "/app/vault", permanent: false },
+      { source: "/docs", destination: `${docs}/tree/main/docs`, permanent: false },
+      { source: "/docs/:page(api|risk-model)", destination: `${docs}/blob/main/docs/:page.md`, permanent: false },
+    ];
   },
 };
 

@@ -94,5 +94,5 @@ await send("borrow USDC", pool, `0xa415bcad${word(usdc)}${word(borrow)}${word(2n
 const after = await readAave(pool, address);
 console.log(`Aave: ${after?.collateralUsd.toFixed(2)} USD collateral, ${after?.debtUsd.toFixed(2)} USD debt, health ${after?.health.toFixed(3)}`);
 console.log("EVM guard for the mandate (the guardian repays from this address's USDC):");
-console.log(JSON.stringify({ chain_id: EVM.chainId, pool, asset: usdc, address, max_amount: String(borrow) }, null, 2));
+console.log(JSON.stringify({ chain_id: EVM.chainId, pool, asset: usdc, address, max_amount: String(borrow), daily_amount: String(borrow), total_amount: String(borrow * 3n) }, null, 2));
 console.log(`signer: ${contract("signer")}`);

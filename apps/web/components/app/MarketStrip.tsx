@@ -69,7 +69,7 @@ export function MarketStrip() {
             </SkeletonSwap>
           </span>
         </Cell>
-        <Cell label="Volatility" foot={m ? `Tremor index, annualized over ${tremor?.windows.length ?? 3} windows` : <Skeleton width="16ch" />}>
+        <Cell label="Volatility" foot={m ? `Tremor index a year; the regime is read against NEAR's own history` : <Skeleton width="16ch" />}>
           <span className="num">
             <SkeletonSwap ready={ready} fallback={<Skeleton width="5ch" />}>
               {m ? formatPercent(m.tremor.annual, 0) : null}

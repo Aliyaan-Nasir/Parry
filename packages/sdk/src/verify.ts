@@ -81,16 +81,69 @@ export function signedTextHashes(text: string): { requestHash: string; responseH
 export type CheckStatus = "pass" | "fail" | "skip";
 
 export interface DecisionCheck {
-  name: "review_hash" | "signed_exchange" | "model_signature" | "envelope_signature" | "envelope_review_hash" | "decision_id";
+  name:
+    | "review_hash"
+    | "signed_exchange"
+    | "model_signature"
+    | "envelope_signature"
+    | "envelope_review_hash"
+    | "decision_id"
+    | "decision_record_signature"
+    | "decision_record"
+    | "reasoning_hash"
+    | "facts";
   status: CheckStatus;
   detail: string;
 }
 
 export interface DecisionVerification {
   id: string;
-  /** True when no check failed and the review checks (hash, exchange, signature) passed. */
+  /**
+   * True when no check failed and the model's signature checks passed (and, on the owner's full
+   * record, the review hash recomputed).
+   */
   ok: boolean;
+  /**
+   * "public": the record anyone may read, so the checks that need the owner's private text (the
+   * review hash over the reasoning, the reasoning hash, the facts) are skipped and say so.
+   * "owner": the full record, every check ran.
+   */
+  scope: "public" | "owner";
   checks: DecisionCheck[];
+}
+
+/** The risk board's record of a decision (`decision(id).report`, or the signed `decisionJson`). */
+export interface DecisionRecord {
+  id: string;
+  account: string;
+  action: string;
+  plan: string;
+  envelope_hash?: string;
+  at?: number;
+  review: { review_hash: string; reasoning_hash?: string; verdict?: string; model?: string };
+}
+
+/** The domain the enclave signs risk-board reports under. */
+export const RISK_DOMAIN = "parry-risk:v1:";
+
+/** SHA-256("parry-risk:v1:" ++ report text): the digest the enclave signs for the risk board. */
+export const reportDigest = (report: string): Uint8Array => sha256(concatBytes(utf8(RISK_DOMAIN), utf8(report)));
+
+/** The record's `at` (unix seconds), or null when it does not parse. */
+export function decisionRecordAt(decisionJson: string | null | undefined): number | null {
+  try {
+    const t = (JSON.parse(decisionJson ?? "") as { at?: unknown }).at;
+    return typeof t === "number" ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, sortKeys(x)]));
+  return v;
 }
 
 /**
@@ -122,22 +175,39 @@ export function envelopeIssuedAt(envelope: string | null | undefined): number | 
   }
 }
 
-export function verifyDecision(decision: Decision, opts: { enclavePublicKey?: string | null }): DecisionVerification {
+/**
+ * Verifies a guardian decision. On the public record (anyone's view) it checks what is public:
+ * the model's signature over the exchange, the enclave's signatures over the envelope and over
+ * the public risk-board record, that they agree with each other and with the board's copy on
+ * chain (`onChainRecord`), and the decision id. On the owner's full record it also recomputes the
+ * review hash over the reasoning, the reasoning hash the board recorded, and the facts the review
+ * saw against the plan and the envelope. Every check that could not run says why.
+ *
+ * `recordPublicKey` is the enclave key in force when the record was signed (defaults to
+ * `enclavePublicKey`).
+ */
+export function verifyDecision(
+  decision: Decision,
+  opts: { enclavePublicKey?: string | null; recordPublicKey?: string | null; onChainRecord?: DecisionRecord | null },
+): DecisionVerification {
   const checks: DecisionCheck[] = [];
   const add = (name: DecisionCheck["name"], status: CheckStatus, detail: string) => checks.push({ name, status, detail });
   const r = decision.review;
+  const full = typeof r.reasoning === "string";
 
   const fromText = signedTextHashes(r.signedText);
   const requestHash = r.requestHash ?? fromText?.requestHash;
   const responseHash = r.responseHash ?? fromText?.responseHash;
   const derived = r.requestHash === undefined || r.responseHash === undefined;
 
-  // 1. Review hash.
+  // 1. Review hash (over the whole review, the reasoning included: the owner's record only).
   let computed: string | null = null;
-  if (requestHash === undefined || responseHash === undefined) {
+  if (!full) {
+    add("review_hash", "skip", "the review's reasoning is private to the account's owner, so its hash is not recomputed here; the envelope and the chain carry the hash, checked below");
+  } else if (requestHash === undefined || responseHash === undefined) {
     add("review_hash", "fail", "the review has no request and response hashes and its signed text does not end with them");
   } else {
-    computed = reviewHash({ ...r, requestHash, responseHash });
+    computed = reviewHash({ ...r, reasoning: r.reasoning!, requestHash, responseHash });
     if (computed === r.reviewHash.toLowerCase()) add("review_hash", "pass", `SHA-256 of the review record is ${computed}`);
     else add("review_hash", "fail", `SHA-256 of the review record is ${computed}, the decision says ${r.reviewHash}`);
   }
@@ -194,10 +264,79 @@ export function verifyDecision(decision: Decision, opts: { enclavePublicKey?: st
     else add("decision_id", "fail", `the envelope hashes to ${h}, the id is ${decision.id}`);
   }
 
+  // 7. The enclave's signature over the public risk-board record.
+  let signedRecord: DecisionRecord | null = null;
+  const recordKey = opts.recordPublicKey ?? opts.enclavePublicKey ?? null;
+  if (!decision.decisionJson || !decision.decisionSignature) {
+    add(
+      "decision_record_signature",
+      "skip",
+      decision.txs?.record
+        ? "the signed record is not published with this decision (a record an earlier enclave build signed names the owner's plan, so it goes only to the owner; the risk board's copy is checked below)"
+        : "no risk-board record (the review rejected the plan or it is pending)",
+    );
+  } else if (!recordKey) add("decision_record_signature", "skip", "no enclave public key given");
+  else {
+    try {
+      signedRecord = JSON.parse(decision.decisionJson) as DecisionRecord;
+      const ok = ed25519.verify(fromBase64(decision.decisionSignature), reportDigest(decision.decisionJson), parseEd25519PublicKey(recordKey));
+      add("decision_record_signature", ok ? "pass" : "fail", ok ? `the risk-board record is signed by ${recordKey}` : `the risk-board record is not signed by ${recordKey}`);
+    } catch (e) {
+      add("decision_record_signature", "fail", `bad record or signature: ${(e as Error).message}`);
+    }
+  }
+
+  // 8. The record (signed, or the board's copy on chain) names this decision and this review.
+  const record = signedRecord ?? opts.onChainRecord ?? null;
+  const stated = computed ?? r.reviewHash.toLowerCase();
+  if (!record) add("decision_record", "skip", opts.onChainRecord === undefined ? "the risk board's record was not read" : "the risk board has no record of this decision");
+  else {
+    const where = signedRecord ? "the signed record" : "the risk board's record";
+    const wrong: string[] = [];
+    if (record.id !== decision.id) wrong.push(`id ${record.id}`);
+    if (record.account !== decision.account) wrong.push(`account ${record.account}`);
+    if (record.action !== decision.action) wrong.push(`action ${record.action}`);
+    if (record.review.review_hash !== stated) wrong.push(`review hash ${record.review.review_hash}`);
+    if (signedRecord && opts.onChainRecord && !sameJson(signedRecord, opts.onChainRecord)) wrong.push("the board's copy on chain differs from the signed record");
+    if (decision.publicPlan && isPublicRecordPlan(record.plan) && record.plan !== decision.publicPlan) wrong.push("its plan is not this decision's public plan");
+    if (wrong.length) add("decision_record", "fail", `${where} differs: ${wrong.join("; ")}`);
+    else add("decision_record", "pass", `${where} names this decision, account, action and review hash${signedRecord && opts.onChainRecord ? ", and the board's copy on chain is the same" : ""}`);
+  }
+
+  // 9. The reasoning hashes to what the board recorded (owner's record only).
+  const recorded = record?.review.reasoning_hash;
+  if (!full) add("reasoning_hash", "skip", "the review's reasoning is private to the account's owner");
+  else if (!recorded) add("reasoning_hash", "skip", "no recorded reasoning hash to compare with");
+  else {
+    const h = toHex(sha256(utf8(r.reasoning!)));
+    add("reasoning_hash", h === recorded ? "pass" : "fail", h === recorded ? "the reasoning hashes to the recorded reasoning_hash" : `the reasoning hashes to ${h}, the record says ${recorded}`);
+  }
+
+  // 10. The facts the review saw agree with the plan and the envelope (owner's record only).
+  const facts = decision.facts;
+  if (!facts) add("facts", "skip", full ? "no facts were kept with this decision" : "the facts the review saw (the sealed target and trigger among them) are private to the account's owner");
+  else {
+    const wrong: string[] = [];
+    if (facts.account !== decision.account) wrong.push("account");
+    if (typeof facts.plan === "string" && facts.plan !== decision.plan && !decision.plan.startsWith(facts.plan)) wrong.push("plan");
+    if (envelope && facts.proposed_action !== undefined) {
+      try {
+        if (!sameJson(facts.proposed_action, (JSON.parse(envelope) as { action?: unknown }).action)) wrong.push("proposed action");
+      } catch {
+        wrong.push("envelope");
+      }
+    }
+    add("facts", wrong.length ? "fail" : "pass", wrong.length ? `the facts differ from the decision: ${wrong.join(", ")}` : "the facts the review saw name this account, plan and envelope action");
+  }
+
   const failed = checks.some((c) => c.status === "fail");
-  const reviewPassed = ["review_hash", "signed_exchange", "model_signature"].every((n) => checks.find((c) => c.name === n)?.status === "pass");
-  return { id: decision.id, ok: !failed && reviewPassed, checks };
+  const needed = full ? ["review_hash", "signed_exchange", "model_signature"] : ["signed_exchange", "model_signature"];
+  const reviewPassed = needed.every((n) => checks.find((c) => c.name === n)?.status === "pass");
+  return { id: decision.id, ok: !failed && reviewPassed, scope: full ? "owner" : "public", checks };
 }
+
+/** A record plan with nothing of the owner's policy in it (records from earlier builds carry the full plan). */
+const isPublicRecordPlan = (plan: string) => !/\b(target|trigger|order|health|chose)\b/i.test(plan);
 
 export interface ReservesVerification {
   /** Every leaf proof verifies and the leaves recompute the published root. */

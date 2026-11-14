@@ -29,7 +29,7 @@ export const FAQ_ITEMS: AccordionItem[] = [
     id: "vault",
     title: "Can I be liquidated in the vault?",
     content:
-      "No. Depositors hold vault shares, not leveraged positions. The vault stakes NEAR with LiNEAR and shorts the matching NEAR perp on Hyperliquid, 90% hedged by default. It publishes an on-chain risk score, pauses deposits when that score is high, and publishes a proof of reserves attested by the enclave.",
+      "Not individually. Depositors hold vault shares, not leveraged positions. The vault stakes NEAR with LiNEAR and shorts the matching NEAR perp on Hyperliquid, 90% hedged by default. That short has its own liquidation price on Hyperliquid, which the keeper keeps far away by adding margin and the insurance fund backs; the share price moves with the hedge's profit and loss and with fees, so it is not fixed at a dollar. The vault publishes an on-chain risk score, closes deposits when that score is high or its report is stale, and publishes a proof of reserves attested by the enclave.",
   },
   {
     id: "seed",

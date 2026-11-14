@@ -21,13 +21,16 @@ import type { Certificate, Decision, RiskCheck } from "./types.js";
 import { verifyCertificate, type CertificateVerification } from "./certificate.js";
 import { signInNep413 } from "./auth.js";
 import { subscribe, type SubscribeOptions } from "./subscribe.js";
-import { enclaveKeyAt, envelopeIssuedAt, verifyDecision, type DecisionVerification } from "./verify.js";
+import { decisionRecordAt, enclaveKeyAt, envelopeIssuedAt, verifyDecision, type DecisionVerification } from "./verify.js";
 import {
+  decodePaymentRequired,
   decodePaymentResponse,
   encodePaymentHeader,
-  PAYMENT_HEADER,
+  PAYMENT_REQUIRED_HEADER,
   PAYMENT_RESPONSE_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
   signPaymentDelegate,
+  V1_PAYMENT_RESPONSE_HEADER,
   X402_VERSION,
   type PaymentRequired,
   type PaymentRequirements,
@@ -62,7 +65,7 @@ export interface PaidOptions {
 
 export interface PaidResult<T> {
   result: T;
-  /** The decoded `X-PAYMENT-RESPONSE`, or null when the endpoint did not ask for payment. */
+  /** The decoded `PAYMENT-RESPONSE`, or null when the endpoint did not ask for payment. */
   payment: PaymentResponse | null;
   /** What was paid for, or null when no payment was needed. */
   requirement: PaymentRequirements | null;
@@ -107,7 +110,8 @@ export interface Parry extends ApiMethods, ChainReads {
   closeRheaRounds(opts: Omit<CloseRoundsOptions, "read">): Promise<CloseRoundsResult>;
   /**
    * Verifies a decision (or the decision with this id, read from the API) against the enclave
-   * key read from the risk board, unless a key is given.
+   * keys read from the risk board (unless a key is given) and the board's own record of it. A
+   * public record is verified as far as public data goes; the result's `scope` says which.
    */
   verifyDecision(decision: Decision | string, opts?: { enclavePublicKey?: string }): Promise<DecisionVerification>;
   /**
@@ -153,7 +157,10 @@ export function createParry(options: ParryOptions): Parry {
       if (!first.ok) throw new ParryApiError(first.status, path, body);
       return { result: body as T, payment: null, requirement: null };
     }
-    const required = (await readJson(first)) as PaymentRequired;
+    // x402 v2 puts the requirements in PAYMENT-REQUIRED; the body carries the same JSON.
+    const requiredHeader = first.headers.get(PAYMENT_REQUIRED_HEADER);
+    const requiredBody = (await readJson(first)) as PaymentRequired;
+    const required = requiredHeader ? decodePaymentRequired(requiredHeader) : requiredBody;
     const req = required?.accepts?.[0];
     if (!req) throw new Error(`${path} asked for payment but named no accepted payment`);
     if (req.scheme !== "exact") throw new Error(`unsupported payment scheme ${req.scheme}`);
@@ -164,10 +171,13 @@ export function createParry(options: ParryOptions): Parry {
     if (opts.maxAmount !== undefined && BigInt(req.amount) > BigInt(opts.maxAmount)) {
       throw new Error(`payment of ${req.amount} is above the limit of ${opts.maxAmount}`);
     }
-    const signedDelegateAction = await signPaymentDelegate(signerClient(opts.payer), opts.payer.accountId, req);
-    const header = encodePaymentHeader({ x402Version: X402_VERSION, scheme: "exact", network: req.network, payload: { signedDelegateAction } });
-    const second = await api.raw(path, { headers: { [PAYMENT_HEADER]: header } });
-    const responseHeader = second.headers.get(PAYMENT_RESPONSE_HEADER);
+    // Valid for at most the requirement's timeout (one block a second), and at most 120 blocks.
+    const timeout = Number.isInteger(req.maxTimeoutSeconds) && req.maxTimeoutSeconds > 0 ? req.maxTimeoutSeconds : 120;
+    const blockHeightOffset = Math.min(120, timeout);
+    const signedDelegateAction = await signPaymentDelegate(signerClient(opts.payer), opts.payer.accountId, req, { blockHeightOffset });
+    const header = encodePaymentHeader({ x402Version: X402_VERSION, ...(required.resource ? { resource: required.resource } : {}), accepted: req, payload: { signedDelegateAction } });
+    const second = await api.raw(path, { headers: { [PAYMENT_SIGNATURE_HEADER]: header } });
+    const responseHeader = second.headers.get(PAYMENT_RESPONSE_HEADER) ?? second.headers.get(V1_PAYMENT_RESPONSE_HEADER);
     const payment = responseHeader ? decodePaymentResponse(responseHeader) : null;
     const body = await readJson(second);
     if (!second.ok) throw new ParryApiError(second.status, path, payment?.errorReason ? { error: payment.errorReason, body } : body);
@@ -197,10 +207,15 @@ export function createParry(options: ParryOptions): Parry {
     closeRheaRounds: (opts) => closeRheaRounds({ ...opts, read: chain }),
     verifyDecision: async (decision, opts = {}) => {
       const d = typeof decision === "string" ? await reads.decision(decision) : decision;
-      // The key in force when the envelope was issued: a later enclave build has other keys.
-      const issued = envelopeIssuedAt(d.envelope);
-      const key = opts.enclavePublicKey ?? (issued !== null ? enclaveKeyAt(await chain.enclaveHistory(), issued) : null) ?? (await chain.enclave()).key.public_key;
-      return verifyDecision(d, { enclavePublicKey: key });
+      // The keys in force when the envelope and the record were signed: a later enclave build has other keys.
+      const signedAt = [envelopeIssuedAt(d.envelope), decisionRecordAt(d.decisionJson)];
+      const history = opts.enclavePublicKey || signedAt.every((t) => t === null) ? [] : await chain.enclaveHistory().catch(() => []);
+      const at = (t: number | null) => (t !== null && history.length ? enclaveKeyAt(history, t) : null);
+      const key = opts.enclavePublicKey ?? at(signedAt[0] ?? null) ?? (await chain.enclave()).key.public_key;
+      const recordKey = opts.enclavePublicKey ?? at(signedAt[1] ?? null) ?? key;
+      // The board's copy on chain: null when it has none, undefined when it could not be read.
+      const onChainRecord = d.txs?.record || d.decisionJson ? await chain.decisionRecord(d.id).catch(() => undefined) : null;
+      return verifyDecision(d, { enclavePublicKey: key, recordPublicKey: recordKey, ...(onChainRecord !== undefined ? { onChainRecord } : {}) });
     },
     verifyCertificate: async (certificate, opts = {}) => {
       const c = typeof certificate === "string" ? await reads.certificate(certificate) : certificate;

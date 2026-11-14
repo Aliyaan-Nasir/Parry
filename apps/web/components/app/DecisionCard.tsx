@@ -29,6 +29,10 @@ const CHECK_LABEL: Record<DecisionCheck["name"], string> = {
   envelope_signature: "Envelope signed by the enclave key",
   envelope_review_hash: "Envelope carries this review",
   decision_id: "Decision id is the envelope's hash",
+  decision_record_signature: "Risk-board record signed by the enclave key",
+  decision_record: "Risk-board record names this decision and review",
+  reasoning_hash: "Reasoning hashes to the recorded hash",
+  facts: "The facts the review saw match the plan and envelope",
 };
 
 type Result = DecisionVerification & { keyNote: string | null };
@@ -72,12 +76,14 @@ const STATUS_WORD = { pass: "Pass", fail: "Fail", skip: "Skipped" } as const;
 
 function Verification({ result }: { result: Result }) {
   const passed = result.checks.filter((c) => c.status === "pass").length;
+  const skipped = result.checks.filter((c) => c.status === "skip").length;
+  const ran = result.checks.length - skipped;
   return (
     <div className="grid gap-3 rounded-xl border border-line bg-surface p-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-fg">{result.ok ? "Verified in this browser" : "Verification failed"}</p>
         <Badge tone={result.ok ? "safe" : "critical"}>
-          {passed} of {result.checks.length} checks pass
+          {passed} of {ran} checks pass{skipped ? `, ${skipped} skipped` : ""}
         </Badge>
       </div>
       <ul className="grid gap-2.5">
@@ -97,6 +103,9 @@ function Verification({ result }: { result: Result }) {
           </li>
         ))}
       </ul>
+      {result.scope === "public" ? (
+        <p className="text-[13px] text-muted">These are the public record&apos;s checks. The review hash over the reasoning, the reasoning hash and the facts need the owner&apos;s private record, so they run only for the signed-in owner.</p>
+      ) : null}
       {result.keyNote ? <p className="text-[13px] text-muted">{result.keyNote}</p> : null}
     </div>
   );
@@ -300,9 +309,16 @@ export function DecisionDetail({ decision }: { decision: Decision }) {
   const { format } = useMoney();
 
   const reason = decision.outcome !== "executed" ? detail : null;
+  // The owner's full record (signed in as the account), or the public one everyone else reads.
+  // An API before the split served every record in full and named no visibility.
+  const full = decision.visibility === "owner" || (decision.visibility === undefined && typeof r.reasoning === "string");
   // The guardian's plan ends with its reason, which "Why this step" already shows: say it once.
   const why = decision.explanation?.why.trim();
-  const plan = why && decision.plan.trim().endsWith(why) && decision.plan.trim() !== why ? decision.plan.trim().slice(0, -why.length).trim() : decision.plan;
+  const plan = !full
+    ? (decision.publicPlan ?? decision.plan)
+    : why && decision.plan.trim().endsWith(why) && decision.plan.trim() !== why
+      ? decision.plan.trim().slice(0, -why.length).trim()
+      : decision.plan;
   const before = healthBefore(decision);
   const delta = before !== null && decision.healthAfter !== null ? decision.healthAfter - before : null;
   const hasTrigger = typeof decision.trigger?.score === "number" && !!decision.trigger.tier;
@@ -313,7 +329,7 @@ export function DecisionDetail({ decision }: { decision: Decision }) {
       {/* The record at a glance: what set it off, what it did to health, how it ended, and its ids. */}
       <dl className="grid overflow-hidden rounded-xl border border-line bg-surface sm:grid-cols-2 sm:divide-x sm:divide-line lg:grid-cols-4 [&>div]:border-line max-sm:divide-y max-sm:divide-line lg:[&>div:nth-child(3)]:border-l sm:max-lg:[&>div:nth-child(n+3)]:border-t">
         <div className={cell}>
-          <dt className="label">Trigger</dt>
+          <dt className="label">Risk when it acted</dt>
           <dd className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
             {hasTrigger ? (
               <>
@@ -364,10 +380,15 @@ export function DecisionDetail({ decision }: { decision: Decision }) {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div className="grid content-start gap-4">
-          <Panel title="Plan">
+          <Panel title="Plan" aside={full ? <Badge tone="brass">Owner&apos;s record</Badge> : <Badge tone="neutral">Public record</Badge>}>
             <p className="max-w-[72ch] text-sm leading-6 text-fg">{plan}</p>
+            {!full ? (
+              <p className="max-w-[72ch] text-[13px] leading-5 text-muted">
+                The owner&apos;s trigger, target health and step order are sealed in the mandate. Only the account&apos;s signed-in owner sees the full plan and why the guardian chose this step.
+              </p>
+            ) : null}
             {detail && !reason ? <p className="max-w-[72ch] text-[13px] leading-5 text-muted">{detail}</p> : null}
-            {decision.explanation ? (
+            {full && decision.explanation ? (
               <div className="grid gap-2 border-t border-line pt-3">
                 <Eyebrow>Why this step</Eyebrow>
                 <p className="max-w-[72ch] text-sm leading-6 text-fg">{decision.explanation.why}</p>
@@ -455,7 +476,13 @@ export function DecisionDetail({ decision }: { decision: Decision }) {
 
         <div className="grid content-start gap-4">
           <Panel title="AI review" aside={<Badge tone={r.verdict === "approve" ? "safe" : "critical"}>{r.verdict === "approve" ? "Approved" : "Rejected"}</Badge>}>
-            <p className="max-w-[72ch] text-sm leading-6 text-fg">{r.reasoning}</p>
+            {typeof r.reasoning === "string" ? (
+              <p className="max-w-[72ch] text-sm leading-6 text-fg">{r.reasoning}</p>
+            ) : (
+              <p className="max-w-[72ch] text-[13px] leading-5 text-muted">
+                The review weighs the owner&apos;s sealed trigger and target, so only the account&apos;s signed-in owner reads its reasoning. Its hash is on the risk board and in the checks below.
+              </p>
+            )}
             <DataList className="border-t border-line">
               <DataRow label="Model">
                 <span className="num text-[13px]">{r.model}</span>

@@ -99,6 +99,7 @@ pub fn run(io: &dyn Io, input: &Value) -> Result<Value> {
         "guardian" => guardian(io, input),
         "vault_report" => vault_report(io),
         "certificate" => certificate(io, input),
+        "attest" => attest(io),
         other => Err(format!("unknown mode {other:?}")),
     }
 }
@@ -113,6 +114,14 @@ fn keys(io: &dyn Io) -> Result<Value> {
         "report_json": report,
         "signature": signed(io, RISK_DOMAIN, &report)?,
     }))
+}
+
+/// Attests the review model's keys and signs the `model_signers` report for the risk board.
+fn attest(io: &dyn Io) -> Result<Value> {
+    let mut out = crate::attest::attest(io, run_id(io))?;
+    let report = out["report_json"].as_str().unwrap_or_default().to_string();
+    out["signature"] = json!(signed(io, RISK_DOMAIN, &report)?);
+    Ok(out)
 }
 
 struct Seen {
@@ -209,6 +218,15 @@ fn allowance(m: &Value, token: &str, from_reserve: bool) -> u128 {
     }
 }
 
+/// What a cap leaves after `used`; an account on code from before the cap reports neither, and
+/// its guard then holds only the per-action cap `fallback`.
+fn left_of(cap: &Value, used: &Value, fallback: u128) -> u128 {
+    if cap.is_null() {
+        return fallback;
+    }
+    u128_of(cap).saturating_sub(u128_of(used))
+}
+
 fn has_power(m: &Value, p: &str) -> bool {
     m["mandate"]["powers"]
         .as_array()
@@ -219,7 +237,12 @@ struct Decided {
     venue: &'static str,
     action: Value,
     action_name: &'static str,
+    /// The owner's full plan: projected health, target and why this step. Private: it goes to the
+    /// review model and to the owner, never into the public record.
     plan: String,
+    /// The action alone, for the public record on the risk board: no trigger, target, projected
+    /// health or step order.
+    public_plan: String,
     /// The position the plan acts on, for the review (the lending position when absent).
     position: Option<Value>,
     /// `{ step, why, skipped: [{ step, reason }] }`, set by `choose`.
@@ -295,13 +318,14 @@ fn lending_step(
     };
     let target = policy.target_health;
     let health = |p: &Position| format!("{:.3}", p.health());
-    let decided = |action: Value, action_name: &'static str, plan: String| {
+    let decided = |action: Value, action_name: &'static str, plan: String, public_plan: String| {
         Ok(Outcome::Act(
             Box::new(Decided {
                 venue: "rhea",
                 action,
                 action_name,
                 plan,
+                public_plan,
                 position: None,
                 explanation: Value::Null,
             }),
@@ -334,6 +358,7 @@ fn lending_step(
                     health(&p),
                     health(&after)
                 ),
+                format!("Repay {usd:.2} USDC from the reserve."),
             )
         }
         "add_collateral" => {
@@ -361,6 +386,7 @@ fn lending_step(
                     health(&p),
                     health(&after)
                 ),
+                format!("Add {near:.4} wNEAR collateral from the reserve."),
             )
         }
         _ => {
@@ -407,6 +433,7 @@ fn lending_step(
                     health(&p),
                     health(&after)
                 ),
+                format!("Sell {near:.4} NEAR of collateral for at least {min_out_usd:.2} USDC and repay."),
             )
         }
     }
@@ -471,10 +498,16 @@ fn hyperliquid_step(io: &dyn Io, account: &str, m: &Value, policy: &Policy) -> R
         );
     }
     let lot = config::HL_SZ_DECIMALS as i32;
-    let max_size = plan::floor_to(
-        u128_of(&m["mandate"]["hl"]["max_size_e8"]) as f64 / 1e8,
-        lot,
+    let per_order = u128_of(&m["mandate"]["hl"]["max_size_e8"]);
+    let today_left = left_of(
+        &m["mandate"]["hl"]["daily_size_e8"],
+        &m["hl_size_today"],
+        per_order,
     );
+    if today_left == 0 {
+        return skip("the guard's daily Hyperliquid size cap is used up", true);
+    }
+    let max_size = plan::floor_to(per_order.min(today_left) as f64 / 1e8, lot);
     let (wanted, how) = match plan::perp_reduce(&view, policy.target_health, lot) {
         Some(s) => (s, "sized to the target health"),
         None => (
@@ -516,6 +549,11 @@ fn hyperliquid_step(io: &dyn Io, account: &str, m: &Value, policy: &Policy) -> R
                 trim(&format!("{size:.*}", lot as usize)),
                 view.size,
                 policy.target_health
+            ),
+            public_plan: format!(
+                "Reduce the Hyperliquid NEAR {} by {}, reduce-only, near the mark {mid:.4}.",
+                if long { "long" } else { "short" },
+                trim(&format!("{size:.*}", lot as usize)),
             ),
         }),
         a,
@@ -572,7 +610,17 @@ fn evm_step(io: &dyn Io, account: &str, m: &Value, policy: &Policy) -> Result<Ou
         - aave.collateral_usd * aave.liquidation_threshold / policy.target_health)
         .max(0.0);
     let needed = (repay_usd / price * 10f64.powi(decimals as i32)).ceil() as u128;
-    let cap = u128_of(&g["max_amount"]);
+    let per_action = u128_of(&g["max_amount"]);
+    let cap = per_action
+        .min(left_of(
+            &g["daily_amount"],
+            &m["evm_repaid_today"],
+            per_action,
+        ))
+        .min(left_of(&g["total_amount"], &m["evm_repaid"], per_action));
+    if cap == 0 {
+        return skip("the EVM guard's daily or total repay cap is used up", true);
+    }
     let balance = evm::balance_of(io, asset, address)?;
     let amount = needed.min(cap).min(balance);
     if amount == 0 {
@@ -622,6 +670,18 @@ fn evm_step(io: &dyn Io, account: &str, m: &Value, policy: &Policy) -> Result<Ou
             aave.collateral_usd * aave.liquidation_threshold / debt
         }
     };
+    let public_plan = if kind == "evm_approve" {
+        format!(
+            "Approve the Aave pool to take up to {:.2} of the debt asset (${:.2}) from the person's own address, for the next repay.",
+            units(allowance), units(allowance) * price
+        )
+    } else {
+        format!(
+            "Repay {:.2} of the Aave debt asset (${:.2}) from the person's own address.",
+            units(amount),
+            units(amount) * price
+        )
+    };
     let plan = if kind == "evm_approve" {
         format!(
             "Approve the Aave pool to take up to {:.2} of the debt asset (${:.2}) from the person's own address (the repay plus 1% for interest), so the next run can repay {:.2} (${:.2}): health {:.3}, target {:.2}.",
@@ -639,6 +699,7 @@ fn evm_step(io: &dyn Io, account: &str, m: &Value, policy: &Policy) -> Result<Ou
             action: json!({ kind: { "params": params, "amount": value.to_string() } }),
             action_name: kind,
             plan,
+            public_plan,
             position: Some(json!({
                 "venue": "aave", "chain_id": config::evm_chain_id(), "collateral_usd": aave.collateral_usd, "debt_usd": aave.debt_usd,
                 "liquidation_threshold": aave.liquidation_threshold, "health": aave.health,
@@ -775,6 +836,60 @@ fn hl_price(p: f64, round_up: bool) -> String {
     trim(&format!("{v:.*}", dp as usize))
 }
 
+/// The token amounts of an action in whole tokens, for the review: the action itself carries
+/// integer base units (wNEAR has 24 decimals, USDC 6, the EVM debt asset its own), which a model
+/// can misread by orders of magnitude.
+fn readable_amounts(action: &Value, position: Option<&Value>) -> Value {
+    let decimals = |token: &str| -> Option<i32> {
+        if token == config::USDC {
+            Some(6)
+        } else if token == config::WNEAR {
+            Some(24)
+        } else {
+            None
+        }
+    };
+    let whole = |raw: &Value, d: i32| -> Value {
+        raw.as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|x| json!(x / 10f64.powi(d)))
+            .unwrap_or(Value::Null)
+    };
+    let symbol = |token: &str| {
+        if token == config::USDC {
+            "USDC"
+        } else {
+            "wNEAR"
+        }
+    };
+    let Some((name, a)) = action.as_object().and_then(|o| o.iter().next()) else {
+        return Value::Null;
+    };
+    match name.as_str() {
+        "repay" | "add_collateral" => {
+            let t = a["token"].as_str().unwrap_or_default();
+            match decimals(t) {
+                Some(d) => json!({ "amount": whole(&a["amount"], d), "token": symbol(t) }),
+                None => Value::Null,
+            }
+        }
+        "deleverage" => json!({
+            "sell": whole(&a["amount"], 24), "sell_token": "wNEAR",
+            "min_out": whole(&a["min_out"], 6), "min_out_token": "USDC",
+        }),
+        "evm_approve" | "evm_repay" => {
+            let d = position
+                .and_then(|p| p["debt_asset"]["decimals"].as_i64())
+                .unwrap_or(6) as i32;
+            json!({ "amount": whole(&a["amount"], d), "token": "the Aave debt asset" })
+        }
+        "hl_reduce" | "hl_hedge" => {
+            json!({ "size_near": a["order"]["size"], "price": a["order"]["price"] })
+        }
+        _ => Value::Null,
+    }
+}
+
 /// Plans, reviews and signs at most one protective action per account.
 fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
     let price = chain::oracle_price(io, config::NEAR_USD, PRICE_MAX_AGE)?
@@ -793,6 +908,12 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
             }
             if m["expired"] == true || m["paused_until"].as_u64().unwrap_or(0) > io.now() {
                 return Err("mandate expired or guardian paused".into());
+            }
+            // The account would refuse any action today: no plan, no review, nothing signed.
+            if m["actions_today"].as_u64().unwrap_or(0)
+                >= m["mandate"]["max_actions_per_day"].as_u64().unwrap_or(0)
+            {
+                return Err("the mandate's daily action limit is reached".into());
             }
             let policy = match m["mandate"]["sealed"].as_str() {
                 Some(b64) => seal::open(
@@ -817,11 +938,20 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
                 // The owner's own trigger, from the sealed policy: the guardian acts at or past it.
                 "owner_trigger": { "score": policy.trigger_score, "health": if decided.venue == "evm" { policy.evm_trigger_health } else { policy.trigger_health } },
                 "mandate_limits": m["mandate"]["limits"], "max_slippage_bps": m["mandate"]["max_slippage_bps"],
-                "proposed_action": decided.action, "plan": decided.plan,
+                "proposed_action": decided.action, "proposed_amounts": readable_amounts(&decided.action, decided.position.as_ref()), "plan": decided.plan,
             });
             let review: Review = ai::review(io, &facts)?;
+            // Only a key this enclave saw attested (Intel TDX quote binding it, NVIDIA GPU
+            // evidence) and pinned on the risk board may review: a valid signature alone proves
+            // which key signed, not that a TEE holds it.
+            if !crate::attest::is_pinned(io, &review.model, &review.signing_address)? {
+                return Err(format!(
+                    "the review was signed by {}, which is not a {} key this enclave attested (risk board model_signers); attest and retry",
+                    review.signing_address, review.model
+                ));
+            }
             let review_hash = review.hash();
-            let mut out = json!({ "account": account, "venue": decided.venue, "plan": decided.plan, "action": decided.action, "explanation": decided.explanation, "review": review, "review_hash": review_hash, "facts": facts });
+            let mut out = json!({ "account": account, "venue": decided.venue, "plan": decided.plan, "public_plan": decided.public_plan, "action": decided.action, "explanation": decided.explanation, "review": review, "review_hash": review_hash, "facts": facts });
             if review.verdict != "approve" {
                 out["outcome"] = json!("rejected by the review");
                 return Ok(Some(out));
@@ -837,7 +967,7 @@ fn guardian(io: &dyn Io, input: &Value) -> Result<Value> {
             let decision = json!({
                 "kind": "decision", "run_id": run_id(io), "at": io.now(), "id": envelope_hash, "account": account,
                 "venue": decided.venue, "trigger": trigger, "action": decided.action_name,
-                "plan": decided.plan.chars().take(600).collect::<String>(), "envelope_hash": envelope_hash,
+                "plan": decided.public_plan.chars().take(600).collect::<String>(), "envelope_hash": envelope_hash,
                 "review": {
                     "model": review.model, "chat_id": review.chat_id, "review_hash": review_hash, "verdict": review.verdict,
                     "signing_address": review.signing_address, "reasoning_hash": hex::encode(sha256(review.reasoning.as_bytes())),
@@ -1006,42 +1136,34 @@ fn vault_report(io: &dyn Io) -> Result<Value> {
         10_000
     };
 
-    // Vault risk components, each 0..10000 (bps of "fully risky").
-    let liquidation = match perp.liquidation {
-        Some(l) if perp.size < 0.0 && mark > 0.0 => {
-            bps((1.0 - ((l / mark - 1.0) / 0.5)).clamp(0.0, 1.0))
-        }
-        _ => 0,
-    };
-    let leverage = if ch.account_value > 0.0 {
-        perp.size.abs() * mark / ch.account_value
-    } else {
-        0.0
-    };
-    let margin = bps((leverage / 5.0).clamp(0.0, 1.0));
+    // Vault risk components, each 0..10000 (bps of "fully risky"), and the score
+    // (`risk::vault_risk`, which the crash and spike replay runs too).
     let (funding_rate, oracle_dev) = hl::funding_and_oracle(io, "NEAR").unwrap_or((0.0, 0.0));
-    // Shorts pay when funding is negative; one bp per hour paid counts fully.
-    let funding = bps((-funding_rate / 0.0001).clamp(0.0, 1.0));
-    let oracle = bps((oracle_dev / 0.02).clamp(0.0, 1.0));
     let book_rate = state["linear_rate_e24"]
         .as_str()
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(0.0)
         / 1e24;
-    let rate_drop = if book_rate > 0.0 {
-        bps(((book_rate - rate) / book_rate / 0.01).clamp(0.0, 1.0))
-    } else {
-        0
-    };
-    let reserves_risk = bps(((10_000.0 - ratio as f64) / 500.0).clamp(0.0, 1.0));
-    let score = ((0.35 * liquidation as f64
-        + 0.25 * margin as f64
-        + 0.1 * funding as f64
-        + 0.1 * oracle as f64
-        + 0.05 * rate_drop as f64
-        + 0.15 * reserves_risk as f64)
-        / 100.0)
-        .round() as u8;
+    let risk = risk::vault_risk(&risk::VaultRiskInput {
+        size: perp.size,
+        mark,
+        liquidation: perp.liquidation,
+        account_value: ch.account_value,
+        funding_rate,
+        oracle_dev,
+        book_rate,
+        rate,
+        reserves_ratio_bps: ratio,
+    });
+    let risk::VaultRisk {
+        liquidation,
+        margin,
+        funding,
+        oracle,
+        rate: rate_drop,
+        reserves: reserves_risk,
+        score,
+    } = risk;
 
     let report = json!({
         "kind": "vault_report", "run_id": run_id(io), "at": io.now(), "vault": config::VAULT, "score": score.min(100),
@@ -1291,6 +1413,22 @@ mod tests {
             .respond(config::RPC, Some("\"method_name\":\"nonces\""), &rpc(&json!([0, 4])))
             .respond(&format!("{}/info", config::HYPERLIQUID), None, "[]")
             .respond(&format!("{}/chat/completions", config::NEARAI), None, ANSWER)
+            .respond(config::RPC, Some("\"method_name\":\"model_signers\""), &rpc(&json!({
+                "model": config::MODEL, "signers": [{ "address": tee_address(), "tcb_status": "UpToDate", "gpus": 1 }],
+                "expires_at": 1_800_086_400u64,
+            })))
+    }
+
+    /// The address of the test model TEE key (`tee_signature`).
+    fn tee_address() -> String {
+        let ec = EcKey::from_slice(&[9u8; 32]).unwrap();
+        format!(
+            "0x{}",
+            hex::encode(
+                &crate::keccak256(&ec.verifying_key().to_encoded_point(false).as_bytes()[1..])
+                    [12..]
+            )
+        )
     }
 
     /// Signs `[model:]request_hash:response_hash` as a model TEE would (EIP-191, secp256k1).
@@ -1366,6 +1504,180 @@ mod tests {
             ..Default::default()
         };
         assert!(seal::open(&other, &sealed, ACCOUNT).is_err());
+    }
+
+    /// The approved decision of the base world, with the TEE signature over its exact request.
+    fn approved(world: impl Fn() -> Scripted) -> Value {
+        let input = json!({ "mode": "guardian", "accounts": [ACCOUNT] });
+        let dry = world();
+        let _ = run(&dry, &input).unwrap();
+        let body = dry
+            .log
+            .borrow()
+            .iter()
+            .find(|(u, _)| u.ends_with("/chat/completions"))
+            .unwrap()
+            .1
+            .clone();
+        let w = world().respond(
+            &format!("{}/signature/", config::NEARAI),
+            None,
+            &tee_signature(&body).to_string(),
+        );
+        run(&w, &input).unwrap()
+    }
+
+    #[test]
+    fn the_public_record_names_no_trigger_target_or_step_order() {
+        let out = approved(|| base_world(5));
+        let d = &out["decisions"][0];
+        assert_eq!(d["outcome"], "approved", "{out}");
+        // The owner's plan keeps everything; the public one is the action alone.
+        assert!(d["plan"].as_str().unwrap().contains("target"));
+        let public = d["public_plan"].as_str().unwrap();
+        assert_eq!(public, "Repay 60.00 USDC from the reserve.");
+        let record: Value = serde_json::from_str(d["decision_json"].as_str().unwrap()).unwrap();
+        assert_eq!(record["plan"], public);
+        let text = d["decision_json"].as_str().unwrap();
+        // The record's `trigger` is what the guardian observed (public health and score), not
+        // the owner's sealed threshold; the owner's target (1.45 here), trigger and order are absent.
+        assert_eq!(record["trigger"]["health_bps"], 8250);
+        for leak in [
+            "target", "owner", "order", "1.45", "1.15", "Chose", "skipped",
+        ] {
+            assert!(
+                !text.contains(leak),
+                "the risk board record leaks {leak:?}: {text}"
+            );
+        }
+        // The review sees the amounts in whole tokens.
+        let facts = &d["facts"];
+        assert_eq!(
+            facts["proposed_amounts"],
+            json!({ "amount": 60.0, "token": "USDC" })
+        );
+    }
+
+    #[test]
+    fn a_review_from_a_key_not_attested_here_is_refused() {
+        let unpinned = || {
+            base_world(5).respond(
+                config::RPC,
+                Some("\"method_name\":\"model_signers\""),
+                &rpc(&json!({ "model": config::MODEL, "signers": [{ "address": "0x0000000000000000000000000000000000000001", "tcb_status": "UpToDate", "gpus": 1 }], "expires_at": 1_800_086_400u64 })),
+            )
+        };
+        let out = approved(unpinned);
+        assert!(out["decisions"].as_array().unwrap().is_empty(), "{out}");
+        assert!(
+            out["skipped"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not a"),
+            "{out}"
+        );
+        // An expired pin is no pin either.
+        let expired = || {
+            base_world(5).respond(
+                config::RPC,
+                Some("\"method_name\":\"model_signers\""),
+                &rpc(&json!({ "model": config::MODEL, "signers": [{ "address": tee_address(), "tcb_status": "UpToDate", "gpus": 1 }], "expires_at": 1_799_999_999u64 })),
+            )
+        };
+        let out = approved(expired);
+        assert!(out["decisions"].as_array().unwrap().is_empty(), "{out}");
+    }
+
+    #[test]
+    fn no_run_is_spent_once_the_daily_action_limit_is_reached() {
+        let mut mandate = base_mandate(5);
+        mandate["actions_today"] = json!(10);
+        let w = base_world(5).respond(
+            config::RPC,
+            Some("\"method_name\":\"mandate\""),
+            &rpc(&mandate),
+        );
+        let out = run(&w, &json!({ "mode": "guardian", "accounts": [ACCOUNT] })).unwrap();
+        assert!(
+            out["skipped"][0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("daily action limit"),
+            "{out}"
+        );
+        assert!(
+            w.log
+                .borrow()
+                .iter()
+                .all(|(u, _)| !u.ends_with("/chat/completions")),
+            "no review was asked for"
+        );
+    }
+
+    #[test]
+    fn an_empty_model_answer_is_asked_again_not_counted_as_a_rejection() {
+        const EMPTY: &str = r#"{"id":"chatcmpl-0","choices":[{"message":{"content":""}}]}"#;
+        // The scripted world answers the first request with nothing, the next ones with ANSWER.
+        struct Flaky(Scripted, std::cell::Cell<u32>);
+        impl Io for Flaky {
+            fn get(&self, url: &str, h: &[(&str, &str)]) -> Result<Vec<u8>> {
+                self.0.get(url, h)
+            }
+            fn post(&self, url: &str, h: &[(&str, &str)], body: &[u8]) -> Result<Vec<u8>> {
+                if url.ends_with("/chat/completions") && self.1.get() == 0 {
+                    self.1.set(1);
+                    self.0
+                        .log
+                        .borrow_mut()
+                        .push((url.to_string(), body.to_vec()));
+                    return Ok(EMPTY.as_bytes().to_vec());
+                }
+                self.0.post(url, h, body)
+            }
+            fn sign(&self, m: &[u8]) -> Result<[u8; 64]> {
+                self.0.sign(m)
+            }
+            fn public_key(&self) -> Result<[u8; 32]> {
+                self.0.public_key()
+            }
+            fn seal_secret(&self) -> Result<[u8; 32]> {
+                self.0.seal_secret()
+            }
+            fn secret(&self, n: &str) -> Option<String> {
+                self.0.secret(n)
+            }
+            fn now(&self) -> u64 {
+                self.0.now()
+            }
+        }
+        let input = json!({ "mode": "guardian", "accounts": [ACCOUNT] });
+        let dry = base_world(5);
+        let _ = run(&dry, &input).unwrap();
+        let body = dry
+            .log
+            .borrow()
+            .iter()
+            .find(|(u, _)| u.ends_with("/chat/completions"))
+            .unwrap()
+            .1
+            .clone();
+        let w = Flaky(
+            base_world(5).respond(
+                &format!("{}/signature/", config::NEARAI),
+                None,
+                &tee_signature(&body).to_string(),
+            ),
+            std::cell::Cell::new(0),
+        );
+        let out = run(&w, &input).unwrap();
+        assert_eq!(out["decisions"][0]["outcome"], "approved", "{out}");
+        let asked =
+            w.0.log
+                .borrow()
+                .iter()
+                .filter(|(u, _)| u.ends_with("/chat/completions"))
+                .count();
+        assert_eq!(asked, 2);
     }
 
     #[test]

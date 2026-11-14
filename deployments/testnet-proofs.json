@@ -14,7 +14,11 @@
           "tx": "https://testnet.nearblocks.io/txns/2fiQBnPXs4y3NqDKeyK5N9bZ9HDo2RtkSNTKQxhfMzJM"
         },
         {
-          "step": "the wallet signs Parry's NEP-413 sign-in message; the API verifies it and saves the owner's alert thresholds"
+          "step": "the wallet signs Parry's NEP-413 sign-in message off chain, so the sign-in itself has no transaction; the API verifies the signature and saves the owner's alert thresholds"
+        },
+        {
+          "step": "the same wallet later signs its first transaction in the app (2026-11-12 09:28 UTC): owner_call upgrade to the published account code EGTboY4 from the \"Update account\" banner",
+          "tx": "https://testnet.nearblocks.io/txns/GAMPNdJFNuBruYF9Q1ZjKYcGXLfKu5qbj7scszaaNHEK"
         },
         {
           "step": "the passkey path runs in the app's Playwright suite with a virtual authenticator"
@@ -769,24 +773,29 @@
       "at": "2026-11-13T15:19:48.951Z",
       "steps": [
         {
-          "step": "LiNEAR epoch_update_rewards for bee1stake.pool.f863973.m0",
-          "tx": "https://testnet.nearblocks.io/txns/95teTvfmA7pc2jHXhwzhPWBu4qK1TmJJQZZ6Phq1DciW"
-        },
-        {
-          "step": "LiNEAR epoch_update_rewards for chorusone.pool.f863973.m0",
-          "tx": "https://testnet.nearblocks.io/txns/HxTmEmiVRTCo3pJdn337sbHJbvCRq6VkuqBNMGaJo1jo"
-        },
-        {
-          "step": "LiNEAR epoch_update_rewards for aurora.pool.f863973.m0",
-          "tx": "https://testnet.nearblocks.io/txns/3ZEKxvbSX88bnMyfw9BHyUDwqb8sarcnVx2HP7Th7J4Q"
-        },
-        {
-          "step": "LiNEAR epoch_update_rewards for 01node.pool.f863973.m0",
-          "tx": "https://testnet.nearblocks.io/txns/5ukNJJ7Dhk1QqG8qhRf6doAGdgTkerhCbPufaAiaC4uT"
-        },
-        {
-          "step": "LiNEAR epoch_update_rewards for everstake.pool.f863973.m0",
-          "tx": "https://testnet.nearblocks.io/txns/4QWqAHYvso7T58cKB92YRER2SQF4XqtN5H69GJN3Pt5q"
+          "step": "LiNEAR epoch_update_rewards for 5 validators folds their staking rewards into its price (anyone may call it)",
+          "calls": [
+            {
+              "validator": "bee1stake.pool.f863973.m0",
+              "tx": "https://testnet.nearblocks.io/txns/95teTvfmA7pc2jHXhwzhPWBu4qK1TmJJQZZ6Phq1DciW"
+            },
+            {
+              "validator": "chorusone.pool.f863973.m0",
+              "tx": "https://testnet.nearblocks.io/txns/HxTmEmiVRTCo3pJdn337sbHJbvCRq6VkuqBNMGaJo1jo"
+            },
+            {
+              "validator": "aurora.pool.f863973.m0",
+              "tx": "https://testnet.nearblocks.io/txns/3ZEKxvbSX88bnMyfw9BHyUDwqb8sarcnVx2HP7Th7J4Q"
+            },
+            {
+              "validator": "01node.pool.f863973.m0",
+              "tx": "https://testnet.nearblocks.io/txns/5ukNJJ7Dhk1QqG8qhRf6doAGdgTkerhCbPufaAiaC4uT"
+            },
+            {
+              "validator": "everstake.pool.f863973.m0",
+              "tx": "https://testnet.nearblocks.io/txns/4QWqAHYvso7T58cKB92YRER2SQF4XqtN5H69GJN3Pt5q"
+            }
+          ]
         },
         {
           "step": "LiNEAR rate 2305377925396712032733908 last seen by the vault, now 2305377925399480492616600"
@@ -796,7 +805,7 @@
           "tx": "https://testnet.nearblocks.io/txns/8KzLyyqZMSF955B2ZtkAHgEntvcYNkB4hxFqAydNx77T"
         },
         {
-          "step": "the vault report announces insurance_inflow of 8020034111108 LiNEAR",
+          "step": "the vault report announces insurance_inflow of 8020034111108 LiNEAR (keeper.parry.testnet calls risk.parry.testnet.submit, and vault.parry.testnet emits the event)",
           "tx": "https://testnet.nearblocks.io/txns/88DxX1AHzUhZoA2Gy47kCZ9fnuUipKym5yVJsGdsQAJK",
           "fundBefore": {
             "share_bps": 1000,

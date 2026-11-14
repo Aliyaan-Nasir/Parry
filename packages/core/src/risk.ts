@@ -104,17 +104,35 @@ const HOURS_PER_YEAR = 8760;
 
 /**
  * The regime thresholds on annualized Tremor, chosen by `pnpm replay` from NEAR's hourly history
- * (deployments/replay.json, `calibration.regime`): stressed is the 80th percentile of ordinary
- * hours, panic the level that best separates crash hours from ordinary ones. docs/risk-model.md
- * section 2 records the numbers.
+ * out of sample (deployments/replay.json, `calibration.regime`): on hours away from every crash
+ * and spike the replay scores, stressed is the 80th percentile of ordinary hours and panic the
+ * level that best separates the other large falls from ordinary hours. docs/risk-model.md
+ * section 2 records the method and the numbers. The regime is a label: no score uses it.
  */
-export const REGIME_THRESHOLDS = { stressed: 1.35, panic: 2.3 } as const;
+export const REGIME_THRESHOLDS = { stressed: 1.3, panic: 2.15 } as const;
 
 export function tremorRegime(annual: number, t: { stressed: number; panic: number } = REGIME_THRESHOLDS): Regime {
   if (annual >= t.panic) return "panic";
   if (annual >= t.stressed) return "stressed";
   return "calm";
 }
+
+/**
+ * Tremor in words with both of its scales: the regime (calibrated on NEAR's own hourly history,
+ * the label people should read) and the level (fixed absolute bands, the same for any asset).
+ * NEAR is volatile, so the absolute level often reads higher than the regime: 135 % a year is
+ * "stressed" for NEAR and "extreme" in absolute terms.
+ */
+export function tremorWords(annual: number, t: { stressed: number; panic: number } = REGIME_THRESHOLDS): string {
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return `Tremor ${pct(annual)} a year: ${tremorRegime(annual, t)} for NEAR (its own history: stressed from ${pct(t.stressed)}, panic from ${pct(t.panic)}), ${tremorLevel(annual)} on the absolute scale (calm under 40%, elevated under 80%, high under 130%)`;
+}
+
+/** The two scales Tremor is read on, for an API to say in place which one a label is. */
+export const TREMOR_SCALES = {
+  regime: "calibrated on NEAR's own hourly history (stressed and panic thresholds in REGIME_THRESHOLDS); the label to read",
+  level: "fixed absolute bands for any asset: calm under 40% a year, elevated under 80%, high under 130%, extreme above; NEAR often reads higher here than its regime",
+} as const;
 
 export function tremorLevel(annual: number): TremorLevel {
   if (annual < 0.4) return "calm";

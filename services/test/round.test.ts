@@ -93,6 +93,28 @@ describe("margin decisions", () => {
     const top = marginDecision({ ...base, ratio: 0.15, needsMargin: true });
     expect(top).toMatchObject({ action: "top_up", amountUsd: 250 });
     expect(marginDecision({ ...base, ratio: 0.15, needsMargin: true, insurance: false }).action).toBe("unsupported");
+    // The fund holds less than the shortfall: pay what the contract allows now, not a refused whole.
+    const part = marginDecision({ ...base, ratio: 0.15, needsMargin: true, payableUsd: 37.456 });
+    expect(part).toMatchObject({ action: "top_up", amountUsd: 37.45 });
+    expect(marginDecision({ ...base, ratio: 0.15, needsMargin: true, payableUsd: 0 }).action).toBe("watch");
+    const { payableUsd } = await import("../src/keeper");
+    expect(payableUsd({ value_usd_e6: "60000000", paid_today_e6: "10000000", cap_per_day_bps: 2500, max_payout_e6: "1000000000" })).toBe(5);
+  });
+});
+
+describe("negative funding cover", () => {
+  test("covers only funding paid, inside every cap, never under a cent", async () => {
+    const { fundingCover } = await import("../src/keeper");
+    const f = { value_usd_e6: "500000000", paid_today_e6: "0", cap_per_day_bps: 1000, max_payout_e6: "20000000", negative_funding_e6: "30000000", covered_negative_funding_e6: "4000000", recent_funding_e6: "-1500000" };
+    // Open 26 USD, capped by the 20 USD per payout.
+    expect(fundingCover(f)).toBe(20_000_000n);
+    // Today's cap (10 % of 500 = 50) minus 45 paid leaves 5.
+    expect(fundingCover({ ...f, paid_today_e6: "45000000" })).toBe(5_000_000n);
+    // Funding received lately: nothing to pay.
+    expect(fundingCover({ ...f, recent_funding_e6: "100" })).toBeNull();
+    // All covered already, or less than a cent left.
+    expect(fundingCover({ ...f, covered_negative_funding_e6: "30000000" })).toBeNull();
+    expect(fundingCover({ ...f, covered_negative_funding_e6: "29995000" })).toBeNull();
   });
 });
 

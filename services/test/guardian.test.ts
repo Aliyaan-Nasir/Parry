@@ -37,4 +37,32 @@ describe.skipIf(!url)("guardian (database)", () => {
       ["0uroom.testnet", true],
     ]);
   });
+
+  test("a decision keeps its public plan, the facts and the record apart from the full plan; its alert carries the public plan", async () => {
+    await sql`DELETE FROM guardian_queue`;
+    await sql`INSERT INTO guardian_queue (account, reason) VALUES ('0uprivate.testnet', 'danger 60')`;
+    const plan = "Repay 3.81 USDC from the reserve: health 1.122 to 1.450 (target 1.45). Chose repay: the first step in the order repay, deleverage that the mandate allows and that moves health toward 1.45.";
+    // Rejected by the review, so nothing is sent: only what is stored is under test.
+    const decision = (publicPlan: string | undefined) => ({
+      account: "0uprivate.testnet",
+      venue: "rhea",
+      plan,
+      ...(publicPlan ? { public_plan: publicPlan } : {}),
+      facts: { target_health: 1.45, owner_trigger: { score: 60, health: 1.15 } },
+      action: { repay: { token: "usdc.parry.testnet", amount: "3810000" } },
+      review: { model: "z-ai/glm-5.3-flash", verdict: "reject", reasoning: "below the owner's trigger of 1.15" },
+      review_hash: publicPlan ? "ab".repeat(32) : "cd".repeat(32),
+      outcome: "rejected by the review",
+      explanation: { step: "repay", why: "Chose repay", skipped: [] },
+    });
+    const run = (async () => ({ output: { decisions: [decision("Repay 3.81 USDC from the reserve."), decision(undefined)], skipped: [] }, tx: null })) as never;
+    const read = (async () => null) as never;
+    await tick(sql, { run, read });
+    const rows = await sql<{ id: string; plan: string; public_plan: string; facts: unknown }[]>`SELECT id, plan, public_plan, facts FROM decisions WHERE account = '0uprivate.testnet' ORDER BY id`;
+    expect(rows.map((r) => r.public_plan)).toEqual(["Repay 3.81 USDC from the reserve.", "Repay 3.81 USDC from the reserve."]);
+    expect(rows.every((r) => r.plan === plan)).toBe(true);
+    expect(rows[0]!.facts).toEqual({ target_health: 1.45, owner_trigger: { score: 60, health: 1.15 } });
+    const alerts = await sql<{ body: string }[]>`SELECT body FROM alerts WHERE account = '0uprivate.testnet' AND kind = 'guardian'`;
+    expect(alerts.map((a) => a.body)).toEqual(["Repay 3.81 USDC from the reserve.", "Repay 3.81 USDC from the reserve."]);
+  });
 });

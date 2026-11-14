@@ -151,7 +151,7 @@ export function VaultHistory() {
           note: "Basis: staking yield plus the funding the short earns, a year. Drawdown: how far the share price sits under its best so far.",
         };
       default:
-        return { series: [{ id: "s", label: "Share price", points: pick((p) => p.sharePriceUsd), tone: "brass", area: true }], format: (v) => `$${v.toFixed(4)}`, note: "One share was worth one dollar at the first deposit; it grows with staking yield and funding." };
+        return { series: [{ id: "s", label: "Share price", points: pick((p) => p.sharePriceUsd), tone: "brass", area: true }], format: (v) => `$${v.toFixed(4)}`, note: "One share was worth one dollar at the first deposit; it moves with staking yield, funding, the hedge's profit and loss and fees, so it can sit below a dollar." };
     }
   })();
   const empty = view.series.every((s) => s.points.length < 2);
@@ -219,7 +219,7 @@ export function ReserveRoots() {
 }
 
 const PAYS: [string, string][] = [
-  ["Negative funding streaks", "When the short pays funding for more than a day in a row, the fund covers it so a share does not shrink."],
+  ["Negative funding streaks", "When the short pays funding for more than a day in a row, the fund covers it, up to its daily cap, so a share shrinks less."],
   ["Hedge slippage beyond the band", "When a rebalance fills worse than the price band allows, the fund pays the difference."],
   ["Hyperliquid margin top-ups", "When the short's margin runs low, the fund tops it up before it can be liquidated."],
 ];
@@ -287,9 +287,9 @@ export function YieldSources({ v }: { v: Vault }) {
   const { format } = useMoney();
   const vr = rates.data?.vault;
   const rows: [string, string, string | undefined][] = [
-    ["Staking, a year", vr?.stakingApr != null ? formatPercent(vr.stakingApr, 2) : v.yield.stakingApr !== null ? formatPercent(v.yield.stakingApr, 2) : "not enough history", vr?.source],
+    ["Staking, a year (testnet rate)", vr?.stakingApr != null ? formatPercent(vr.stakingApr, 2) : v.yield.stakingApr !== null ? formatPercent(v.yield.stakingApr, 2) : "not enough history", vr?.source],
     ["Funding to the short, a year", vr?.fundingApr != null ? formatPercent(vr.fundingApr, 2) : "n/a", rates.data?.hyperliquid?.source],
-    ["Net, a year", vr?.netApr != null ? formatPercent(vr.netApr, 2) : "n/a", undefined],
+    ["Net, a year (testnet)", vr?.netApr != null ? formatPercent(vr.netApr, 2) : "n/a", undefined],
     ["Funding received", format(v.yield.fundingUsd, { signed: true }), undefined],
     ["Hedge profit and loss", format(v.yield.hedgePnlUsd, { signed: true }), undefined],
     ["Staked", `${fromUnits(v.stakedLinear, 24, 3)} LiNEAR at ${v.linearRate.toFixed(4)} NEAR`, undefined],
@@ -310,6 +310,7 @@ export function YieldSources({ v }: { v: Vault }) {
           </div>
         ))}
       </dl>
+      <p className="mt-3 text-[12px] leading-5 text-muted">On testnet the LiNEAR rate moves whenever anyone calls epoch_update_rewards, so the staking leg&apos;s APR is not a market rate.</p>
     </section>
   );
 }

@@ -7,6 +7,7 @@ import { riskScore } from "@parryguard/core";
 import type { Market, Position } from "@parryguard/sdk";
 import { QueryError, Segmented } from "@/components/app/bits";
 import { CloseFlow } from "@/components/app/CloseFlow";
+import { useParryAccount } from "@/components/providers/AccountProvider";
 import { Copilot } from "@/components/app/Copilot";
 import { PageHeader } from "@/components/app/PageHeader";
 import { guardianSentence } from "@/components/app/PositionCard";
@@ -82,6 +83,10 @@ function Detail({ position, account }: { position: Position; account: string }) 
   const { format } = useMoney();
   const now = useNow();
   const own = typeof window === "undefined" ? null : readPolicy(account);
+  // Whether the viewer owns this account (a wallet or passkey here, not a watch), and whether it is the selected one.
+  const { account: selected, accounts, selectAccount } = useParryAccount();
+  const owns = accounts.some((a) => a.id === account && a.via !== "watch");
+  const owner: "selected" | "other" | null = owns ? (selected === account ? "selected" : "other") : null;
   const acted = useMemo(() => (decisions.data?.pages.flatMap((p) => p.items) ?? []).filter((d) => d.outcome === "executed" && (d.venue === position.venue || ((d.venue as string) === "evm" && position.venue === "aave"))), [decisions.data, position.venue]);
   const points = useMemo(() => (history.data ?? []).filter((p) => p.health !== null).map((p) => ({ t: Date.parse(p.t) / 1000, v: p.health! })), [history.data]);
   const prices = useMemo(() => (history.data ?? []).map((p) => ({ t: Date.parse(p.t) / 1000, v: p.price })), [history.data]);
@@ -201,19 +206,36 @@ function Detail({ position, account }: { position: Position; account: string }) 
         </section>
       ) : null}
 
-      <section className="surface flex flex-wrap items-center justify-between gap-4 p-6">
-        <div>
-          <h2 className="text-[15px] text-fg">Close or unwind</h2>
-          <p className="mt-1 text-sm text-muted">Close this position in one step, or unwind the whole protected account and take everything back.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setFlow("unwind")}>
-            Unwind the account
+      {/* Owner actions, only for the account's owner: the close flow acts on the selected account. */}
+      {owner === "selected" ? (
+        <section className="surface flex flex-wrap items-center justify-between gap-4 p-6" aria-labelledby="close-title">
+          <div>
+            <h2 id="close-title" className="text-[15px] text-fg">
+              Close or unwind
+            </h2>
+            <p className="mt-1 text-sm text-muted">Close this position in one step, or unwind the whole protected account and take everything back.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setFlow("unwind")}>
+              Unwind the account
+            </Button>
+            <Button onClick={() => setFlow("close")}>Close the position</Button>
+          </div>
+        </section>
+      ) : owner === "other" ? (
+        <section className="surface flex flex-wrap items-center justify-between gap-4 p-6" aria-labelledby="close-title">
+          <div>
+            <h2 id="close-title" className="text-[15px] text-fg">
+              Close or unwind
+            </h2>
+            <p className="mt-1 text-sm text-muted">This is one of your accounts. Select it to close the position or unwind the account.</p>
+          </div>
+          <Button variant="secondary" onClick={() => selectAccount(account)}>
+            Select this account
           </Button>
-          <Button onClick={() => setFlow("close")}>Close the position</Button>
-        </div>
-      </section>
-      {summary.data && flow ? <CloseFlow summary={summary.data} position={position} mode={flow} open onOpenChange={(v) => !v && setFlow(null)} /> : null}
+        </section>
+      ) : null}
+      {owner === "selected" && summary.data && flow ? <CloseFlow summary={summary.data} position={position} mode={flow} open onOpenChange={(v) => !v && setFlow(null)} /> : null}
 
       <Copilot account={account} positionId={position.id} />
     </div>

@@ -52,3 +52,14 @@ test("unknown pages render the not found page", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "This page was turned aside." })).toBeVisible();
   expect(problems()).toEqual([]);
 });
+
+test("short links redirect: /vault to the vault, /docs to the repository's docs", async ({ request }) => {
+  const vault = await request.get("/vault", { maxRedirects: 0 });
+  expect(vault.status()).toBe(307);
+  expect(vault.headers()["location"]).toBe("/app/vault");
+  const docs = await request.get("/docs", { maxRedirects: 0 });
+  expect(docs.status()).toBe(307);
+  expect(docs.headers()["location"]).toBe("https://github.com/Aliyaan-Nasir/Parry/tree/main/docs");
+  const api = await request.get("/docs/api", { maxRedirects: 0 });
+  expect(api.headers()["location"]).toBe("https://github.com/Aliyaan-Nasir/Parry/blob/main/docs/api.md");
+});

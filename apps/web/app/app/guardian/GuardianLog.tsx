@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { QueryError, Segmented } from "@/components/app/bits";
+import { Note, QueryError, Segmented } from "@/components/app/bits";
 import { DECISION_GRID, DecisionRow } from "@/components/app/DecisionCard";
 import { cn } from "@/lib/cn";
 import { useMoney } from "@/components/providers/MoneyProvider";
@@ -34,7 +34,9 @@ function LogSkeleton() {
 
 /** Every guardian decision, newest first: for the connected account, or for every account. */
 export function GuardianLog() {
-  const { account, ready } = useParryAccount();
+  const { account, ready, signer, signedIn, withSignIn } = useParryAccount();
+  const [signInError, setSignInError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
   const [picked, setPicked] = useState<Scope | null>(null);
   const scope: Scope = picked ?? (account ? "mine" : "all");
   const q = useDecisions(scope === "mine" ? account : null, 10);
@@ -68,6 +70,38 @@ export function GuardianLog() {
           />
         ) : null}
       </div>
+
+      {scope === "mine" && account && signer && signer !== "watch" ? (
+        signedIn ? (
+          <Note tone="brass">You are signed in as this account&apos;s owner: each record shows your full plan, why the guardian chose its step and the review&apos;s reasoning. Nobody else sees them.</Note>
+        ) : (
+          <Note>
+            <span className="grid gap-2">
+              <span>
+                This is the public record: the action, the signatures and the hashes. Your trigger, target health and step order stay sealed. Sign in with your {signer === "wallet" ? "wallet" : "passkey"} to read your full plans and the review&apos;s reasoning here.
+              </span>
+              <span className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={signingIn}
+                  loadingLabel="Signing in"
+                  onClick={() => {
+                    setSignInError(null);
+                    setSigningIn(true);
+                    withSignIn(async (t) => t)
+                      .catch((e: unknown) => setSignInError(e instanceof Error ? e.message : String(e)))
+                      .finally(() => setSigningIn(false));
+                  }}
+                >
+                  Sign in to see the full record
+                </Button>
+                {signInError ? <span className="text-critical">{signInError}</span> : null}
+              </span>
+            </span>
+          </Note>
+        )
+      ) : null}
 
       {!ready || q.isPending ? (
         <LogSkeleton />

@@ -8,6 +8,7 @@ import { fromBase64, fromUtf8 } from "./encoding.js";
 import type { ContractIds, Network } from "./networks.js";
 import type { CertificateAnchor, Closing, EnclaveInfo, EnclaveKey, MandateView, Nonces, RheaLines, SealingKey, VaultChainState } from "./types.js";
 import { compressedPasskey } from "./webauthn.js";
+import type { DecisionRecord } from "./verify.js";
 
 export interface ChainOptions {
   network: Network;
@@ -75,6 +76,8 @@ export function chainReads(near: Near, contract: (name: keyof ContractIds) => st
     },
     /** Every enclave key the risk board has trusted, newest first (a new enclave build rotates it). */
     enclaveHistory: async (): Promise<EnclaveKey[]> => (await view<EnclaveKey[]>(contract("risk"), "enclave_history", { limit: 100 })) ?? [],
+    /** The risk board's record of a guardian decision (`decision(id)`), or null when it has none. */
+    decisionRecord: async (id: string): Promise<DecisionRecord | null> => (await view<{ report: DecisionRecord } | null>(contract("risk"), "decision", { id }))?.report ?? null,
     /**
      * The risk board's anchor of a health certificate (`certificate(hash)`), null when it has none,
      * or undefined while the deployed board has no such view.

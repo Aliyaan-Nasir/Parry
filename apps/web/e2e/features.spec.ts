@@ -36,7 +36,7 @@ test.describe("public pages", () => {
     await expect.poll(() => api.requests.some((r) => r.path === `/v1/guardian/decisions/${id}/verify`)).toBe(true);
   });
 
-  test("crash replay shows the summary, each crash and its sources", async ({ page }) => {
+  test("crash replay shows the summary, each crash, each spike, the calibration and its sources", async ({ page }) => {
     const problems = watchConsole(page);
     await mockApi(page);
     await page.goto("/replay");
@@ -45,6 +45,15 @@ test.describe("public pages", () => {
     await expect(page.getByRole("img", { name: /Health through the 9 May 2022/ })).toBeVisible();
     await page.getByRole("tab", { name: /21 May 2021/ }).click();
     await expect(page.getByRole("img", { name: /Health through the 21 May 2021/ })).toBeVisible();
+    const spikes = page.getByRole("region", { name: "Spikes" });
+    await expect(spikes.getByText("0 of 2", { exact: true })).toBeVisible();
+    await expect(spikes.getByRole("tab", { name: /6 Sep 2021/ })).toHaveAttribute("aria-selected", "true");
+    await expect(spikes.getByText(/at its closest an hour's high came within 4.1%/)).toBeVisible();
+    await expect(spikes.getByText(/The vault asked for margin for 4 h, against a shortfall of up to \$1069.43: the keeper paid \$33.22/)).toBeVisible();
+    await expect(spikes.getByRole("listitem").filter({ hasText: "Score 52: the leverage cap drops to 2." })).toBeVisible();
+    await spikes.getByRole("tab", { name: /21 Dec 2021/ }).click();
+    await expect(spikes.getByRole("img", { name: /liquidation price through the 21 Dec 2021 to 24 Dec 2021 spike/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Regime thresholds, out of sample" }).getByText("39%", { exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "Sources" }).getByText("Binance spot, hourly NEARUSDT")).toBeVisible();
     expect(problems()).toEqual([]);
   });
@@ -157,6 +166,18 @@ test.describe("close and unwind", () => {
     await dialog.getByRole("button", { name: "Unwind everything" }).click();
     await expect.poll(() => relayedActions(api).length, { timeout: 15_000 }).toBe(1);
     expect(relayedActions(api)[0]).toEqual([{ unwind: { tokens: [fx.CONTRACTS.usdc, fx.CONTRACTS.wnear], to: "owner.testnet" } }]);
+  });
+
+  test("a stranger or a watcher viewing a position sees no owner actions", async ({ page }) => {
+    await mockApi(page);
+    await page.goto(`/app/positions/${encodeURIComponent(fx.PERP_POSITION_ID)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Hyperliquid NEAR perp/);
+    await expect(page.getByRole("button", { name: "Close the position" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Unwind the account" })).toHaveCount(0);
+    await seedAccount(page, "watch");
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Hyperliquid NEAR perp/);
+    await expect(page.getByRole("button", { name: "Close the position" })).toHaveCount(0);
   });
 
   test("cancelling leaves the dashboard and changes nothing", async ({ page }) => {

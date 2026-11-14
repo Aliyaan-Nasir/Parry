@@ -1,6 +1,6 @@
 /** The API routes (docs/api.md). Reads come from Postgres (services' output) and the chain. */
 
-import { DEFAULT_THRESHOLDS, plan as planSteps, reserveProof, STRATEGIES, tremorRegime, type LendingPosition, type ReserveLeaf } from "@parryguard/core";
+import { DEFAULT_THRESHOLDS, plan as planSteps, REGIME_THRESHOLDS, reserveProof, STRATEGIES, TREMOR_SCALES, tremorRegime, tremorWords, type LendingPosition, type ReserveLeaf } from "@parryguard/core";
 import { accountCode, contract, dexPool, enclaveInfo, explorers, network, NEAR_USD } from "@parryguard/services/lib/config";
 import type { Sql } from "@parryguard/services/lib/db";
 import { errorText } from "@parryguard/services/lib/log";
@@ -16,6 +16,7 @@ import { cached, decision, position, vaultState, type DecisionRow, type Position
 import { copilot, CURRENCIES, fx } from "./extras";
 import { paidRisk } from "./x402";
 import { insuranceOf, registerRoutes } from "./routes";
+import { alertView } from "./stream";
 
 const ACCOUNT = /^[a-z0-9._-]{2,64}$/;
 
@@ -29,7 +30,7 @@ const RELAYER = process.env.RELAYER_URL ?? "http://localhost:4500";
 
 export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Response> } = {}) {
   const app = new Hono();
-  app.use("*", cors({ origin: (o) => o ?? "*", allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"], allowHeaders: ["content-type", "authorization", "x-payment"], exposeHeaders: ["x-payment-response"] }));
+  app.use("*", cors({ origin: (o) => o ?? "*", allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"], allowHeaders: ["content-type", "authorization", "payment-signature", "x-payment"], exposeHeaders: ["payment-required", "payment-response", "x-payment-response"] }));
   // A request error carries its status (4xx, or 503 while a dependency has no data); anything else is a 500.
   app.onError((e, c) => {
     const status = (e as { status?: number }).status;
@@ -56,6 +57,18 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     } catch {
       throw bad("the request body must be JSON");
     }
+  };
+
+  /**
+   * The account a request is signed in as, or null. Decisions and alerts carry the owner's sealed
+   * policy only for a request signed in as their own account; a response that depends on it is
+   * never shared by caches.
+   */
+  const viewer = async (c: Context): Promise<string | null> => {
+    const header = c.req.header("authorization");
+    c.header("vary", "authorization");
+    if (header) c.header("cache-control", "private, no-store");
+    return header ? session(sql, header) : null;
   };
 
   app.get("/", (c) => c.json({ name: "Parry API", network, docs: "docs/api.md" }));
@@ -112,7 +125,14 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const [hl] = await sql<{ price: number }[]>`SELECT price FROM prices WHERE asset = 'NEAR' AND source = 'hyperliquid' ORDER BY t DESC LIMIT 1`;
     if (!m) return c.json({ error: "no market data yet" }, 503);
     // Reports written before the regime and the heatmap source carry neither: derive the regime, say the source.
-    const tremor = { ...m.payload.tremor, regime: m.payload.tremor.regime ?? tremorRegime(Number(m.payload.tremor.annual ?? 0)) };
+    // Two scales: the regime is calibrated on NEAR's history, the level is fixed absolute bands; say so in place.
+    const annual = Number(m.payload.tremor.annual ?? 0);
+    const tremor = {
+      ...m.payload.tremor,
+      regime: m.payload.tremor.regime ?? tremorRegime(annual),
+      summary: tremorWords(annual),
+      scales: { regime: `calibrated on NEAR's own hourly history: stressed from ${Math.round(REGIME_THRESHOLDS.stressed * 100)}% a year, panic from ${Math.round(REGIME_THRESHOLDS.panic * 100)}%; the label to read`, level: TREMOR_SCALES.level },
+    };
     const cascade = { source: "positions", ...m.payload.cascade };
     return c.json({ near: { priceUsd: m.payload.price, hlMid: hl?.price ?? null, updatedAt: m.created_at.toISOString() }, tremor, cascade });
   });
@@ -257,12 +277,14 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     if (cursor && Number.isNaN(Date.parse(cursor))) throw bad("cursor must be a time (a page's `next`)");
     const rows = await sql<DecisionRow[]>`SELECT * FROM decisions WHERE (${acct ?? null}::text IS NULL OR account = ${acct ?? null})
       AND (${cursor ?? null}::timestamptz IS NULL OR created_at < ${cursor ?? null}::timestamptz) ORDER BY created_at DESC LIMIT ${limit}`;
-    return c.json({ items: rows.map(decision), next: rows.length === limit ? rows[rows.length - 1]!.created_at.toISOString() : null });
+    const who = await viewer(c);
+    return c.json({ items: rows.map((r) => decision(r, { owner: who === r.account })), next: rows.length === limit ? rows[rows.length - 1]!.created_at.toISOString() : null });
   });
 
   app.get("/v1/guardian/decisions/:id", async (c) => {
     const [r] = await sql<DecisionRow[]>`SELECT * FROM decisions WHERE id = ${c.req.param("id")}`;
-    return r ? c.json(decision(r)) : c.json({ error: "no such decision" }, 404);
+    if (!r) return c.json({ error: "no such decision" }, 404);
+    return c.json(decision(r, { owner: (await viewer(c)) === r.account }));
   });
 
   app.get("/v1/guardian/decisions/:id/verify", async (c) => {
@@ -278,7 +300,8 @@ export function createApp(sql: Sql, opts: { mcp?: (req: Request) => Promise<Resp
     const status = c.req.query("status");
     const rows = await sql<{ id: string; account: string; kind: string; severity: string; title: string; body: string; status: string; created_at: Date; updated_at: Date }[]>`
       SELECT * FROM alerts WHERE account = ${acct} AND (${status ?? null}::text IS NULL OR status = ${status ?? null}) ORDER BY id DESC LIMIT 100`;
-    return c.json(rows.map((a) => ({ id: String(a.id), account: a.account, kind: a.kind, severity: a.severity, title: a.title, body: a.body, status: a.status, createdAt: a.created_at.toISOString(), updatedAt: a.updated_at.toISOString() })));
+    const owner = (await viewer(c)) === acct;
+    return c.json(rows.map((a) => alertView(a, { owner })));
   });
 
   for (const action of ["ack", "resolve"] as const) {

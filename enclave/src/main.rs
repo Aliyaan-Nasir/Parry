@@ -8,7 +8,7 @@ static MANIFEST: [u8; include_bytes!("../manifest.json").len()] =
 
 #[cfg(target_family = "wasm")]
 mod host {
-    use parry_enclave::io::{Io, Result};
+    use parry_enclave::io::{Io, Response, Result};
     use std::time::Duration;
     use wasi_http_client::Client;
 
@@ -35,6 +35,22 @@ mod host {
             let res = req.send().map_err(|e| format!("GET {url}: {e}"))?;
             check(res.status(), url)?;
             res.body().map_err(|e| e.to_string())
+        }
+        fn get_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response> {
+            let mut req = Client::new()
+                .get(url)
+                .connect_timeout(Duration::from_secs(15));
+            for (k, v) in headers {
+                req = req.header(*k, *v);
+            }
+            let res = req.send().map_err(|e| format!("GET {url}: {e}"))?;
+            check(res.status(), url)?;
+            let names = res
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+                .collect();
+            Ok((res.body().map_err(|e| e.to_string())?, names))
         }
         fn post(&self, url: &str, headers: &[(&str, &str)], body: &[u8]) -> Result<Vec<u8>> {
             let mut req = Client::new()

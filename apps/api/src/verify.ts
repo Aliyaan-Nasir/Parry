@@ -90,6 +90,15 @@ function bs58(s: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
+/** An ed25519 signature (base64) over `digest` by `key` (ed25519:base58); a malformed one is false. */
+function verifies(signatureB64: string, digest: Uint8Array, key: string): boolean {
+  try {
+    return ed25519.verify(Buffer.from(signatureB64, "base64"), digest, bs58(key.replace(/^ed25519:/, "")));
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyDecisionRecord(d: DecisionRow) {
   const checks: Check[] = [];
   const r = d.review;
@@ -113,8 +122,33 @@ export async function verifyDecisionRecord(d: DecisionRow) {
   const enclave = history.find((k) => k.public_key === inForce) ?? (await view<{ public_key: string; wasm_sha256: string }>(contract("risk"), "get_enclave").catch(() => null));
   if (d.envelope && d.envelope_signature && enclave) {
     const digest = sha256(utf8ToBytes(`parry-guardian:v1:${d.envelope}`));
-    const ok = ed25519.verify(Buffer.from(d.envelope_signature, "base64"), digest, bs58(enclave.public_key.replace(/^ed25519:/, "")));
+    const ok = verifies(d.envelope_signature, digest, enclave.public_key);
     checks.push({ name: "Enclave signature on the envelope", ok, detail: `key ${enclave.public_key}, bound to the enclave build ${enclave.wasm_sha256}` });
+  }
+  // The risk board's record of the decision: the one the guardian kept, signed by the enclave,
+  // else the board's own copy (which the board accepted only with the enclave's signature).
+  type Board = { id: string; account: string; action: string; plan: string; at?: number; review: { review_hash: string; reasoning_hash?: string } };
+  let board: Board | null = null;
+  if (d.decision_json && d.decision_signature) {
+    try {
+      board = JSON.parse(d.decision_json) as Board;
+      const key = enclaveKeyAt(history, board.at ?? issued ?? 0);
+      const digest = sha256(utf8ToBytes(`parry-risk:v1:${d.decision_json}`));
+      const ok = !!key && verifies(d.decision_signature, digest, key);
+      checks.push({ name: "Enclave signature on the decision record", ok, detail: `key ${key ?? "unknown"} in force at ${board.at ?? "?"}` });
+    } catch (e) {
+      checks.push({ name: "Enclave signature on the decision record", ok: false, detail: `the record does not parse: ${(e as Error).message}` });
+    }
+  } else if (d.txs.record) {
+    board = await view<{ report: Board } | null>(contract("risk"), "decision", { id: d.id }).then((r) => r?.report ?? null, () => null);
+  }
+  if (board) {
+    const same = board.id === d.id && board.account === d.account && board.action === d.action && board.review.review_hash === hash;
+    checks.push({ name: "Decision record matches", ok: same, detail: same ? "the risk board's record names this decision, account, action and review hash" : "the risk board's record differs from this decision" });
+    if (board.review.reasoning_hash) {
+      const rh = bytesToHex(sha256(utf8ToBytes(r.reasoning ?? "")));
+      checks.push({ name: "Reasoning hash", ok: rh === board.review.reasoning_hash, detail: `SHA-256 of the review's reasoning is ${rh}` });
+    }
   }
   if (d.txs.action) {
     const sender = process.env.GUARDIAN_ACCOUNT_ID ?? "";

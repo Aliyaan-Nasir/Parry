@@ -10,6 +10,7 @@ import {
   certificateDigest,
   createParry,
   verifyCertificate,
+  verifyDecision,
   envelopeDigest,
   reviewHash,
   toBase58,
@@ -111,6 +112,10 @@ const market = {
 const vault = {
   network: "testnet",
   paused: false,
+  depositsOpen: false,
+  depositsClosedReason: "the vault's report is 27 min old (the contract takes deposits only within 15 min of one); deposits reopen with the next report",
+  depositsClosedBy: "stale_report",
+  reportAgeSeconds: 1620,
   riskScore: 18,
   reportAt: "2026-11-10T00:00:00Z",
   sharePriceUsd: 1.02,
@@ -168,10 +173,24 @@ export const routes: Record<string, unknown> = {
         dropPct: 51.7,
         candles: [{ t: "2022-05-09T00:00:00Z", price: 10 }],
         position: { startHealth: 1.3, warningHours: 44, liquidatedAt: "2022-05-11T06:00:00Z", liquidatedWithParryAt: null, steps: [], healthWith: [], healthWithout: [] },
-        vault: { navWith: [], navUnhedged: [], maxDrawdownPct: 3.8, maxDrawdownUnhedgedPct: 51.7, marginMin: 0.5, insurancePaidUsd: 5 },
+        vault: { navWith: [], navUnhedged: [], maxDrawdownPct: 3.8, maxDrawdownUnhedgedPct: 51.7, marginMin: 0.479, insurancePaidUsd: 0 },
       },
     ],
-    summary: { medianWarningHours: 44, liquidationsAvoided: 1, crashes: 1 },
+    spikes: [
+      {
+        id: "spike-2021-09-06",
+        name: "6 Sep 2021 to 9 Sep 2021",
+        start: "2021-09-06T12:00:00Z",
+        end: "2021-09-10T07:00:00Z",
+        peak: "2021-09-09T07:00:00Z",
+        risePct: 92,
+        startPrice: 5.97,
+        peakPrice: 11.47,
+        candles: [{ t: "2021-09-06T12:00:00Z", price: 5.97 }],
+        vault: { navWith: [], navUnhedged: [], maxDrawdownPct: 17.8, marginMin: 0.093, insurancePaidUsd: 27.24, liquidatedAt: null, liquidationHeadroomMinPct: 4.1, maxScore: 85, pausedHours: 8, marginNeededHours: 2, marginShortfallMaxUsd: 1069.43, insurancePaid: { negativeFundingUsd: 10.63, marginTopUpUsd: 16.61 }, rebalances: 63, hedgedEndPct: 8, sharePriceEnd: 1.103, unhedgedEnd: 1.555 },
+      },
+    ],
+    summary: { medianWarningHours: 44, liquidationsAvoided: 1, crashes: 1, spikes: 1, spikeLiquidations: 0 },
   },
   "GET /v1/heatmap": { network: "testnet", price: 3.6, buckets: [{ price: 2.8, collateralUsd: 5, debtUsd: 3, accounts: 1 }], cascades: [], readAt: "2026-11-10T00:00:00Z", accounts: 1 },
   "GET /v1/prices": { tokens: [{ id: "wrap.near", symbol: "wNEAR", priceUsd: 3.6, change24h: 0.01, source: "aggregate-oracle.near" }], readAt: "2026-11-10T00:00:00Z" },
@@ -275,10 +294,12 @@ export function fakeParry(network: Network = "testnet", closeScript: CloseScript
       return {
         result: { account, checkedAt: "2026-11-10T00:00:00Z", position, market, model: "docs/risk-model.md" },
         payment: { success: true, transaction: "paid-tx", network: "near:testnet", payer: opts.payer.accountId },
-        requirement: { scheme: "exact", network: "near:testnet", asset: "usdc.parry.testnet", amount: "10000", payTo: "api.parry.testnet", resource: `/v1/paid/risk/${account}`, description: "risk check" },
+        requirement: { scheme: "exact", network: "near:testnet", asset: "usdc.parry.testnet", amount: "10000", payTo: "api.parry.testnet", maxTimeoutSeconds: 240 },
       } as unknown as Awaited<ReturnType<Parry["paidRiskCheck"]>>;
     },
     verifyCertificate: async (_c, opts = {}) => verifyCertificate(certificate, { enclavePublicKey: enclaveKey, ...opts }),
+    // The risk board's key, and no board record (the decision fixture's record is not on a chain here).
+    verifyDecision: async (d) => verifyDecision(typeof d === "string" ? decision : d, { enclavePublicKey: enclaveKey, onChainRecord: null }),
     closing: async () => state().closing,
     rheaPosition: async () => {
       const x = state();

@@ -4,8 +4,16 @@
 
 pub type Result<T> = std::result::Result<T, String>;
 
+/// A response body and its headers (names lowercased).
+pub type Response = (Vec<u8>, Vec<(String, String)>);
+
 pub trait Io {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>>;
+    /// A GET that also returns the response headers (names lowercased), for the few sources
+    /// that put signed material there (Intel's certificate chains).
+    fn get_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response> {
+        Ok((self.get(url, headers)?, vec![]))
+    }
     fn post(&self, url: &str, headers: &[(&str, &str)], body: &[u8]) -> Result<Vec<u8>>;
     /// Signs with the enclave's ed25519 key (bound to this build on OutLayer).
     fn sign(&self, message: &[u8]) -> Result<[u8; 64]>;

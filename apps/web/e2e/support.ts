@@ -19,7 +19,7 @@ export const PAGES = [
   { path: "/legal/security", heading: "Security" },
   { path: "/check", heading: "Check any account." },
   { path: "/verify", heading: "Verify, don't trust." },
-  { path: "/replay", heading: "Replayed through real crashes." },
+  { path: "/replay", heading: "Replayed through real crashes and spikes." },
   { path: "/app", heading: "Dashboard" },
   { path: "/app/open", heading: "Open position" },
   { path: "/app/protect", heading: "Protect" },

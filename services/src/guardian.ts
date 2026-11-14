@@ -5,6 +5,7 @@
  * with the same key. This service just pays the gas and talks to Hyperliquid and EVM RPCs.
  */
 
+import { publicPlan } from "@parryguard/core";
 import type { FinalExecutionOutcome } from "near-kit";
 import { contract, intEnv } from "./lib/config";
 import { db, migrate, setStatus, type Sql } from "./lib/db";
@@ -24,7 +25,12 @@ let lastDetail = "idle";
 interface EnclaveDecision {
   account: string;
   venue: string;
+  /** The owner's full plan (projected health, target, why this step): served only to the owner. */
   plan: string;
+  /** The action alone, for everyone (enclave builds before it was written are redacted here). */
+  public_plan?: string;
+  /** What the review model saw, the sealed target and trigger among them: the owner's alone. */
+  facts?: Record<string, unknown>;
   action: Record<string, unknown>;
   review: Record<string, unknown>;
   review_hash: string;
@@ -143,13 +149,16 @@ async function carryOut(sql: Sql, d: EnclaveDecision) {
     }
   }
   const after = await health(d.account, d.venue);
-  await sql`INSERT INTO decisions (id, account, venue, action, plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail, explanation)
-    VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${sql.json(trigger)}, ${outcome}, ${sql.json({ ...(d.review as object), review_hash: d.review_hash } as never)}, ${d.envelope ?? null},
+  const shown = d.public_plan ?? publicPlan(d.plan, actionName);
+  await sql`INSERT INTO decisions (id, account, venue, action, plan, public_plan, trigger, outcome, review, envelope, envelope_signature, txs, health_before, health_after, routes, detail, explanation,
+      facts, decision_json, decision_signature)
+    VALUES (${id}, ${d.account}, ${d.venue}, ${actionName}, ${d.plan}, ${shown}, ${sql.json(trigger)}, ${outcome}, ${sql.json({ ...(d.review as object), review_hash: d.review_hash } as never)}, ${d.envelope ?? null},
       ${d.envelope_signature ?? null}, ${sql.json(txs as never)}, ${before}, ${after}, ${routes ? sql.json(routes as never) : null}, ${detail},
-      ${d.explanation ? sql.json(d.explanation as never) : null})
+      ${d.explanation ? sql.json(d.explanation as never) : null}, ${d.facts ? sql.json(d.facts as never) : null}, ${d.decision_json ?? null}, ${d.decision_signature ?? null})
     ON CONFLICT (id) DO NOTHING`;
+  // Alerts are read by account without sign-in and go out over Telegram, email and push: the public plan only.
   await sql`INSERT INTO alerts (account, kind, severity, key, title, body) VALUES (${d.account}, 'guardian', 'info', ${`guardian:${id}`},
-    ${`Guardian ${outcome.replace("_", " ")}: ${actionName.replace("_", " ")}`}, ${d.plan}) ON CONFLICT DO NOTHING`;
+    ${`Guardian ${outcome.replace("_", " ")}: ${actionName.replace("_", " ")}`}, ${shown}) ON CONFLICT DO NOTHING`;
   log.info("guardian decision", { account: d.account, action: actionName, outcome, tx: txs.action });
 }
 

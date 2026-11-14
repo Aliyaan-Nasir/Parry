@@ -156,7 +156,13 @@ export interface DecisionReview {
   chatId: string;
   reviewHash: string;
   verdict: "approve" | "reject";
-  reasoning: string;
+  /**
+   * The model's reasoning. It weighs the owner's sealed trigger and target, so the API serves it
+   * only to a request signed in as the decision's own account.
+   */
+  reasoning?: string;
+  /** SHA-256 (hex) of the reasoning: the `reasoning_hash` the risk board records. */
+  reasoningHash?: string | null;
   signingAddress: string;
   signedText: string;
   signature: string;
@@ -174,10 +180,25 @@ export interface Decision {
   venue: Venue;
   /** repay | add_collateral | deleverage | hl_reduce | hl_hedge | evm_approve | evm_repay */
   action: string;
+  /** The full plan for the decision's signed-in owner; the public plan for everyone else. */
   plan: string;
+  /** The action alone, without the owner's trigger, target, projected health or step order. */
+  publicPlan?: string;
+  /** "owner" when the request was signed in as the decision's account and this is the full record. */
+  visibility?: "public" | "owner";
+  /** The observed risk when the guardian acted (the envelope's `trigger`), not the owner's sealed trigger. */
   trigger: { score: number; tier: Tier; healthBps: number };
   outcome: "executed" | "refused" | "rolled_back" | "rejected_by_review" | "pending";
   review: DecisionReview;
+  /**
+   * The enclave-signed risk-board record (exact JSON text) and its ed25519 signature (base64).
+   * Public when its plan is the public one; a record an older enclave build signed with the full
+   * plan is served only to the owner.
+   */
+  decisionJson?: string | null;
+  decisionSignature?: string | null;
+  /** What the review model saw (owner only): the position, the sealed target and trigger, the limits and the plan. */
+  facts?: Record<string, unknown> | null;
   /** The exact envelope JSON text the enclave signed. */
   envelope: string | null;
   /** The enclave's ed25519 signature over the envelope (standard base64), when published. */
@@ -194,7 +215,7 @@ export interface Decision {
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
-  /** Why the planner chose this step and skipped the earlier ones in the policy's order; null for decisions without one. */
+  /** Why the planner chose this step and skipped the earlier ones in the policy's order (owner only); null otherwise. */
   explanation?: RescueExplanation | null;
   createdAt: string;
 }
@@ -233,7 +254,20 @@ export interface Alert {
 
 export interface VaultState {
   network: string;
+  /** The contract's pause flag (the owner's or the risk score's). `depositsOpen` is every condition a deposit needs. */
   paused: boolean;
+  /**
+   * Whether the vault takes a deposit now, checked as the contract does: no pause, a report at
+   * most 15 minutes old, room under the cap, and a fresh oracle price within 2% of the hedge mark.
+   */
+  depositsOpen?: boolean;
+  /** Why deposits are closed and when they reopen, in words; null while open. */
+  depositsClosedReason?: string | null;
+  depositsClosedBy?: "paused" | "risk" | "no_report" | "stale_report" | "cap" | "no_price" | "price_off_mark" | null;
+  /** Seconds since the vault's latest report. */
+  reportAgeSeconds?: number | null;
+  /** yoctoNEAR the deposit cap still takes. */
+  depositRoomNear?: string;
   riskScore: number;
   reportAt: string | null;
   sharePriceUsd: number;
@@ -369,7 +403,12 @@ export interface TokenLimit {
 export interface HlGuard {
   asset: string;
   asset_index: number;
+  /** Largest order size, 1e8. */
   max_size_e8: string;
+  /** Most the guardian's orders may add up to per UTC day (reduce and hedge), 1e8; at least `max_size_e8`. */
+  daily_size_e8: string;
+  /** Most hedge size the guardian may open over the mandate's life, 1e8; positive when `hl_hedge` is granted, else may be "0". */
+  max_hedge_e8: string;
   band_bps: number;
   hedge_is_buy: boolean;
 }
@@ -379,7 +418,12 @@ export interface EvmGuard {
   pool: string;
   asset: string;
   address: string;
+  /** Largest repay (or approval) per action, in the asset's units. */
   max_amount: string;
+  /** Most the guardian may repay per UTC day (approvals not counted); at least `max_amount`. */
+  daily_amount: string;
+  /** Most the guardian may repay over the mandate's life; at least `daily_amount`. */
+  total_amount: string;
 }
 
 export interface Mandate {
@@ -406,6 +450,12 @@ export interface MandateView {
   spent: [string, string][];
   moved_today: [string, string][];
   actions_today: number;
+  /** The guardian's Hyperliquid order size today (1e8), and the hedge size it has opened in all. Absent on account code before the caps. */
+  hl_size_today?: string;
+  hl_hedged?: string;
+  /** What the guardian has repaid on the EVM loan today and in all, in the asset's units. */
+  evm_repaid_today?: string;
+  evm_repaid?: string;
 }
 
 export interface HlOrder {
@@ -552,7 +602,7 @@ export interface ReplayCrash {
   start: string;
   end: string;
   dropPct: number;
-  candles: { t: string; price: number; low?: number }[];
+  candles: { t: string; price: number; low?: number; high?: number }[];
   position: {
     startHealth: number;
     warningHours: number | null;
@@ -563,14 +613,61 @@ export interface ReplayCrash {
     healthWith: { t: string; h: number }[];
     healthWithout: { t: string; h: number }[];
   };
-  vault: {
-    navWith: { t: string; v: number }[];
-    navUnhedged: { t: string; v: number }[];
-    maxDrawdownPct: number;
-    maxDrawdownUnhedgedPct?: number;
-    marginMin: number;
-    insurancePaidUsd: number;
-  };
+  vault: ReplayVault;
+}
+
+/** The delta-neutral vault through one replayed episode, crash or spike. */
+export interface ReplayVault {
+  navWith: { t: string; v: number }[];
+  navUnhedged: { t: string; v: number }[];
+  maxDrawdownPct: number;
+  maxDrawdownUnhedgedPct?: number;
+  /** Lowest margin ratio (account value / short notional), at each hour's high. */
+  marginMin: number;
+  insurancePaidUsd: number;
+  /** Each hour: the margin ratio at the hour's high, and at the close (after the rebalance) the short (NEAR), its margin ratio, Hyperliquid's liquidation price for it and the vault's score. */
+  hedge?: { t: string; marginAtHigh?: number | null; short: number; marginRatio: number | null; liqPx: number | null; score: number }[];
+  marginMinAt?: string | null;
+  /** Least distance from an hour's high up to the short's liquidation price, percent. */
+  liquidationHeadroomMinPct?: number | null;
+  liquidatedAt?: string | null;
+  maxScore?: number;
+  pausedHours?: number;
+  reducedLeverageHours?: number;
+  marginNeededHours?: number;
+  hedgedMinPct?: number;
+  hedgedEndPct?: number;
+  /** Share price over the opening one: lowest and at the end, and the unhedged stake at the end. */
+  sharePriceMin?: number;
+  sharePriceEnd?: number;
+  unhedgedEnd?: number;
+  insuranceFundUsd?: number;
+  insuranceFundEndUsd?: number;
+  /** The keeper's negative funding covers and margin top-ups. */
+  insurancePaid?: { negativeFundingUsd: number; marginTopUpUsd: number };
+  /** Margin top-ups paid (each clamped to what the fund may pay), any the vault refused, and the largest shortfall it asked to cover. */
+  marginTopUps?: number;
+  marginTopUpsRefused?: number;
+  marginTopUpsUnpaid?: number;
+  marginShortfallMaxUsd?: number;
+  fundingUsd?: number;
+  rebalances?: number;
+  buybacks?: number;
+  events?: { t: string; kind: string; detail: string }[];
+}
+
+/** A sharp NEAR rally, where the vault's short is at risk. */
+export interface ReplaySpike {
+  id: string;
+  name: string;
+  start: string;
+  end: string;
+  peak: string;
+  risePct: number;
+  startPrice: number;
+  peakPrice: number;
+  candles: { t: string; price: number; low?: number; high?: number }[];
+  vault: ReplayVault;
 }
 
 export interface Replay {
@@ -578,7 +675,8 @@ export interface Replay {
   sources?: Record<string, string>;
   generatedAt?: string;
   crashes: ReplayCrash[];
-  summary: { medianWarningHours: number | null; liquidationsAvoided: number; crashes: number; [k: string]: unknown };
+  spikes?: ReplaySpike[];
+  summary: { medianWarningHours: number | null; liquidationsAvoided: number; crashes: number; spikes?: number; spikeLiquidations?: number; [k: string]: unknown };
   calibration?: { regime: { stressed: number; panic: number; [k: string]: unknown }; [k: string]: unknown };
 }
 

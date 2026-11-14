@@ -128,18 +128,22 @@ describe.skipIf(!url)("new routes on a database", () => {
   test("the replay summary leaves out the hourly series", async () => {
     const r = await app.request("/v1/replay?summary=1");
     if (r.status === 503) return; // no committed replay in this checkout
-    const body = (await r.json()) as { crashes: unknown[]; summary: { crashes: number } };
+    const body = (await r.json()) as { crashes: unknown[]; spikes: unknown[]; summary: { crashes: number; spikes: number } };
     expect(body.crashes).toEqual([]);
+    expect(body.spikes).toEqual([]);
     expect(body.summary.crashes).toBeGreaterThan(0);
+    expect(body.summary.spikes).toBeGreaterThan(0);
   });
 
   test("the replay file is served as written", async () => {
     const r = await app.request("/v1/replay");
     if (r.status === 503) return; // no committed replay in this checkout
-    const body = (await r.json()) as { source: string; crashes: { position: { healthWith: unknown[] } }[]; summary: { crashes: number } };
+    const body = (await r.json()) as { source: string; crashes: { position: { healthWith: unknown[] } }[]; spikes: { vault: { hedge: unknown[] } }[]; summary: { crashes: number; spikes: number } };
     expect(body.source).toContain("binance");
     expect(body.crashes.length).toBe(body.summary.crashes);
     expect(body.crashes[0]!.position.healthWith.length).toBeGreaterThan(24);
+    expect(body.spikes.length).toBe(body.summary.spikes);
+    expect(body.spikes[0]!.vault.hedge.length).toBeGreaterThan(24);
   });
 
   test("the stream hub reads each change once and fans it out to the clients that want it", async () => {

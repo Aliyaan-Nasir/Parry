@@ -9,9 +9,11 @@
 //! Modes: `keys` (the signing and sealing keys), `risk_update` (signed scores and marks for the
 //! risk board), `guardian` (reviewed, signed rescue envelopes), `vault_report` (the vault's
 //! hedge, hedge ratio, risk score and proof of reserves), `certificate` (a signed statement that
-//! an account's health is at least a threshold, with nothing else about the position).
+//! an account's health is at least a threshold, with nothing else about the position), `attest`
+//! (checks the review model's hardware attestation and pins its signing keys on the risk board).
 
 pub mod ai;
+pub mod attest;
 pub mod chain;
 pub mod config;
 pub mod evm;

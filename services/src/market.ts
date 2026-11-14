@@ -5,6 +5,7 @@
  * with MARKET_AGENT_TOKEN, the token the listing was registered with.
  */
 
+import { tremorWords } from "@parryguard/core";
 import { intEnv } from "./lib/config";
 import { db, migrate, setStatus } from "./lib/db";
 import { every, serveHealth } from "./lib/health";
@@ -45,7 +46,7 @@ export function report(checks: RiskCheck[], missing: string[]): string {
     return [...lines, "The job names no NEAR account. Name one or more accounts, for example `alice.near`, and hire again."].join("\n");
   }
   const m = checks[0]?.market;
-  if (m) lines.push(`Scored against NEAR at $${m.price.toFixed(3)}, Tremor volatility ${pct(m.tremor.annual)} a year (${m.tremor.level}), cascade pressure ${m.cascade.pressure.toFixed(2)}.`, "");
+  if (m) lines.push(`Scored against NEAR at $${m.price.toFixed(3)}, ${tremorWords(m.tremor.annual)}, cascade pressure ${m.cascade.pressure.toFixed(2)}.`, "");
   lines.push("| Account | Health | Liquidation price | 24 h liquidation odds | Median time to liquidation | Score |", "| --- | ---: | ---: | ---: | ---: | ---: |");
   for (const c of checks) {
     const p = c.position;

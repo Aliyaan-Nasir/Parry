@@ -44,16 +44,16 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 
 - `get_position_risk(account)`: a protected account's owner, mandate and every position with health, liquidation price, 24 hour liquidation probability, time to liquidation, value at risk, score and tier.
 - `risk_check(account)`: the risk of any NEAR account's lending position, protected or not.
-- `get_market()`: NEAR price, the Tremor volatility index and cascade pressure.
-- `get_vault()`: the vault's state, risk score, share price, NAV, hedge, yield and caps.
+- `get_market()`: NEAR price, the Tremor volatility index (its regime for NEAR and its absolute level, named apart) and cascade pressure.
+- `get_vault()`: the vault's state, risk score, share price, NAV, hedge, yield and caps, and whether it takes deposits now (checked as the contract does: a pause, a report over 15 minutes old, the cap, the oracle off the hedge mark) and why not.
 - `get_reserves()`: every reserve leaf with its proof, verified locally and against the root on the vault contract.
-- `get_guardian_log(account?, limit?)`: guardian decisions with their trigger, action, AI review and outcome.
-- `verify_guardian_decision(id)`: checks a decision's review hash, model signature, enclave signature and envelope against the key on the risk board.
+- `get_guardian_log(account?, limit?)`: guardian decisions in their public form: the observed risk, the action alone, the AI review's model, verdict, signature and hashes, and the outcome; the owner's trigger, target, step order and the review's reasoning stay private.
+- `verify_guardian_decision(id)`: verifies a decision's public record: the model's signature over the exchange, the enclave's signatures over the envelope and the risk-board record with the key in force when they were signed, the board's copy on chain and the decision id; it names the checks that need the owner's private record (the review hash over the reasoning, the facts) as skipped.
 - `simulate_rescue(account)`: what the guardian would do now, unsigned and unlimited.
 - `get_rescue_route(amount_near)`: the Rhea pool against a dry-run NEAR Intents 1Click quote for a rescue swap.
 - `get_status()`: every service's health, the oracle's freshness, the indexer's lag, the gas-key lanes and the treasury.
 - `get_rates()`: every Rhea lending asset's rates, Hyperliquid's NEAR funding and the vault's staking against funding yield, each with its source.
-- `get_crash_replay()`: the risk model, guardian and vault replayed through NEAR's largest historical crashes.
+- `get_crash_replay()`: the risk model, guardian and vault replayed through NEAR's largest historical crashes, and the vault's short through its largest rallies.
 - `get_liquidation_heatmap(network?)`: every Rhea lending borrower's liquidation price, bucketed, and the chained cascades.
 - `get_prices(tokens?)`: USD prices and 24 hour changes of NEAR, the liquid staking tokens, USDC and every Rhea asset.
 - `verify_record(id)`: the API's re-check of a decision id, a certificate hash or a NEAR transaction hash.
@@ -65,7 +65,7 @@ On mainnet the write tools are listed but refuse every call, and the key is neve
 ## Write tools (testnet, agent account only)
 
 - `create_protected_account()`: creates the agent's protected account through the relayer, at most 3 calls per UTC day.
-- `set_mandate(powers, limits, ...)`: sets the guardian mandate on the agent's protected account, with an optional sealed policy, at most 10 calls per UTC day.
+- `set_mandate(powers, limits, ...)`: sets the guardian mandate on the agent's protected account, with an optional sealed policy and optional Hyperliquid (`hl`: per-order, per-day and total hedge caps) and EVM (`evm`: per-repay, per-day and total repay caps) guards, at most 10 calls per UTC day.
 - `vault_deposit(amount_near)`: deposits NEAR from the agent account into the vault, at most 1 NEAR per call and 5 calls per UTC day.
 - `vault_withdraw(shares)`: queues a withdrawal of the agent's vault shares, at most 5 calls per UTC day.
 - `close_position(slippage_bps?)`: closes the Rhea position of the agent's protected account round by round through the API's exchange pool (900 Tgas a round, `retry_close` for a stuck round), at most 300 bps of slippage and 3 calls per UTC day.

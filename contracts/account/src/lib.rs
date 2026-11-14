@@ -63,6 +63,9 @@ const TOKEN_STORAGE: NearToken = NearToken::from_millinear(5);
 #[near(serializers = [json])]
 #[derive(Clone, Debug)]
 #[serde(rename_all = "snake_case")]
+// `SetMandate` carries the whole mandate: the actions are parsed once per call from JSON and
+// never stored, so their size costs nothing a box would save.
+#[allow(clippy::large_enum_variant)]
 pub enum OwnerAction {
     SetMandate {
         mandate: Mandate,

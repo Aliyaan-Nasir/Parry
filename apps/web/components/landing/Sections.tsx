@@ -58,8 +58,8 @@ export function Earn() {
   const share = (history.data ?? []).map((p) => p.sharePriceUsd);
   const r = rates.data;
   const bars = [
-    r?.vault?.netApr != null ? { label: "Parry vault, net", value: r.vault.netApr, source: r.vault.source, strong: true } : null,
-    r?.vault?.stakingApr != null ? { label: "of which LiNEAR staking", value: r.vault.stakingApr, source: r.vault.source } : null,
+    r?.vault?.netApr != null ? { label: "Parry vault, net (testnet)", value: r.vault.netApr, source: r.vault.source, strong: true } : null,
+    r?.vault?.stakingApr != null ? { label: "of which LiNEAR staking (testnet rate)", value: r.vault.stakingApr, source: r.vault.source } : null,
     r?.hyperliquid?.funding24hApr != null ? { label: "Hyperliquid NEAR funding, 24 h", value: r.hyperliquid.funding24hApr, source: r.hyperliquid.source } : null,
     ...(r?.rhea ?? [])
       .filter((a) => ["NEAR", "wNEAR", "USDC"].includes(a.asset))
@@ -69,7 +69,10 @@ export function Earn() {
   return (
     <section id="earn" className="scroll-mt-24 py-24 sm:py-32">
       <div className="mx-auto max-w-[1180px] px-4 sm:px-6">
-        <SectionHead title={["Earn without", "liquidation risk at all."]} lead="A delta-neutral vault for NEAR. Your deposit is staked into LiNEAR, and the vault shorts the same NEAR on Hyperliquid, so a share holds its dollar value while it earns staking yield and funding. Nobody in it can be liquidated." />
+        <SectionHead
+          title={["Earn on NEAR,", "hedged against its price."]}
+          lead="A delta-neutral vault for NEAR. Your deposit is staked into LiNEAR and the vault shorts the same NEAR on Hyperliquid, so the share price barely follows NEAR while it earns staking yield and funding. It still moves with the hedge's profit and loss and with fees, so a share can be worth less than a dollar. No depositor is ever liquidated: the vault's short has its own liquidation price, which the keeper keeps far away with margin."
+        />
         <div className="mt-14 grid gap-6 lg:grid-cols-[1.25fr_1fr]">
           <div className="surface relative overflow-hidden p-6 sm:p-8">
             <VaultDiagram ratio={ratio} insuranceUsd={insurance.data?.available ? Number(insurance.data.valueUsdE6) / 1e6 : null} shareBps={insurance.data?.shareBps ?? r?.vault?.insuranceShareBps ?? 1000} />
@@ -102,6 +105,7 @@ export function Earn() {
                   <li className="text-sm text-muted">Rates load from Rhea lending, Hyperliquid and the vault.</li>
                 )}
               </ul>
+              <p className="mt-4 text-[12px] leading-relaxed text-muted">On testnet the LiNEAR rate moves whenever anyone calls epoch_update_rewards, so the staking leg&apos;s APR is not a market rate.</p>
             </div>
           </div>
         </div>
@@ -246,8 +250,10 @@ export function ReviewProof() {
                 </Link>
               ) : null}
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-muted">{decision ? decision.plan : "The latest executed rescue loads from the guardian's log."}</p>
-            {decision?.review.reasoning ? <blockquote className="mt-4 border-l border-brass-fill/60 pl-4 text-sm leading-relaxed text-fg/85">{decision.review.reasoning}</blockquote> : null}
+            <p className="mt-3 text-sm leading-relaxed text-fg/85">{decision ? (decision.publicPlan ?? decision.plan) : "The latest executed rescue loads from the guardian's log."}</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted">
+              {decision ? `Approved by ${decision.review.model}. ` : ""}The owner&apos;s trigger, target health and step order stay sealed: the public record carries the action, the signatures and the hashes, and only the owner reads the full plan and the review&apos;s reasoning.
+            </p>
             <ul className="mt-6 divide-y divide-line border-t border-line">
               {(checks ?? []).map((c, i) => (
                 <li key={c.name} className={cn("flex items-center justify-between gap-4 py-3 text-sm transition-opacity duration-300", i < shown ? "opacity-100" : "opacity-0")}>

@@ -24,21 +24,21 @@ Writes that change a person's settings need a sign-in (section "Auth").
 | GET | `/v1/risk/{accountId}` | `RiskCheck` for any NEAR account's lending position (rate limited; `503` without a fresh NEAR price) |
 | GET | `/v1/paid/risk/{accountId}` | the same `RiskCheck`, paid per call over x402 on NEAR (see "x402"); the account id and the price are checked before any payment is taken |
 | POST | `/v1/simulate/{accountId}?strategy=repay-first&target=1.45` | `Simulation`: what the guardian would do, unsigned; `strategy` is `repay-first`, `keep-exposure` or `deleverage-only` (`503` without a fresh NEAR price) |
-| GET | `/v1/guardian/decisions?account=&limit=25&cursor=` | `{ items: Decision[], next }`, newest first; `limit` at most 100; pass `next` (a `createdAt`) as `cursor` for the next page |
-| GET | `/v1/guardian/decisions/{id}` | `Decision` (`404` if unknown) |
+| GET | `/v1/guardian/decisions?account=&limit=25&cursor=` | `{ items: Decision[], next }`, newest first; `limit` at most 100; pass `next` (a `createdAt`) as `cursor` for the next page; public records, and the full record for the decision's own account when signed in (auth, see Decision privacy) |
+| GET | `/v1/guardian/decisions/{id}` | `Decision` (`404` if unknown); public, or full for the signed-in owner |
 | GET | `/v1/guardian/decisions/{id}/verify` | `Verification` |
-| GET | `/v1/alerts?account=&status=open` | `Alert[]`, newest first, at most 100; `account` is required (`400`), `status` is optional |
+| GET | `/v1/alerts?account=&status=open` | `Alert[]`, newest first, at most 100; `account` is required (`400`), `status` is optional; a guardian alert's body is its decision's public plan unless signed in as the account |
 | POST | `/v1/alerts/{id}/ack` and `/v1/alerts/{id}/resolve` | `{ id, status }` for an alert of the signed-in account (auth) |
 | POST | `/v1/auth/challenge` and `/v1/auth/verify` | a sign-in challenge and a session token (see "Auth") |
 | GET | `/v1/settings/{accountId}` | `Settings` |
 | PUT | `/v1/settings/{accountId}` | takes `SettingsUpdate`, returns `{ ok: true }` (auth as that account) |
 | POST | `/v1/push/subscribe` | takes a Web Push subscription `{ endpoint, keys: { p256dh, auth } }`, returns `{ ok: true }` (auth) |
-| GET | `/v1/vault` | `VaultState` |
+| GET | `/v1/vault` | `VaultState`, with `depositsOpen` checked as the contract checks a deposit |
 | GET | `/v1/vault/history?days=7` | `VaultPoint[]`, oldest first; `days` 1 to 90 |
 | GET | `/v1/vault/reserves` | `Reserves` with every leaf and its proof (`404` before the first vault report) |
 | GET | `/v1/rates` | `Rates`: every asset Rhea lending lists, Hyperliquid's NEAR funding and the vault's staking against funding yield, each with its source |
-| GET | `/v1/prices?tokens=` | `Prices`: NEAR, the liquid staking tokens, USDC and every Rhea asset with its 24 h change; `tokens` (ids or symbols, comma separated) narrows it; cached for a minute |
-| GET | `/v1/replay` | `Replay`: the risk model, guardian and vault run through NEAR's largest historical crashes (`deployments/replay.json`, written by `pnpm replay`; `503` before it exists) |
+| GET | `/v1/prices?tokens=` | `Prices`: NEAR, the liquid staking tokens, USDC and every Rhea asset with its 24 h change; `tokens` (ids, symbols or aliases such as `NEAR` for wNEAR and `ETH`, comma separated, any case; a testnet id names the mainnet token it mirrors) narrows it; cached for a minute |
+| GET | `/v1/replay` | `Replay`: the risk model, guardian and vault run through NEAR's largest historical crashes, and the vault's short through its largest rallies (`deployments/replay.json`, written by `pnpm replay`; `?summary=1` leaves out the episodes; `503` before it exists) |
 | GET | `/v1/heatmap?network=testnet\|mainnet&asset=NEAR` | `Heatmap`: every Rhea lending borrower's liquidation price, bucketed, and the chained cascades (`400` for another asset) |
 | GET | `/v1/verify/{id}` | `VerifyResult` for a decision id, a certificate hash or a NEAR transaction hash (`404` when it is none of them) |
 | GET | `/v1/watch` | `WatchRow[]`: the signed-in account's watched accounts with live risk (auth) |
@@ -94,7 +94,11 @@ interface Market {
   near: { priceUsd: number; hlMid: number | null; updatedAt: string };
   tremor: {
     sigmaHourly: number; annual: number; level: "calm" | "elevated" | "high" | "extreme";
-    regime: "calm" | "stressed" | "panic";   // thresholds calibrated on NEAR's crashes (docs/risk-model.md, section 2)
+    regime: "calm" | "stressed" | "panic";   // thresholds chosen out of sample on NEAR's history (docs/risk-model.md, section 2): the label to read
+    // Two scales: `level` is fixed absolute bands (calm under 40 % a year, elevated under 80 %, high under 130 %, extreme above),
+    // `regime` is calibrated on NEAR, which is volatile, so 135 % a year reads "extreme" and "stressed" at once.
+    summary: string;                          // both in one sentence, e.g. "Tremor 135% a year: stressed for NEAR (...), extreme on the absolute scale (...)"
+    scales: { regime: string; level: string };
     windows: { hours: number; weight: number; sigma: number | null; samples: number }[];
   };
   cascade: {
@@ -179,16 +183,23 @@ interface Decision {
   account: string;
   venue: Venue;
   action: string;        // repay | add_collateral | deleverage | hl_reduce | hl_hedge | evm_approve | evm_repay
-  plan: string;
-  trigger: { score: number; tier: Tier; healthBps: number };
+  plan: string;          // the public plan, or the full plan (projected health, target, why this step) for the signed-in owner
+  publicPlan: string;    // the action alone, e.g. "Repay 3.81 USDC from the reserve."
+  visibility: "public" | "owner";
+  trigger: { score: number; tier: Tier; healthBps: number };   // the observed risk when the guardian acted (the envelope's), not the owner's sealed trigger
   outcome: "executed" | "refused" | "rolled_back" | "rejected_by_review" | "failed"; // failed: the EVM transaction reverted or its signature did not recover
   detail: string | null; // why it was refused, rolled back or failed
   review: {
     model: string; chatId: string; reviewHash: string; requestHash: string; responseHash: string;
-    verdict: "approve" | "reject"; reasoning: string; signingAddress: string; signedText: string; signature: string; signatureKind: string;
+    verdict: "approve" | "reject"; signingAddress: string; signedText: string; signature: string; signatureKind: string;
+    reasoningHash: string | null;    // SHA-256 of the reasoning, as the risk board records it
+    reasoning?: string;              // owner only
   };
   envelope: string | null;           // the exact envelope JSON text the enclave signed
   envelopeSignature: string | null;  // the enclave's ed25519 signature over it (base64)
+  decisionJson: string | null;       // the enclave-signed risk-board record (public when its plan is the public one; owner only for records an earlier build signed with the full plan)
+  decisionSignature: string | null;  // the enclave's ed25519 signature over "parry-risk:v1:" + decisionJson (base64)
+  facts?: Record<string, unknown> | null;   // owner only: what the review model saw, the sealed target and trigger among them
   txs: {
     action: string | null; record: string | null;
     hyperliquid: string | null;  // Hyperliquid's answer to the signed order (JSON text)
@@ -199,7 +210,7 @@ interface Decision {
   healthBefore: number | null;
   healthAfter: number | null;
   routes: RouteComparison | null;
-  explanation: { step: string; why: string; skipped: { step: string; reason: string }[] } | null; // why the planner chose this step and skipped the earlier ones in the policy's order
+  explanation: { step: string; why: string; skipped: { step: string; reason: string }[] } | null; // owner only (null in the public record): why the planner chose this step and skipped the earlier ones in the policy's order
   createdAt: string;
 }
 
@@ -248,7 +259,12 @@ interface SettingsUpdate {     // every field optional; only the given ones chan
 
 interface VaultState {
   network: string;
-  paused: boolean;
+  paused: boolean;                 // the contract's pause flag (the owner's or the risk score's)
+  depositsOpen: boolean;           // every check a deposit passes in contracts/vault: no pause, a report at most 900 s old, room under the cap, a fresh oracle price within 2 % of the hedge mark
+  depositsClosedReason: string | null;   // e.g. "the vault's report is 27 min old (...); deposits reopen with the next report"
+  depositsClosedBy: "paused" | "risk" | "no_report" | "stale_report" | "cap" | "no_price" | "price_off_mark" | null;
+  reportAgeSeconds: number | null;
+  depositRoomNear: string;         // yoctoNEAR the cap still takes
   riskScore: number | null;
   reportAt: string | null;
   sharePriceUsd: number;
@@ -307,10 +323,10 @@ interface Prices {
 interface Replay {
   source: string;                      // the exact candle URL
   sources: Record<string, string>;     // candles, funding, staking, model
-  params: { guardian: object; vault: object; crashWindowHours: number; leadHours: number; tailHours: number };
+  params: { guardian: object; vault: object; crashWindowHours: number; spikeWindowHours: number; leadHours: number; tailHours: number; selection: string };
   crashes: {
     id: string; name: string; start: string; end: string; trough: string; dropPct: number;
-    candles: { t: string; price: number; low: number }[];   // hourly closes and lows, 24 h before the peak to 24 h after the trough
+    candles: { t: string; price: number; low: number; high: number }[];   // hourly closes, lows and highs, 24 h before the peak to 24 h after the trough
     position: {
       startHealth: number;             // 1.30 at the peak
       warningHours: number | null;     // the model's first danger score to the liquidation without Parry
@@ -321,15 +337,47 @@ interface Replay {
       steps: { t: string; action: string; plan: string; healthBefore: number; healthAfter: number }[];
       healthWith: { t: string; h: number }[]; healthWithout: { t: string; h: number }[];
     };
-    vault: {
-      navWith: { t: string; v: number }[]; navUnhedged: { t: string; v: number }[];
-      maxDrawdownPct: number; maxDrawdownUnhedgedPct: number; marginMin: number;
-      insuranceFundUsd: number; insurancePaidUsd: number; insurancePaid: { negativeFundingUsd: number; marginTopUpUsd: number };
-      fundingUsd: number; rebalances: number;
-    };
+    vault: ReplayVault;
   }[];
-  summary: { crashes: number; medianWarningHours: number | null; minWarningHours: number | null; liquidationsWithout: number; liquidationsAvoided: number; [k: string]: unknown };
-  calibration: { regime: { stressed: number; panic: number; panicHitRate: number; panicFalseRate: number; [k: string]: unknown }; tremorPercentiles: Record<string, number> };
+  spikes: {                            // the vault through NEAR's largest 72-hour rallies, from the low
+    id: string; name: string; start: string; end: string; peak: string; risePct: number; startPrice: number; peakPrice: number;
+    candles: { t: string; price: number; low: number; high: number }[];   // 24 h before the low to 24 h after the peak
+    vault: ReplayVault;
+  }[];
+  summary: {
+    crashes: number; medianWarningHours: number | null; minWarningHours: number | null; liquidationsWithout: number; liquidationsAvoided: number;
+    spikes: number; spikeLiquidations: number; spikeMinMarginRatio: number; spikeClosestLiquidationPct: number | null; spikeMaxScore: number;
+    spikePausedHours: number; spikeReducedLeverageHours: number; spikeMarginNeededHours: number; spikeMarginTopUps: number; spikeMarginTopUpUsd: number; spikeMarginTopUpsRefused: number;
+    spikeInsurancePaidUsd: number; crashInsurancePaidUsd: number; medianSpikeHedgedEndPct: number; [k: string]: unknown;
+  };
+  calibration: {
+    regime: {                          // chosen out of sample (docs/risk-model.md, section 2)
+      stressed: number; panic: number; panicHitRate: number; panicFalseRate: number; method: string;
+      quarantineHours: number; calibrationCrashes: { start: string; trough: string; dropPct: number }[];
+      test: { crashes: { hours: number; panicRate: number; stressedOrWorseRate: number }; spikes: { hours: number; panicRate: number; stressedOrWorseRate: number } };
+      [k: string]: unknown;
+    };
+    inSample: { stressed: number; panic: number; panicHitRate: number; panicFalseRate: number; note: string };   // for comparison only
+    tremorPercentiles: Record<string, number>;
+  };
+}
+
+interface ReplayVault {
+  navWith: { t: string; v: number }[]; navUnhedged: { t: string; v: number }[];
+  hedge: { t: string; marginAtHigh: number | null; short: number; marginRatio: number | null; liqPx: number | null; score: number }[];   // each hour: margin ratio at the high, then after the close's report and rebalance
+  maxDrawdownPct: number; maxDrawdownUnhedgedPct: number;
+  marginMin: number; marginMinAt: string | null;             // lowest margin ratio, at an hour's high
+  liquidationHeadroomMinPct: number | null;                  // least distance from an hour's high up to the short's liquidation price
+  liquidatedAt: string | null;                               // an hour's high reached the short's liquidation price
+  maxScore: number; pausedHours: number; reducedLeverageHours: number; marginNeededHours: number;
+  hedgedMinPct: number; hedgedEndPct: number;                // the short as a share of the NEAR held
+  sharePriceMin: number; sharePriceEnd: number; unhedgedEnd: number;   // over the opening NAV
+  insuranceFundUsd: number; insuranceFundEndUsd: number;
+  insurancePaidUsd: number; insurancePaid: { negativeFundingUsd: number; marginTopUpUsd: number };   // the keeper's two payouts
+  marginTopUps: number; marginShortfallMaxUsd: number;       // top-ups paid, each clamped to what the fund may pay, and the largest shortfall asked
+  marginTopUpsUnpaid: number; marginTopUpsRefused: number;   // hours the fund could pay nothing (day's cap spent, or a payout that hour), and refusals
+  fundingUsd: number; rebalances: number; buybacks: number;
+  events: { t: string; kind: string; detail: string }[];    // rebalances, lever changes, negative funding covers, top-ups (paid, unpaid or refused), a liquidation
 }
 
 interface Heatmap {
@@ -470,6 +518,15 @@ A proof that does not check out answers `401`.
 
 The SDK signs in with a NEAR owner's full-access key in one call (`parry.signIn(accountId, privateKey)`).
 
+## Decision privacy
+
+The owner's trigger, target health and step order are sealed to the enclave, and the full plan, the planner's reasons, the review's reasoning and the facts the review saw all name them.
+Every route that serves decisions (the list, one decision, the stream, the MCP guardian log) and the guardian alerts serve the public record: the action alone (`publicPlan`), the observed risk, the outcome, the transactions, the review's model, chat id, verdict, signing address, signature, signed text and hashes, the envelope and its signature, and the enclave-signed risk-board record when it carries the public plan.
+A request signed in (`Authorization: Bearer <token>`, see Auth) as the decision's own account gets the full record with `visibility: "owner"`; such responses carry `vary: authorization` and `cache-control: private, no-store`.
+Decisions stored before the guardian kept a public plan have it derived by redaction (the sentence up to the first colon, without the target, trigger or order), and a risk-board record an earlier enclave build signed with the full plan is served only to the owner.
+`/v1/guardian/decisions/{id}/verify` checks every decision with the full data for anyone and returns only the checks.
+The SDK's `verifyDecision` verifies a public record as far as public data goes (the model's signature over the exchange, the enclave's signatures over the envelope and over the public record, the board's copy on chain, the decision id) and the owner's record in full (also the review hash over the reasoning, the reasoning hash and the facts); its `scope` says which, and each skipped check says why.
+
 ## Sources
 
 Every number read live says where it came from.
@@ -491,7 +548,7 @@ A NEAR transaction hash is read from FastNEAR's transactions API: a risk board `
 
 `GET /v1/stream` answers `text/event-stream`.
 `events` (comma separated) picks among `alert`, `decision`, `position`, `price`, `vault` and `status` (all by default; another name is a `400`), and `account` keeps only that account's alerts, decisions and positions.
-Each message's `event` is the name and its `data` is one item as the matching GET returns it: an `Alert`, a `Decision`, a `Position`, one `Prices` token (NEAR from the oracle sample, with the change against the sample a day before), the `VaultState`, or one `Status` service.
+Each message's `event` is the name and its `data` is one item as the matching GET returns it to a request that is not signed in (decisions and guardian alerts in their public form): an `Alert`, a `Decision`, a `Position`, one `Prices` token (NEAR from the oracle sample, with the change against the sample a day before), the `VaultState`, or one `Status` service.
 One poller per API process reads Postgres every 2 seconds for what changed (and the vault's chain state once per vault report), only while a client is connected, and fans each item out to every client, so the cost does not grow with the number of clients.
 A comment line (`: heartbeat`) arrives every 15 seconds, and `retry: 5000` asks the browser to reconnect after 5 seconds.
 Only changes after the connection are sent: read the GET routes first.
@@ -499,8 +556,12 @@ The SDK's `parry.subscribe({ events, account, onEvent })` uses an EventSource wh
 
 ## x402
 
-`GET /v1/paid/risk/{accountId}` without payment answers `402` with `{ x402Version: 2, error: "payment required", accepts: [{ scheme: "exact", network: "near:testnet", asset: "<usdc>", amount: "10000", payTo: "<api account>", resource, description, maxTimeoutSeconds: 120 }] }`.
-The client signs a NEP-366 delegate action holding one `ft_transfer` of `amount` to `payTo` (1 yoctoNEAR attached, at most 50 Tgas, from a full-access key) and repeats the request with `X-PAYMENT: base64(JSON { x402Version: 2, scheme: "exact", network, payload: { signedDelegateAction: "<base64 borsh>" } })`.
-The API verifies the delegate (signature, asset, method, amount, recipient, gas, an unused nonce, and expiry within 240 blocks), submits it through the relayer, and once the transfer settled returns the `RiskCheck` with `X-PAYMENT-RESPONSE: base64(JSON { success: true, transaction, network })`.
-A payment that fails a check answers `402` with the same body and `error` set to the reason.
+The endpoint follows x402 v2 over HTTP with the `exact` scheme on NEAR ([x402 specs](https://github.com/coinbase/x402/tree/main/specs)); every x402 header is base64 of JSON.
+`GET /v1/paid/risk/{accountId}` without payment answers `402` with the `PaymentRequired` object in the `PAYMENT-REQUIRED` header and as the JSON body: `{ x402Version: 2, error: "payment required", resource: { url, description, mimeType: "application/json" }, accepts: [{ scheme: "exact", network: "near:testnet", asset: "<usdc>", amount: "10000", payTo: "<api account>", maxTimeoutSeconds: 240 }] }`.
+`resource.url` is the public https URL of the request, path and query included (from `PUBLIC_API_URL`, else the proxy's `X-Forwarded-Proto` and `X-Forwarded-Host`).
+The client signs a NEP-366 delegate action holding one `ft_transfer` of `amount` to `payTo` (1 yoctoNEAR attached, at most 50 Tgas, from a full-access key, valid for at most `maxTimeoutSeconds` blocks) and repeats the request with `PAYMENT-SIGNATURE: base64(JSON { x402Version: 2, resource, accepted: <the chosen entry of accepts>, payload: { signedDelegateAction: "<base64 borsh>" } })`.
+The API verifies the payment (the accepted entry and the resource match what it asked, then the delegate's signature, asset, method, amount, recipient, gas, an unused nonce, and expiry within `maxTimeoutSeconds` blocks), submits it through the relayer, and once the transfer settled returns the `RiskCheck` with `PAYMENT-RESPONSE: base64(JSON { success: true, transaction, network, payer })`.
+A payment that fails a check answers `402` with the same `PAYMENT-REQUIRED` header and body, `error` set to the reason; one that did not settle also carries `PAYMENT-RESPONSE` with `success: false` and `errorReason`.
+The same payment sent again while it is being settled is refused (`duplicate_settlement`).
+For x402 v1 clients the API also reads the payment from `X-PAYMENT` (including the earlier payload with `scheme` and `network` at the top level instead of `accepted`) and sends the settlement in `X-PAYMENT-RESPONSE` too.
 On testnet the asset is Parry's test USDC (free from its faucet).

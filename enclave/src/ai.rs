@@ -22,6 +22,7 @@ the owner asked the guardian to act at that score or health), (2) the action red
 sized to it, that the next step's repay needs, (3) the amounts are proportionate \
 (no larger than needed to reach the target health and within the stated limits), and (4) nothing in it moves funds anywhere but the \
 lending protocol, the exchange round trip or the owner's own positions. Otherwise reject. \
+Token amounts inside proposed_action are integer base units (wNEAR has 24 decimals, USDC 6); proposed_amounts gives the same amounts in whole tokens, so judge sizes by proposed_amounts. \
 Answer with only a JSON object: {\"verdict\": \"approve\" or \"reject\", \"reasoning\": \"at most three sentences\"}.";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -76,7 +77,16 @@ pub fn recover_address(text: &str, signature_hex: &str) -> Result<String> {
     ))
 }
 
+/// How many times an empty or unreadable answer is asked again before it counts as a rejection.
+const ANSWER_ATTEMPTS: usize = 3;
+
 /// Asks the model to review `facts`; returns the verified review.
+///
+/// An empty or unreadable answer (no JSON verdict) is a fault of the model's run, not a judgement
+/// of the plan, so the same question is asked again, up to `ANSWER_ATTEMPTS` times; only a clear
+/// approval approves, and an answer that is still unreadable after that is a rejection (the
+/// guardian fails closed). Each attempt is its own signed exchange; the one returned is the one
+/// whose verdict counts.
 pub fn review(io: &dyn Io, facts: &Value) -> Result<Review> {
     let key = io
         .secret("NEARAI_API_KEY")
@@ -100,37 +110,69 @@ pub fn review(io: &dyn Io, facts: &Value) -> Result<Review> {
         "stream": false,
     })
     .to_string();
-    let response = io.post(
-        &format!("{}/chat/completions", config::NEARAI),
-        &headers,
-        body.as_bytes(),
-    )?;
-    let request_hash = hex::encode(crate::sha256(body.as_bytes()));
-    let response_hash = hex::encode(crate::sha256(&response));
-    let v: Value =
-        serde_json::from_slice(&response).map_err(|e| format!("review response: {e}"))?;
-    let chat_id = v["id"]
-        .as_str()
-        .ok_or("review response has no id")?
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let response = io.post(
+            &format!("{}/chat/completions", config::NEARAI),
+            &headers,
+            body.as_bytes(),
+        )?;
+        let request_hash = hex::encode(crate::sha256(body.as_bytes()));
+        let response_hash = hex::encode(crate::sha256(&response));
+        let v: Value =
+            serde_json::from_slice(&response).map_err(|e| format!("review response: {e}"))?;
+        let chat_id = v["id"]
+            .as_str()
+            .ok_or("review response has no id")?
+            .to_string();
+        let content = v["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or_default();
+        let parsed = json_object(content).unwrap_or(Value::Null);
+        let readable = parsed["verdict"] == "approve" || parsed["verdict"] == "reject";
+        if !readable && attempt < ANSWER_ATTEMPTS {
+            continue;
+        }
+        // An answer that is not a clear approval is a rejection: the guardian fails closed.
+        let verdict = if parsed["verdict"] == "approve" {
+            "approve"
+        } else {
+            "reject"
+        }
         .to_string();
-    let content = v["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or_default();
-    // An answer that is not a clear approval is a rejection: the guardian fails closed.
-    let parsed = json_object(content).unwrap_or(Value::Null);
-    let verdict = if parsed["verdict"] == "approve" {
-        "approve"
-    } else {
-        "reject"
-    }
-    .to_string();
-    let reasoning: String = parsed["reasoning"]
-        .as_str()
-        .unwrap_or(content)
+        let reasoning: String = if readable {
+            parsed["reasoning"].as_str().unwrap_or_default().to_string()
+        } else if content.trim().is_empty() {
+            format!("the model gave no answer in {ANSWER_ATTEMPTS} attempts, so the plan is not approved")
+        } else {
+            content.to_string()
+        }
         .chars()
         .take(600)
         .collect();
+        return signed_review(
+            io,
+            &auth,
+            chat_id,
+            request_hash,
+            response_hash,
+            verdict,
+            reasoning,
+        );
+    }
+}
 
+/// Fetches and checks the model's TEE signature over one exchange.
+fn signed_review(
+    io: &dyn Io,
+    auth: &str,
+    chat_id: String,
+    request_hash: String,
+    response_hash: String,
+    verdict: String,
+    reasoning: String,
+) -> Result<Review> {
     let url = format!(
         "{}/signature/{}?model={}&signing_algo=ecdsa",
         config::NEARAI,
@@ -140,7 +182,7 @@ pub fn review(io: &dyn Io, facts: &Value) -> Result<Review> {
     let mut last_err = String::new();
     for _ in 0..4 {
         match io
-            .get(&url, &[("authorization", auth.as_str())])
+            .get(&url, &[("authorization", auth)])
             .and_then(|b| serde_json::from_slice::<Value>(&b).map_err(|e| e.to_string()))
         {
             Ok(sig) if sig["signature"].is_string() => {

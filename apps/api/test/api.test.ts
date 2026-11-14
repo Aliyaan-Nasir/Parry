@@ -8,7 +8,10 @@ import postgres from "postgres";
 import { migrate } from "@parryguard/services/lib/db";
 import { nep413Payload } from "../src/auth";
 import { recoverEip191, reviewHash } from "../src/verify";
-import { requirements } from "../src/x402";
+import { DelegateAction, parsePublicKey, serializeDelegateAction } from "near-kit";
+import { Hono } from "hono";
+import { decodePaymentRequired, decodePaymentResponse, encodePaymentHeader, toBase58, type PaymentRequired } from "@parryguard/sdk";
+import { paidRisk, requirement, requirements, resourceUrl, type PaidDeps } from "../src/x402";
 
 describe("decision verification", () => {
   test("recovers an EIP-191 signer and hashes the review in the enclave's field order", () => {
@@ -43,11 +46,128 @@ describe("NEP-413 sign-in payload", () => {
 });
 
 describe("x402", () => {
-  test("advertises an exact NEAR payment in test USDC", () => {
-    process.env.X402_PAY_TO = "api.parry.testnet";
-    const r = requirements("http://x/v1/paid/risk/a.testnet");
+  process.env.X402_PAY_TO = "api.parry.testnet";
+  const PROXIED = { "x-forwarded-proto": "https", "x-forwarded-host": "api.parry.market" };
+  const RESOURCE = "https://api.parry.market/v1/paid/risk/alice.testnet";
+  const payerSeed = sha256(utf8ToBytes("x402 payer"));
+  const payerKey = `ed25519:${toBase58(ed25519.getPublicKey(payerSeed))}`;
+
+  /** A signed delegate `ft_transfer`, encoded as borsh(DelegateAction) ++ ed25519 signature. */
+  const delegate = (amount = "10000", maxBlockHeight = 1_120n) => {
+    const req = requirement();
+    const args = utf8ToBytes(JSON.stringify({ receiver_id: req.payTo, amount }));
+    const actions = [{ functionCall: { methodName: "ft_transfer", args, gas: 30_000_000_000_000n, deposit: 1n } }];
+    const signed = serializeDelegateAction(new DelegateAction("agent.parry.testnet", req.asset, actions as never, 42n, maxBlockHeight, parsePublicKey(payerKey)));
+    return Buffer.concat([signed.subarray(4), Buffer.from([0]), ed25519.sign(sha256(signed), payerSeed)]).toString("base64");
+  };
+
+  const harness = (over: Partial<PaidDeps> = {}) => {
+    const relayed: string[] = [];
+    const recorded: unknown[] = [];
+    const deps: PaidDeps = {
+      checkOnChain: async () => ({ ok: true, blockHeight: 1_000n }),
+      relay: async (d) => (relayed.push(d), { txHash: "paidTx1" }),
+      record: async (p) => void recorded.push(p),
+      ...over,
+    };
+    const app = new Hono();
+    app.get("/v1/paid/risk/:id", (c) => paidRisk(c, null as never, async () => ({ account: c.req.param("id") }), deps));
+    const call = (headers: Record<string, string> = {}) => app.request("http://localhost:4000/v1/paid/risk/alice.testnet", { headers: { ...PROXIED, ...headers } });
+    return { call, relayed, recorded };
+  };
+  const v2 = (signedDelegateAction = delegate(), resource = RESOURCE) =>
+    encodePaymentHeader({ x402Version: 2, resource: { url: resource }, accepted: requirement(), payload: { signedDelegateAction } });
+
+  test("advertises an exact NEAR payment in test USDC, in x402 v2's shape", () => {
+    const r = requirements("https://api.parry.market/v1/paid/risk/a.testnet");
     expect(r.x402Version).toBe(2);
-    expect(r.accepts[0]).toMatchObject({ scheme: "exact", network: "near:testnet", amount: "10000", payTo: "api.parry.testnet" });
+    expect(r.resource).toMatchObject({ url: "https://api.parry.market/v1/paid/risk/a.testnet", mimeType: "application/json" });
+    expect(r.accepts[0]).toEqual({ scheme: "exact", network: "near:testnet", asset: requirement().asset, amount: "10000", payTo: "api.parry.testnet", maxTimeoutSeconds: 240 });
+  });
+
+  test("the resource is the public https URL behind the proxy, with path and query", () => {
+    const h = (headers: Record<string, string>) => (name: string) => headers[name];
+    const url = "http://localhost:4000/v1/paid/risk/a.testnet?x=1";
+    expect(resourceUrl(url, h(PROXIED), "")).toBe("https://api.parry.market/v1/paid/risk/a.testnet?x=1");
+    expect(resourceUrl(url, h({ "x-forwarded-proto": "https, http", host: "api.parry.market" }), "")).toBe("https://api.parry.market/v1/paid/risk/a.testnet?x=1");
+    // A configured public URL wins over the headers.
+    expect(resourceUrl(url, h({ "x-forwarded-proto": "http", "x-forwarded-host": "evil.example" }), "https://api.parry.market/")).toBe("https://api.parry.market/v1/paid/risk/a.testnet?x=1");
+    // Without a proxy, the request's own URL; a malformed host is ignored.
+    expect(resourceUrl(url, h({}), "")).toBe(url);
+    expect(resourceUrl(url, h({ "x-forwarded-proto": "gopher", "x-forwarded-host": "a b/c" }), "")).toBe(url);
+  });
+
+  test("without payment answers 402 with PAYMENT-REQUIRED and the same JSON body", async () => {
+    delete process.env.PUBLIC_API_URL;
+    const r = await harness().call();
+    expect(r.status).toBe(402);
+    const body = (await r.json()) as PaymentRequired;
+    expect(body.resource.url).toBe(RESOURCE);
+    expect(body.error).toBe("payment required");
+    expect(decodePaymentRequired(r.headers.get("payment-required")!)).toEqual(body);
+  });
+
+  test("a v2 PAYMENT-SIGNATURE is verified, relayed once and answered with PAYMENT-RESPONSE and X-PAYMENT-RESPONSE", async () => {
+    const t = harness();
+    const r = await t.call({ "payment-signature": v2() });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ account: "alice.testnet" });
+    const settled = { success: true, transaction: "paidTx1", network: "near:testnet", payer: "agent.parry.testnet" };
+    expect(decodePaymentResponse(r.headers.get("payment-response")!)).toEqual(settled);
+    expect(decodePaymentResponse(r.headers.get("x-payment-response")!)).toEqual(settled);
+    expect(t.relayed).toHaveLength(1);
+    expect(t.recorded).toEqual([{ txHash: "paidTx1", payer: "agent.parry.testnet", amount: "10000", path: "/v1/paid/risk/alice.testnet" }]);
+  });
+
+  test("the v1 X-PAYMENT header with an SDK 0.1 payload is still accepted", async () => {
+    const old = Buffer.from(JSON.stringify({ x402Version: 2, scheme: "exact", network: "near:testnet", payload: { signedDelegateAction: delegate() } })).toString("base64");
+    const r = await harness().call({ "x-payment": old });
+    expect(r.status).toBe(200);
+    expect(decodePaymentResponse(r.headers.get("payment-response")!).transaction).toBe("paidTx1");
+  });
+
+  test("a payment for another resource, amount or lifetime is refused before relaying", async () => {
+    const t = harness();
+    const refused = async (header: string) => {
+      const r = await t.call({ "payment-signature": header });
+      expect(r.status).toBe(402);
+      expect(r.headers.get("payment-required")).toBeTruthy();
+      return ((await r.json()) as PaymentRequired).error;
+    };
+    expect(await refused(v2(delegate(), "http://localhost:4000/v1/paid/risk/alice.testnet"))).toBe("the payment is for another resource");
+    expect(await refused(v2(delegate("9999")))).toBe("ft_transfer must move exactly 10000");
+    expect(await refused(v2(delegate("10000", 1_241n)))).toBe("delegate is valid for too long");
+    expect(await refused("not base64 json")).toContain("base64 JSON");
+    expect(t.relayed).toHaveLength(0);
+  });
+
+  test("a payment that did not settle answers 402 with a failed PAYMENT-RESPONSE", async () => {
+    const r = await harness({ relay: async () => ({ error: "insufficient balance" }) }).call({ "payment-signature": v2() });
+    expect(r.status).toBe(402);
+    expect(decodePaymentResponse(r.headers.get("payment-response")!)).toEqual({ success: false, transaction: "", network: "near:testnet", errorReason: "payment did not settle: insufficient balance" });
+  });
+
+  test("the same payment sent twice at once is relayed once", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const t = harness({ relay: async () => (await gate, { txHash: "paidTx1" }) });
+    const header = v2();
+    const a = t.call({ "payment-signature": header });
+    await new Promise((r) => setTimeout(r, 10));
+    const b = await t.call({ "payment-signature": header });
+    expect(b.status).toBe(402);
+    expect(((await b.json()) as PaymentRequired).error).toContain("duplicate_settlement");
+    release();
+    expect((await a).status).toBe(200);
+  });
+
+  test("CORS lets browsers send PAYMENT-SIGNATURE and read the x402 answers", async () => {
+    const { createApp } = await import("../src/app");
+    const app = createApp(null as never);
+    const pre = await app.request("/v1/paid/risk/alice.testnet", { method: "OPTIONS", headers: { origin: "https://parry.market", "access-control-request-method": "GET", "access-control-request-headers": "payment-signature" } });
+    expect(pre.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("payment-signature");
+    const got = await app.request("/v1/status/nope", { headers: { origin: "https://parry.market" } });
+    expect(got.headers.get("access-control-expose-headers")?.toLowerCase()).toBe("payment-required,payment-response,x-payment-response");
   });
 });
 

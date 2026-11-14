@@ -80,7 +80,7 @@ export async function renderOgImage(): Promise<ImageResponse> {
             Liquidation, turned aside.
           </div>
           <div style={{ marginTop: 24, fontSize: 28, lineHeight: 1.4, color: ink.muted, maxWidth: 820 }}>
-            A guardian that can only protect, reviewed by verifiable AI. And a vault with no liquidation risk.
+            A guardian that can only protect, reviewed by verifiable AI. And a hedged vault that never liquidates a depositor.
           </div>
         </div>
 

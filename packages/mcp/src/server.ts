@@ -125,7 +125,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     () =>
       guard(async () => {
         const m = await parry.market();
-        return ok(`NEAR $${m.near.priceUsd}; Tremor ${m.tremor.level}; cascade pressure ${m.cascade.pressure}.`, m as unknown as Record<string, unknown>);
+        return ok(`NEAR $${m.near.priceUsd}; ${(m.tremor as { summary?: string }).summary ?? `Tremor ${Math.round(Number(m.tremor.annual ?? 0) * 100)}% a year (${(m.tremor as { regime?: string }).regime ?? m.tremor.level})`}; cascade pressure ${m.cascade.pressure}.`, m as unknown as Record<string, unknown>);
       }),
   );
 
@@ -134,7 +134,7 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     {
       title: "Delta-neutral vault",
       description:
-        "Reads the delta-neutral NEAR vault from the Parry API: whether deposits are paused, its 0 to 100 risk score, share price, NAV, the LiNEAR stake, the Hyperliquid short hedge, yield, " +
+        "Reads the delta-neutral NEAR vault from the Parry API: whether it takes deposits now and why not (a pause, a report older than 15 minutes, the cap, the oracle off the hedge mark), its 0 to 100 risk score, share price, NAV, the LiNEAR stake, the Hyperliquid short hedge, yield, " +
         "the reserves summary, caps and queue length. Changes nothing.",
       inputSchema: {},
       annotations: read,
@@ -142,7 +142,16 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     () =>
       guard(async () => {
         const v = await parry.vault();
-        return ok(`Risk score ${v.riskScore}; share price $${v.sharePriceUsd}; NAV $${v.navUsd}; ${v.paused ? "deposits paused" : "deposits open"}.`, v as unknown as Record<string, unknown>);
+        // An API before the deposit checks names only the pause flag: say what it can.
+        const deposits =
+          v.depositsOpen === undefined
+            ? v.paused
+              ? "deposits paused"
+              : "not paused (this API does not check the report's age)"
+            : v.depositsOpen
+              ? "deposits open"
+              : `deposits closed: ${v.depositsClosedReason ?? v.depositsClosedBy ?? "see the vault state"}`;
+        return ok(`Risk score ${v.riskScore}; share price $${v.sharePriceUsd}; NAV $${v.navUsd}; ${deposits}.`, v as unknown as Record<string, unknown>);
       }),
   );
 
@@ -177,7 +186,8 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     {
       title: "Guardian decisions",
       description:
-        "Reads the guardian's decisions from the Parry API, newest first: the trigger, the planned action, the AI review (model, verdict, reasoning, signature) and the outcome and transactions. " +
+        "Reads the guardian's decisions from the Parry API, newest first: the observed risk, the action (its public plan), the AI review (model, verdict, signature, hashes) and the outcome and transactions. " +
+        "The owner's sealed trigger, target health and step order, the planner's reasons and the review's reasoning are private to each account's owner and are not in this public log. " +
         "Optionally for one account. Changes nothing.",
       inputSchema: {
         account: accountArg.optional().describe("Only decisions about this protected account."),
@@ -197,26 +207,37 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     {
       title: "Verify a guardian decision",
       description:
-        "Verifies one guardian decision independently of the API's own claims: recomputes the review hash, checks the model's signature covers this exact request and response and recovers to its signing address (EIP-191), " +
-        "checks the action envelope is signed by the enclave key read from the risk board contract and carries this review hash, and that the decision id is the envelope's hash. " +
-        "Reads the decision from the Parry API and the key from the chain. Changes nothing.",
+        "Verifies one guardian decision independently of the API's own claims, as far as public data goes: checks the model's signature covers this exact request and response and recovers to its signing address (EIP-191), " +
+        "that the action envelope is signed by the enclave key the risk board trusted when it was issued and carries the review hash, that the decision id is the envelope's hash, " +
+        "that the public risk-board record is signed by the enclave and matches the board's copy on chain. The review hash over the reasoning and the facts are the owner's and are skipped on the public record; each skipped check says why. " +
+        "Reads the decision from the Parry API and the keys and the record from the chain. Changes nothing.",
       inputSchema: { id: z.string().min(1).max(128).describe("The decision id (its envelope hash).") },
       annotations: read,
     },
     ({ id }) =>
       guard(async () => {
         const decision = await parry.decision(id);
-        let enclavePublicKey: string | null = null;
-        let keySource = "risk board contract";
+        let keySource = "the risk board's key history (the key in force when it was signed)";
+        let verification;
         try {
-          enclavePublicKey = (await parry.enclave()).key.public_key;
+          verification = await parry.verifyDecision(decision);
         } catch (e) {
           keySource = `unavailable: ${(e as Error).message}`;
+          verification = verifyDecision(decision, { enclavePublicKey: null });
         }
-        const verification = verifyDecision(decision, { enclavePublicKey });
         const failed = verification.checks.filter((c) => c.status === "fail").map((c) => c.name);
-        const summary = verification.ok ? "Verified." : `NOT verified${failed.length ? `: ${failed.join(", ")} failed` : ""}.`;
-        return ok(summary, { id, verification, enclavePublicKey, keySource, decision: { account: decision.account, action: decision.action, outcome: decision.outcome, verdict: decision.review.verdict } });
+        const ran = verification.checks.filter((c) => c.status !== "skip").length;
+        const skipped = verification.checks.filter((c) => c.status === "skip").map((c) => c.name);
+        const scope = verification.scope === "public" ? "the public record" : "the owner's full record";
+        const summary =
+          (verification.ok ? `Verified (${scope}: ${ran} checks ran` : `NOT verified (${scope}${failed.length ? `: ${failed.join(", ")} failed` : ""}`) +
+          `${skipped.length ? `; skipped: ${skipped.join(", ")}` : ""}).`;
+        return ok(summary, {
+          id,
+          verification,
+          keySource,
+          decision: { account: decision.account, action: decision.action, publicPlan: decision.publicPlan ?? decision.plan, outcome: decision.outcome, verdict: decision.review.verdict },
+        });
       }),
   );
 
@@ -295,7 +316,8 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
       title: "Crash replay",
       description:
         "Reads how Parry's risk model, guardian planner and vault would have done through NEAR's largest historical crashes, from real hourly candles: hours of warning before liquidation, " +
-        "the guardian's steps, health with and without Parry, hedged against unhedged vault NAV, and the calibration of the Tremor regime. Returns the summary and each crash without its series. Changes nothing.",
+        "the guardian's steps, health with and without Parry, hedged against unhedged vault NAV; and how the vault's short fared through NEAR's largest rallies (margin ratio, distance to liquidation, " +
+        "rebalances, share price); and the out-of-sample calibration of the Tremor regime. Returns the summary and each crash and spike without its series. Changes nothing.",
       inputSchema: {},
       annotations: read,
     },
@@ -312,8 +334,34 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
           guardianSteps: c.position.steps.length,
           vaultMaxDrawdownPct: c.vault.maxDrawdownPct,
           unhedgedMaxDrawdownPct: c.vault.maxDrawdownUnhedgedPct ?? null,
+          vaultMinMarginRatio: c.vault.marginMin,
         }));
-        return ok(`${r.summary.crashes} crashes; median warning ${r.summary.medianWarningHours} h; liquidations avoided ${r.summary.liquidationsAvoided}.`, { source: r.source, summary: r.summary, calibration: r.calibration ?? null, crashes });
+        const spikes = (r.spikes ?? []).map((x) => ({
+          id: x.id,
+          name: x.name,
+          risePct: x.risePct,
+          vaultLiquidatedAt: x.vault.liquidatedAt ?? null,
+          minMarginRatio: x.vault.marginMin,
+          closestToLiquidationPct: x.vault.liquidationHeadroomMinPct ?? null,
+          maxVaultScore: x.vault.maxScore ?? null,
+          depositsPausedHours: x.vault.pausedHours ?? null,
+          marginAskedHours: x.vault.marginNeededHours ?? null,
+          marginTopUpUsd: x.vault.insurancePaid?.marginTopUpUsd ?? null,
+          marginShortfallMaxUsd: x.vault.marginShortfallMaxUsd ?? null,
+          insurancePaidUsd: x.vault.insurancePaidUsd,
+          rebalances: x.vault.rebalances ?? null,
+          hedgedAtEndPct: x.vault.hedgedEndPct ?? null,
+          sharePriceEnd: x.vault.sharePriceEnd ?? null,
+          unhedgedEnd: x.vault.unhedgedEnd ?? null,
+        }));
+        const spikeText = spikes.length ? ` ${spikes.length} ${spikes.length === 1 ? "spike" : "spikes"}; the vault's short liquidated in ${spikes.filter((x) => x.vaultLiquidatedAt !== null).length}.` : "";
+        return ok(`${r.summary.crashes} crashes; median warning ${r.summary.medianWarningHours} h; liquidations avoided ${r.summary.liquidationsAvoided}.${spikeText}`, {
+          source: r.source,
+          summary: r.summary,
+          calibration: r.calibration ?? null,
+          crashes,
+          spikes,
+        });
       }),
   );
 
@@ -499,12 +547,13 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
     {
       title: "Set the guardian mandate",
       description:
-        `Sets the guardian's mandate on the agent's protected account (owner_call from ${agent.accountId}, 1 yoctoNEAR): which protective lending powers it has (repay, add collateral, deleverage), ` +
+        `Sets the guardian's mandate on the agent's protected account (owner_call from ${agent.accountId}, 1 yoctoNEAR): which protective powers it has (repay, add collateral, deleverage; reduce or hedge a Hyperliquid perp; repay an Aave loan), ` +
         "per-token reserve and daily caps, actions per day, the health a deleverage must leave, the swap slippage cap and the expiry, with an optional sealed policy. " +
+        "A Hyperliquid guard caps each order, the orders' total per UTC day and the hedge opened over the mandate's life; an EVM guard caps each repay, the repays per UTC day and in all. " +
         "The guardian key and sealing key are read from the risk board. The guardian can never move funds out of the account. " +
         `Changes: replaces any current mandate on that account and resets its counters. Testnet only; at most ${caps.setMandatePerDay} call(s) per UTC day.`,
       inputSchema: {
-        powers: z.array(z.enum(["repay", "add_collateral", "deleverage"])).min(1).describe("Protective powers to grant."),
+        powers: z.array(z.enum(["repay", "add_collateral", "deleverage", "hl_reduce", "hl_hedge", "evm_repay"])).min(1).describe("Protective powers to grant (Hyperliquid powers need `hl`, evm_repay needs `evm`)."),
         limits: z
           .array(
             z.object({
@@ -520,6 +569,30 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
         max_slippage_bps: z.number().int().min(0).max(300).optional().describe("Rescue swap slippage cap in bps (at most 300, default 100)."),
         expires_in_days: z.number().int().min(1).max(180).optional().describe("Days until the mandate expires (1 to 180, default 30)."),
         policy: policy.optional(),
+        hl: z
+          .object({
+            asset: z.string().min(1).max(16).optional().describe('Risk board mark ticker (default "NEAR").'),
+            asset_index: z.number().int().min(0).describe("Hyperliquid asset index of the perp."),
+            max_size_e8: z.string().regex(/^\d+$/).describe("Largest guardian order size, scaled by 1e8 (positive)."),
+            daily_size_e8: z.string().regex(/^\d+$/).optional().describe("Most the guardian's orders may add up to per UTC day, 1e8; at least max_size_e8 (default max_size_e8)."),
+            max_hedge_e8: z.string().regex(/^\d+$/).optional().describe("Most hedge the guardian may open over the mandate's life, 1e8; positive with hl_hedge (default max_size_e8 with hl_hedge, else 0)."),
+            band_bps: z.number().int().min(1).max(300).optional().describe("Largest distance of an order from the mark, in bps (1 to 300, default 100)."),
+            hedge_is_buy: z.boolean().optional().describe("The side a hedge takes: false sells (default)."),
+          })
+          .optional()
+          .describe("The Hyperliquid guard, for hl_reduce and hl_hedge."),
+        evm: z
+          .object({
+            chain_id: z.number().int().positive().describe("EVM chain id (84532 for Base Sepolia)."),
+            pool: z.string().regex(/^0x[0-9a-fA-F]{40}$/).describe("The Aave pool."),
+            asset: z.string().regex(/^0x[0-9a-fA-F]{40}$/).describe("The debt asset."),
+            address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).describe("The account's own derived EVM address."),
+            max_amount: z.string().regex(/^\d+$/).describe("Largest repay per action, in the asset's units (positive)."),
+            daily_amount: z.string().regex(/^\d+$/).optional().describe("Most repaid per UTC day; at least max_amount (default max_amount)."),
+            total_amount: z.string().regex(/^\d+$/).optional().describe("Most repaid over the mandate's life; at least daily_amount (default 3 x max_amount)."),
+          })
+          .optional()
+          .describe("The EVM guard, for evm_repay."),
       },
       annotations: write,
     },
@@ -541,6 +614,32 @@ export function createParryMcpServer(opts: ParryMcpOptions): McpServer {
           maxSlippageBps: args.max_slippage_bps ?? 100,
           expiresAt: nowSecs + (args.expires_in_days ?? 30) * 86_400,
           now: nowSecs,
+          ...(args.hl
+            ? {
+                hl: {
+                  asset: args.hl.asset ?? "NEAR",
+                  assetIndex: args.hl.asset_index,
+                  maxSizeE8: args.hl.max_size_e8,
+                  ...(args.hl.daily_size_e8 !== undefined ? { dailySizeE8: args.hl.daily_size_e8 } : {}),
+                  ...(args.hl.max_hedge_e8 !== undefined ? { maxHedgeE8: args.hl.max_hedge_e8 } : {}),
+                  bandBps: args.hl.band_bps ?? 100,
+                  hedgeIsBuy: args.hl.hedge_is_buy ?? false,
+                },
+              }
+            : {}),
+          ...(args.evm
+            ? {
+                evm: {
+                  chainId: args.evm.chain_id,
+                  pool: args.evm.pool,
+                  asset: args.evm.asset,
+                  address: args.evm.address,
+                  maxAmount: args.evm.max_amount,
+                  ...(args.evm.daily_amount !== undefined ? { dailyAmount: args.evm.daily_amount } : {}),
+                  ...(args.evm.total_amount !== undefined ? { totalAmount: args.evm.total_amount } : {}),
+                },
+              }
+            : {}),
           ...(args.policy
             ? {
                 policy: {

@@ -1,6 +1,6 @@
 {
   "name": "@parryguard/mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "MCP server for Parry: risk, vault, guardian log and policy-limited testnet actions.",
   "author": "Aliyaan Nasir",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "parry-mcp": "./dist/bin.js"
+    "parry-mcp": "./bin/parry-mcp.js"
   },
   "exports": {
     ".": {
@@ -19,6 +19,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "bin",
     "dist",
     "README.md"
   ],

@@ -23,6 +23,24 @@ const PAUSES = [
   { value: 604_800, label: "7 days" },
 ] as const;
 
+/** The EVM guard's debt asset is USDC on Base (6 decimals). */
+const EVM_DECIMALS = 6;
+
+/** One cap with what the guardian has used of it. */
+function CapLine({ label, used, cap, decimals, unit }: { label: string; used: string; cap: string; decimals: number; unit: string }) {
+  return (
+    <div className="grid gap-1">
+      <div className="flex flex-wrap justify-between gap-2 text-[13px]">
+        <span className="text-muted">{label}</span>
+        <span className="num text-fg">
+          {fromUnits(used, decimals, 2)} <span className="text-muted">/ {fromUnits(cap, decimals, 2)} {unit}</span>
+        </span>
+      </div>
+      <Meter used={unitsToNumber(used, decimals)} total={unitsToNumber(cap, decimals)} label={`${label}, ${unit}`} />
+    </div>
+  );
+}
+
 function Meter({ used, total, label }: { used: number; total: number; label: string }) {
   const fill = total > 0 ? Math.min(1, used / total) : 0;
   return (
@@ -179,14 +197,28 @@ export function MandatePanel({
                 </ul>
               )}
               {m.hl ? (
-                <p className="text-[13px] text-muted">
-                  Hyperliquid guard: {m.hl.asset} (index {m.hl.asset_index}), at most {fromUnits(m.hl.max_size_e8, 8, 2)} per order, within {formatBps(m.hl.band_bps)} of the mark.
-                </p>
+                <div className="grid gap-2">
+                  <p className="text-sm font-semibold text-fg">Hyperliquid {m.hl.asset}</p>
+                  <p className="text-[13px] text-muted">
+                    Index {m.hl.asset_index}, at most {fromUnits(m.hl.max_size_e8, 8, 2)} per order, within {formatBps(m.hl.band_bps)} of the mark.
+                  </p>
+                  {m.hl.daily_size_e8 ? (
+                    <CapLine label="Orders today" used={view.hl_size_today ?? "0"} cap={m.hl.daily_size_e8} decimals={8} unit={m.hl.asset} />
+                  ) : null}
+                  {m.hl.max_hedge_e8 && m.hl.max_hedge_e8 !== "0" ? (
+                    <CapLine label="Hedge opened, in all" used={view.hl_hedged ?? "0"} cap={m.hl.max_hedge_e8} decimals={8} unit={m.hl.asset} />
+                  ) : null}
+                </div>
               ) : null}
               {m.evm ? (
-                <p className="text-[13px] text-muted">
-                  EVM guard: chain {m.evm.chain_id}, pool {m.evm.pool.slice(0, 10)}..., at most {m.evm.max_amount} units per repay.
-                </p>
+                <div className="grid gap-2">
+                  <p className="text-sm font-semibold text-fg">Aave on chain {m.evm.chain_id}</p>
+                  <p className="text-[13px] text-muted">
+                    Pool {m.evm.pool.slice(0, 10)}..., at most {fromUnits(m.evm.max_amount, EVM_DECIMALS, 2)} per repay.
+                  </p>
+                  {m.evm.daily_amount ? <CapLine label="Repaid today" used={view.evm_repaid_today ?? "0"} cap={m.evm.daily_amount} decimals={EVM_DECIMALS} unit="tokens" /> : null}
+                  {m.evm.total_amount ? <CapLine label="Repaid, in all" used={view.evm_repaid ?? "0"} cap={m.evm.total_amount} decimals={EVM_DECIMALS} unit="tokens" /> : null}
+                </div>
               ) : null}
             </div>
           </div>

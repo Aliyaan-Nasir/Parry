@@ -5,6 +5,7 @@
 
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { AccountSummary, Alert, DecisionPage, HistoryPoint, Market, MandateView, Position, Rates, Reserves, RouteComparison } from "@parryguard/sdk";
+import { useParryAccount } from "@/components/providers/AccountProvider";
 import { api, chain, parry } from "./parry";
 import { apiUrl } from "./env";
 
@@ -88,10 +89,20 @@ export function useHistory(positionId: string | null, hours: number) {
   });
 }
 
+/**
+ * Guardian decisions, newest first. For the selected account while its owner is signed in, the
+ * API serves the full records (the plan with its target, the reasons, the review's reasoning);
+ * everyone else, and the owner before signing in, reads the public records.
+ */
 export function useDecisions(account: string | null, limit = 10) {
+  const { account: selected, sessionToken } = useParryAccount();
+  const token = account && account === selected ? sessionToken : null;
   return useInfiniteQuery<DecisionPage>({
-    queryKey: [...keys.decisions(account), limit],
-    queryFn: ({ pageParam }) => parry().decisions({ ...(account ? { account } : {}), limit, ...(pageParam ? { cursor: pageParam as string } : {}) }),
+    queryKey: [...keys.decisions(account), limit, token ? "owner" : "public"],
+    queryFn: ({ pageParam }) =>
+      token
+        ? api.decisions({ account: account!, limit, ...(pageParam ? { cursor: pageParam as string } : {}) }, token)
+        : parry().decisions({ ...(account ? { account } : {}), limit, ...(pageParam ? { cursor: pageParam as string } : {}) }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next,
     enabled: hasApi,

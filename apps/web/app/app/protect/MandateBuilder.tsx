@@ -50,6 +50,10 @@ type Draft = {
   hlAsset: string;
   hlIndex: string;
   hlMaxSize: string;
+  /** Blank: the per-order cap. */
+  hlDailySize: string;
+  /** Blank: the per-order cap with the hedge power, else none. */
+  hlMaxHedge: string;
   hlBand: number;
   hlHedgeIsBuy: boolean;
   evmChainId: string;
@@ -57,6 +61,10 @@ type Draft = {
   evmAsset: string;
   evmAddress: string;
   evmMax: string;
+  /** Blank: the per-repay cap. */
+  evmDaily: string;
+  /** Blank: three repays' worth. */
+  evmTotal: string;
   evmDecimals: string;
   triggerScore: number;
   triggerHealth: number;
@@ -100,13 +108,17 @@ function draftFrom(current: Mandate | null, contracts: ContractIds, evmAddress: 
     hlAsset: current?.hl?.asset ?? "NEAR",
     hlIndex: current?.hl ? String(current.hl.asset_index) : "",
     hlMaxSize: current?.hl ? fromUnits(current.hl.max_size_e8, 8, 8).replace(/,/g, "") : "",
+    hlDailySize: current?.hl?.daily_size_e8 ? fromUnits(current.hl.daily_size_e8, 8, 8).replace(/,/g, "") : "",
+    hlMaxHedge: current?.hl?.max_hedge_e8 && current.hl.max_hedge_e8 !== "0" ? fromUnits(current.hl.max_hedge_e8, 8, 8).replace(/,/g, "") : "",
     hlBand: current?.hl?.band_bps ?? 100,
     hlHedgeIsBuy: current?.hl?.hedge_is_buy ?? false,
     evmChainId: current?.evm ? String(current.evm.chain_id) : String(AAVE.chainId),
     evmPool: current?.evm?.pool ?? AAVE.pool,
     evmAsset: current?.evm?.asset ?? AAVE.usdc,
     evmAddress: current?.evm?.address ?? evmAddress ?? "",
-    evmMax: current?.evm ? current.evm.max_amount : "",
+    evmMax: current?.evm ? fromUnits(current.evm.max_amount, 6, 6).replace(/,/g, "") : "",
+    evmDaily: current?.evm?.daily_amount ? fromUnits(current.evm.daily_amount, 6, 6).replace(/,/g, "") : "",
+    evmTotal: current?.evm?.total_amount ? fromUnits(current.evm.total_amount, 6, 6).replace(/,/g, "") : "",
     evmDecimals: "6",
     ...DEFAULT_POLICY,
     steps: stepItems(STRATEGY_STEPS[DEFAULT_POLICY.strategy]),
@@ -198,6 +210,19 @@ export function MandateBuilder({
   const has = (p: Power) => d.powers.includes(p);
   const hlOn = has("hl_reduce") || has("hl_hedge");
   const evmOn = has("evm_repay");
+  // The contract's rules for the caps, said next to the fields: daily at least one action, total at least a day.
+  const capNum = (v: string) => (v.trim() === "" ? null : Number(v));
+  const hlMax = capNum(d.hlMaxSize);
+  const hlDaily = capNum(d.hlDailySize);
+  const hlDailyHint =
+    hlDaily !== null && hlMax !== null && hlDaily < hlMax ? "Must be at least the largest order." : "What the guardian's orders may add up to per UTC day. Blank: one largest order.";
+  const evmMaxN = capNum(d.evmMax);
+  const evmDailyN = capNum(d.evmDaily) ?? evmMaxN;
+  const evmTotalN = capNum(d.evmTotal);
+  const evmDailyHint =
+    capNum(d.evmDaily) !== null && evmMaxN !== null && capNum(d.evmDaily)! < evmMaxN ? "Must be at least the largest repay." : "What the guardian may repay per UTC day (approvals do not count). Blank: one largest repay.";
+  const evmTotalHint =
+    evmTotalN !== null && evmDailyN !== null && evmTotalN < evmDailyN ? "Must be at least the daily total." : "What the guardian may repay while this mandate lasts. Blank: three largest repays.";
   const sealingKey = enclave.data?.sealingKey?.public_key ?? null;
   const canAct = signer !== "watch";
 
@@ -219,6 +244,7 @@ export function MandateBuilder({
         throw new Error("Repay, add collateral and deleverage spend from a reserve: set a USDC or wNEAR reserve and daily cap.");
       }
       const index = Number(d.hlIndex);
+      const evmDecimals = Math.max(0, Math.min(30, Number(d.evmDecimals) || 0));
       const mandate = buildMandate({
         account,
         guardianKey: info.key.public_key,
@@ -227,14 +253,26 @@ export function MandateBuilder({
         maxActionsPerDay: d.maxActions,
         minHealthAfterBps: Math.round(d.minHealthAfter * 10_000),
         maxSlippageBps: d.slippageBps,
-        hl: hlOn ? { asset: d.hlAsset || "NEAR", assetIndex: Number.isInteger(index) ? index : -1, maxSizeE8: units(d.hlMaxSize, 8, "The Hyperliquid size cap"), bandBps: d.hlBand, hedgeIsBuy: d.hlHedgeIsBuy } : null,
+        hl: hlOn
+          ? {
+              asset: d.hlAsset || "NEAR",
+              assetIndex: Number.isInteger(index) ? index : -1,
+              maxSizeE8: units(d.hlMaxSize, 8, "The Hyperliquid size cap"),
+              ...(d.hlDailySize.trim() ? { dailySizeE8: units(d.hlDailySize, 8, "The Hyperliquid daily cap") } : {}),
+              ...(d.hlMaxHedge.trim() && has("hl_hedge") ? { maxHedgeE8: units(d.hlMaxHedge, 8, "The Hyperliquid total hedge cap") } : {}),
+              bandBps: d.hlBand,
+              hedgeIsBuy: d.hlHedgeIsBuy,
+            }
+          : null,
         evm: evmOn
           ? {
               chainId: Number(d.evmChainId),
               pool: d.evmPool,
               asset: d.evmAsset,
               address: d.evmAddress,
-              maxAmount: units(d.evmMax, Math.max(0, Math.min(30, Number(d.evmDecimals) || 0)), "The EVM repay cap"),
+              maxAmount: units(d.evmMax, evmDecimals, "The EVM repay cap"),
+              ...(d.evmDaily.trim() ? { dailyAmount: units(d.evmDaily, evmDecimals, "The EVM daily repay cap") } : {}),
+              ...(d.evmTotal.trim() ? { totalAmount: units(d.evmTotal, evmDecimals, "The EVM total repay cap") } : {}),
             }
           : null,
         expiresAt: Math.floor(Date.now() / 1000) + d.days * 86_400,
@@ -441,6 +479,24 @@ export function MandateBuilder({
                 disabled={!canAct}
               />
               <AmountField label="Largest order" unit={d.hlAsset || "NEAR"} value={d.hlMaxSize} onChange={(v) => set("hlMaxSize", v)} disabled={!canAct} />
+              <AmountField
+                label="Orders per day, in all"
+                unit={d.hlAsset || "NEAR"}
+                value={d.hlDailySize}
+                onChange={(v) => set("hlDailySize", v)}
+                hint={hlDailyHint}
+                disabled={!canAct}
+              />
+              {d.powers.includes("hl_hedge") ? (
+                <AmountField
+                  label="Hedge over the mandate, in all"
+                  unit={d.hlAsset || "NEAR"}
+                  value={d.hlMaxHedge}
+                  onChange={(v) => set("hlMaxHedge", v)}
+                  hint="The most hedge the guardian may open while this mandate lasts. Blank: one largest order."
+                  disabled={!canAct}
+                />
+              ) : null}
               <Slider label="Price band" description="Limit price distance from the enclave's mark." min={10} max={MANDATE_LIMITS.maxBandBps} step={10} value={d.hlBand} formatValue={formatBps} onValueChange={(v) => set("hlBand", v)} disabled={!canAct} />
             </div>
             {hedgeMarket.data && d.hlIndex === "" ? (
@@ -468,6 +524,8 @@ export function MandateBuilder({
               <TextField label="Aave pool" value={d.evmPool} onChange={(v) => set("evmPool", v)} placeholder="0x..." disabled={!canAct} />
               <TextField label="Debt asset" value={d.evmAsset} onChange={(v) => set("evmAsset", v)} placeholder="0x..." hint={d.evmAsset.toLowerCase() === AAVE.usdc.toLowerCase() ? "USDC" : undefined} disabled={!canAct} />
               <AmountField label="Largest repay" unit="tokens" value={d.evmMax} onChange={(v) => set("evmMax", v)} disabled={!canAct} />
+              <AmountField label="Repays per day, in all" unit="tokens" value={d.evmDaily} onChange={(v) => set("evmDaily", v)} hint={evmDailyHint} disabled={!canAct} />
+              <AmountField label="Repays over the mandate, in all" unit="tokens" value={d.evmTotal} onChange={(v) => set("evmTotal", v)} hint={evmTotalHint} disabled={!canAct} />
               <TextField label="Asset decimals" value={d.evmDecimals} onChange={(v) => set("evmDecimals", v.replace(/\D/g, ""))} disabled={!canAct} />
             </div>
           </Fieldset>
