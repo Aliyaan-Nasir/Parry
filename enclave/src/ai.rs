@@ -5,10 +5,8 @@
 //! `[model:]sha256(request body):sha256(response body)` with its secp256k1 key (EIP-191), and the
 //! enclave checks both hashes against what it sent and received and recovers the signing
 //! address. The full record (and its SHA-256, the `review_hash` the account emits on chain) goes
-//! out with the decision. The signing address must be one the enclave's own `attest` mode
-//! verified (Intel TDX quote and NVIDIA GPU evidence) and pinned on the risk board
-//! (`attest.rs`, checked in `modes.rs` before anything is signed); the API and `pnpm verify`
-//! also check its attestation off chain with NEAR AI's inference SDK.
+//! out with the decision; the signer must be a key the enclave's `attest` mode verified (TDX
+//! quote, NVIDIA GPUs) and pinned on the risk board, checked in `modes.rs` (`attest.rs`).
 
 use crate::config;
 use crate::io::{Io, Result};
